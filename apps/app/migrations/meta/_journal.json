@@ -8,6 +8,13 @@
       "when": 1790777856014,
       "tag": "0000_products",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790779236469,
+      "tag": "0001_stock_on_hand",
+      "breakpoints": true
     }
   ]
 }

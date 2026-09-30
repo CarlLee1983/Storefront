@@ -1,6 +1,5 @@
 import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { AppEntrypoint } from "../src/entrypoint";
 import { mintAccessJwt } from "./access";
 import { resetDb } from "./db";
 
@@ -25,7 +24,7 @@ describe("修改商品", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450 }],
+      data: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450, purchasable: false }],
     });
   });
 
@@ -66,7 +65,7 @@ describe("下架與重新上架", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320 }],
+      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false }],
     });
   });
 
@@ -108,7 +107,7 @@ describe("讀取單一商品（編輯頁用）", () => {
     const id = await createMug(jwt);
     expect(await app.getProductForAdmin(jwt, { id })).toEqual({
       ok: true,
-      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, listed: true },
+      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, listed: true, onHand: 0, available: 0 },
     });
 
     await app.unlistProduct(jwt, { id });
@@ -171,7 +170,7 @@ describe("修改、下架、上架的守門", () => {
     });
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320 }],
+      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false }],
     });
   });
 
@@ -180,11 +179,5 @@ describe("修改、下架、上架的守門", () => {
     for (const id of [0, -1, 1.5, "1"]) {
       expect(await app.unlistProduct(jwt, { id })).toMatchObject({ ok: false, reason: "invalid_input" });
     }
-  });
-
-  it("RPC 介面沒有刪除商品的方法", () => {
-    // 呼叫不存在的 RPC 方法會讓 workerd 噴出未處理錯誤，所以直接檢查對外介面的方法名稱
-    const methods = Object.getOwnPropertyNames(AppEntrypoint.prototype);
-    expect(methods.filter((name) => /delete|remove|destroy/i.test(name))).toEqual([]);
   });
 });

@@ -19,6 +19,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <h2>{p.name}</h2>
             <p>{p.description}</p>
             <p>NT$ {priceFormat.format(p.priceTwd)}</p>
+            <p>{p.purchasable ? "可購買" : "已售完"}</p>
           </li>
         ))}
       </ul>

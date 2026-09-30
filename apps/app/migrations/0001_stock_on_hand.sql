@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `on_hand` integer DEFAULT 0 NOT NULL;
