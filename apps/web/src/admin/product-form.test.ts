@@ -6,6 +6,7 @@ import {
   parseProductId,
   productFormToInput,
   productUpdateFormToInput,
+  stockAdjustFormToInput,
 } from "./product-form";
 
 const form = (values: Record<string, string>) => {
@@ -68,6 +69,18 @@ describe("dispatchProductForm", () => {
     expect(dispatchProductForm(form({ intent: "relist", id: "3" }))).toEqual({ kind: "listing", action: "relist", id: 3 });
   });
 
+  it("庫存調整的表單解析出商品編號與增減量", () => {
+    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "3", delta: "-3" }))).toEqual({
+      kind: "stock",
+      input: { id: 3, delta: -3 },
+    });
+  });
+
+  it("庫存調整缺少或無效的 id 是 invalid，不呼叫 RPC", () => {
+    expect(dispatchProductForm(form({ intent: "adjust-stock", delta: "5" }))).toEqual({ kind: "invalid" });
+    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "0", delta: "5" }))).toEqual({ kind: "invalid" });
+  });
+
   it.each([
     ["未知的 intent（delete）", { intent: "delete", id: "3" }],
     ["intent 是 create 也不當成新增", { intent: "create", id: "3" }],
@@ -76,6 +89,18 @@ describe("dispatchProductForm", () => {
     ["id 為 0", { intent: "relist", id: "0" }],
   ])("有 intent 但無法解析（%s）是 invalid，不會落到新增", (_label, values) => {
     expect(dispatchProductForm(form(values))).toEqual({ kind: "invalid" });
+  });
+});
+
+describe("stockAdjustFormToInput", () => {
+  it("商品編號與增減量轉成 RPC 輸入，+20 與 -3 都是數字", () => {
+    expect(stockAdjustFormToInput(form({ delta: "+20" }), 3)).toEqual({ id: 3, delta: 20 });
+    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ id: 3, delta: -3 });
+  });
+
+  it("增減量留空或不是數字為 NaN，不在 Web 判斷，由 App 回報欄位錯誤", () => {
+    expect(stockAdjustFormToInput(form({}), 3).delta).toBeNaN();
+    expect(stockAdjustFormToInput(form({ delta: "abc" }), 3).delta).toBeNaN();
   });
 });
 
@@ -90,6 +115,13 @@ describe("describeFailure", () => {
   it("product_not_found 說找不到商品", () => {
     expect(describeFailure({ reason: "product_not_found" }, "操作失敗")).toEqual({
       message: "找不到這個商品",
+      fields: {},
+    });
+  });
+
+  it("insufficient_stock 說庫存不足", () => {
+    expect(describeFailure({ reason: "insufficient_stock" }, "操作失敗")).toEqual({
+      message: "庫存不足：調整後的可售數量不可為負",
       fields: {},
     });
   });

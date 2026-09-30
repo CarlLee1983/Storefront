@@ -53,6 +53,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   relistProduct(jwt: string, input: unknown) {
     return this.#admin().relistProduct(jwt, input);
   }
+
+  adjustStock(jwt: string, input: unknown) {
+    return this.#admin().adjustStock(jwt, input);
+  }
 }
 
 export default AppEntrypoint;

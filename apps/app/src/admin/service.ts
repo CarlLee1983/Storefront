@@ -3,11 +3,12 @@ import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
+import { adjustOnHand } from "../catalog/stock";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { createProductInput, productIdInput, updateProductInput } from "./input";
+import { adjustStockInput, createProductInput, productIdInput, updateProductInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig) {
   const db = drizzle(d1);
@@ -72,6 +73,11 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 重新上架：已上架時也回成功（冪等）。 */
     relistProduct(jwt: unknown, input: unknown) {
       return authorized(jwt, productIdInput, input, (_actor, { id }) => updateById(id, { listed: true }));
+    },
+
+    /** 庫存調整：只接受增減量，不能覆寫成某個數字。 */
+    adjustStock(jwt: unknown, input: unknown) {
+      return authorized(jwt, adjustStockInput, input, (_actor, { id, delta }) => adjustOnHand(db, id, delta));
     },
   };
 }
