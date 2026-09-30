@@ -1,5 +1,5 @@
 # push 到 main 部署 production；手動觸發（任何分支）部署 preview。
-# 順序固定：檢查 secrets → typecheck / test → D1 migration → App → Web。
+# 順序固定：檢查 secrets → 檢查顧客登入設定 → typecheck / test → D1 migration → App → Web。
 name: Deploy
 
 on:
@@ -37,6 +37,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
+
+      # 顧客登入設定不全或 BETTER_AUTH_URL 填錯時，部署出去的登入是壞的；在 migration 之前擋下
+      - name: 檢查顧客登入設定（${{ env.DEPLOY_ENV }}）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun apps/app/scripts/check-auth-deploy.ts "${DEPLOY_ENV}"
 
       - run: bun run typecheck
       - run: bun run test

@@ -1,0 +1,38 @@
+---
+import { safeNextPath } from "../auth/customer";
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = false;
+
+const next = safeNextPath(Astro.url.searchParams.get("next"));
+if (Astro.locals.customer) {
+  return Astro.redirect(next, 303);
+}
+---
+
+<Layout title="登入" noindex>
+  <p>用 LINE 或 Google 登入。兩種方式是各自獨立的帳號，不會合併。</p>
+  <p id="error" class="error" role="alert" hidden></p>
+  <p>
+    <button type="button" data-provider="line" data-next={next}>用 LINE 登入</button>
+    <button type="button" data-provider="google" data-next={next}>用 Google 登入</button>
+  </p>
+  <script>
+    import { requestSocialLogin } from "../auth/client";
+
+    // 發起登入：POST 到 Better Auth，拿到 provider 的授權網址後導向；state cookie 由回應的 Set-Cookie 設定。
+    // 任何失敗（含網路錯誤與 5xx）都顯示同一則訊息
+    for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-provider]")) {
+      button.addEventListener("click", async () => {
+        const url = await requestSocialLogin(fetch, button.dataset.provider ?? "", button.dataset.next ?? "/");
+        if (url) {
+          location.href = url;
+          return;
+        }
+        const error = document.querySelector<HTMLElement>("#error")!;
+        error.textContent = "登入暫時無法使用，請稍後再試。";
+        error.hidden = false;
+      });
+    }
+  </script>
+</Layout>

@@ -1,9 +1,14 @@
 ---
+import { LOGIN_PATH, loginUrl } from "../auth/customer";
+
 interface Props {
   title: string;
   admin?: boolean;
+  noindex?: boolean;
 }
-const { title, admin = false } = Astro.props;
+const { title, admin = false, noindex = false } = Astro.props;
+// 管理後台由 Cloudflare Access 保護，與顧客登入無關，不顯示登入狀態
+const customer = admin ? null : Astro.locals.customer;
 ---
 
 <!doctype html>
@@ -11,7 +16,7 @@ const { title, admin = false } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    {admin && <meta name="robots" content="noindex" />}
+    {(admin || noindex) && <meta name="robots" content="noindex" />}
     <title>{title}｜Storefront</title>
     <style is:global>
       body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 48rem; padding: 1rem; line-height: 1.6; }
@@ -27,10 +32,40 @@ const { title, admin = false } = Astro.props;
     <nav>
       <a href="/">Storefront</a>
       {admin && <a href="/admin">管理後台</a>}
+      {
+        !admin &&
+          (customer ? (
+            <>
+              <span class="customer-name">{customer.name}</span>
+              <button type="button" id="sign-out">登出</button>
+            </>
+          ) : Astro.url.pathname === LOGIN_PATH ? null : (
+            <a href={loginUrl(Astro.url)}>登入</a>
+          ))
+      }
     </nav>
+    <p id="sign-out-error" class="error" role="alert" hidden></p>
     <main>
       <h1>{title}</h1>
       <slot />
     </main>
+    <script>
+      import { requestSignOut } from "../auth/client";
+
+      // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
+      const signOut = document.querySelector<HTMLButtonElement>("#sign-out");
+      signOut?.addEventListener("click", async () => {
+        // 請求進行中停用按鈕，避免連點重複送出；失敗才恢復
+        signOut.disabled = true;
+        if (await requestSignOut(fetch)) {
+          location.reload();
+          return;
+        }
+        signOut.disabled = false;
+        const error = document.querySelector<HTMLElement>("#sign-out-error")!;
+        error.textContent = "登出失敗，請稍後再試。";
+        error.hidden = false;
+      });
+    </script>
   </body>
 </html>
