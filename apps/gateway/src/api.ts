@@ -23,6 +23,8 @@ const createPaymentSchema = z.object({
     .positive("amountTwd 必須大於 0"),
   returnUrl: httpUrl("returnUrl"),
   webhookUrl: httpUrl("webhookUrl"),
+  // 呼叫端希望付款最晚失效的時間（epoch 毫秒）；實際失效時間取它與「建立時間 + 付款有效期」的較早者
+  expiresAt: z.number({ error: "expiresAt 必須是數字（epoch 毫秒）" }).int("expiresAt 必須是整數").optional(),
 });
 
 function invalidInput(error: z.ZodError) {
@@ -46,7 +48,12 @@ export async function createPayment(request: Request, env: Env, clock: Clock): P
   const parsed = createPaymentSchema.safeParse(await readJson(request));
   if (!parsed.success) return invalidInput(parsed.error);
 
-  const row = await insertPayment(makeDb(env), parsed.data, clock.now());
+  const now = clock.now();
+  if (parsed.data.expiresAt !== undefined && parsed.data.expiresAt <= now) {
+    return failure(400, "invalid_input", "輸入不合法", { expiresAt: ["expiresAt 必須晚於現在"] });
+  }
+
+  const row = await insertPayment(makeDb(env), parsed.data, now);
   return success(
     { paymentId: row.id, paymentUrl: `${new URL(request.url).origin}/pay/${row.id}`, expiresAt: row.expiresAt },
     201,

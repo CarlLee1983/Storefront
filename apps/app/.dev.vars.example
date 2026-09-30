@@ -9,3 +9,7 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 LINE_CHANNEL_ID=
 LINE_CHANNEL_SECRET=
+
+# 付款：金流閘道的 API 金鑰，必須與 apps/gateway/.dev.vars 的 GATEWAY_API_KEY 相同（閘道網址 GATEWAY_BASE_URL 見 wrangler.jsonc，本機預設 http://localhost:8787）。
+# 不填時只有付款不可用（startPayment、confirmPayment 回 payment_unavailable），其餘頁面照常。
+GATEWAY_API_KEY=

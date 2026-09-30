@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
+import { selectPaymentSummaries } from "../payments/queries";
 import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
 import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectProductStates, selectRequestHash } from "./queries";
@@ -67,7 +68,10 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
     async listMyOrders(cookie: unknown) {
       const customerId = await customerOf(cookie);
       if (!customerId) return unauthorized;
-      return ok(await selectOrders(db, customerId));
+      const orders = await selectOrders(db, customerId);
+      const payments = await selectPaymentSummaries(db, customerId, clock.now());
+      // 付款嘗試由 payments 模組提供，在這裡與訂單組合（orders 的查詢不依賴 payments）
+      return ok(orders.map((order) => ({ ...order, payments: payments.get(order.id) ?? [] })));
     },
 
     async getMyOrder(cookie: unknown, input: unknown) {
@@ -77,7 +81,9 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       if (!parsed.ok) return parsed;
 
       const [order] = await selectOrders(db, customerId, { orderId: parsed.data.orderId });
-      return order ? ok(order) : fail("order_not_found");
+      if (!order) return fail("order_not_found");
+      const payments = await selectPaymentSummaries(db, customerId, clock.now(), order.id);
+      return ok({ ...order, payments: payments.get(order.id) ?? [] });
     },
 
     /**

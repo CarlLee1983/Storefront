@@ -3,7 +3,8 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId } from "../../orders/labels";
+import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel } from "../../orders/labels";
+import { paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
 
@@ -31,6 +32,9 @@ if (!order) Astro.response.status = 404;
 // 剛結帳成功導來這一頁：顯示成立訊息（清購物車與冪等鍵在下面的 client script）
 const placed = Astro.url.searchParams.get("placed") === "1";
 const statusNote = order ? orderStatusNote(order.status) : null;
+// 發起付款被拒（/orders/:id/pay 帶回原因），或付款完導回時閘道暫時查不到結果（/orders/:id/payment-return）
+const paymentError = paymentErrorMessage(Astro.url.searchParams.get("payment_error"));
+const paymentUnconfirmed = Astro.url.searchParams.get("payment") === "unconfirmed";
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -41,15 +45,23 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     ) : (
       <>
         {placed && <p role="status">訂單已成立，商品已為你保留。</p>}
+        {paymentError && <p class="error" role="alert">{paymentError}</p>}
+        {paymentUnconfirmed && <p role="status">付款結果暫時無法確認，請稍後重新整理本頁；結果確認後訂單狀態會自動更新。</p>}
+        {order.status === "paid" && <p role="status">已收到付款，訂單已付款。</p>}
         <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
         {statusNote && <p>{statusNote}</p>}
         {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
         {
           order.status === "pending_payment" && (
-            <form method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
-              <p>取消後無法恢復。</p>
-              <button type="submit">取消訂單</button>
-            </form>
+            <>
+              <form method="post" action={`/orders/${order.id}/pay`}>
+                <button type="submit">前往付款</button>
+              </form>
+              <form method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
+                <p>取消後無法恢復。</p>
+                <button type="submit">取消訂單</button>
+              </form>
+            </>
           )
         }
         <p>成立時間：{formatDateTime(order.createdAt)}</p>
@@ -69,6 +81,27 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           </tbody>
         </table>
         <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+        {
+          order.payments.length > 0 && (
+            <>
+              <h2>付款嘗試</h2>
+              <table>
+                <thead>
+                  <tr><th>發起時間</th><th>金額</th><th>狀態</th></tr>
+                </thead>
+                <tbody>
+                  {order.payments.map((payment) => (
+                    <tr>
+                      <td>{formatDateTime(payment.createdAt)}</td>
+                      <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
+                      <td>{paymentStatusLabel(payment.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )
+        }
         <h2>收件資訊</h2>
         <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
         <p>{order.shippingInfo.address}</p>

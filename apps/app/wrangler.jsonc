@@ -19,10 +19,15 @@
   //
   // BETTER_AUTH_URL 是瀏覽器看到的 Web Worker 公開 origin（OAuth redirect_uri 由它組成），同樣純文字、各環境自己宣告。
   // 顧客登入的 secrets（BETTER_AUTH_SECRET、GOOGLE_*、LINE_*）不寫在這裡，見 README「顧客登入」。
+  //
+  // GATEWAY_BASE_URL 是金流閘道 Worker 的網址（純文字、各環境自己宣告；本機預設是 `bun run dev:gateway` 的位址）。
+  // 付款的 secret GATEWAY_API_KEY 不寫在這裡，見 README「付款」。缺少任一個時只有付款相關 RPC（startPayment、confirmPayment）
+  // 回 payment_unavailable，其餘 RPC 不受影響。
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
-    "BETTER_AUTH_URL": "http://localhost:4321"
+    "BETTER_AUTH_URL": "http://localhost:4321",
+    "GATEWAY_BASE_URL": "http://localhost:8787"
   },
   "d1_databases": [
     {
@@ -44,7 +49,8 @@
       "vars": {
         "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
         "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
-        "BETTER_AUTH_URL": "https://REPLACE_WITH_PREVIEW_DOMAIN"
+        "BETTER_AUTH_URL": "https://REPLACE_WITH_PREVIEW_DOMAIN",
+        "GATEWAY_BASE_URL": "https://REPLACE_WITH_PREVIEW_GATEWAY_DOMAIN"
       },
       "d1_databases": [
         {
@@ -63,7 +69,8 @@
       "vars": {
         "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
         "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
-        "BETTER_AUTH_URL": "https://REPLACE_WITH_PRODUCTION_DOMAIN"
+        "BETTER_AUTH_URL": "https://REPLACE_WITH_PRODUCTION_DOMAIN",
+        "GATEWAY_BASE_URL": "https://REPLACE_WITH_PRODUCTION_GATEWAY_DOMAIN"
       },
       "d1_databases": [
         {

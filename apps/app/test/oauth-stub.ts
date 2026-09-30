@@ -1,5 +1,5 @@
 import { exports } from "cloudflare:workers";
-import { vi } from "vitest";
+import { registerFetchRoute } from "./fetch-router";
 
 export const ORIGIN = "http://localhost:4321";
 
@@ -14,19 +14,17 @@ const fakeIdToken = (profile: Record<string, unknown>) =>
 
 /** 攔截 provider 的 token endpoint，回傳帶指定 profile 的 id_token；其他請求照常送出。 */
 function stubProviderProfile(profile: Record<string, unknown>) {
-  const realFetch = globalThis.fetch;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (TOKEN_ENDPOINTS.some((endpoint) => url.startsWith(endpoint))) {
-      return Response.json({
+  registerFetchRoute(
+    "oauth-provider",
+    (url) => TOKEN_ENDPOINTS.some((endpoint) => url.startsWith(endpoint)),
+    () =>
+      Response.json({
         access_token: "access-token",
         token_type: "Bearer",
         expires_in: 3600,
         id_token: fakeIdToken(profile),
-      });
-    }
-    return realFetch(input, init);
-  });
+      }),
+  );
 }
 
 export interface LoginResult {

@@ -5,3 +5,6 @@ dist/
 .astro/
 worker-configuration.d.ts
 coverage/
+
+# Claude Code 子代理的 git worktree
+.claude/worktrees/
