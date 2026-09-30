@@ -63,6 +63,8 @@ describe("結帳成功", () => {
           { productId: pen, productName: "原子筆", quantity: 3, unitPriceTwd: 45 },
         ],
         payments: [],
+        trackingNumber: null,
+        shippedAt: null,
       },
     });
   });

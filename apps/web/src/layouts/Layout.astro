@@ -32,6 +32,7 @@ const customer = admin ? null : Astro.locals.customer;
     <nav>
       <a href="/">Storefront</a>
       {admin && <a href="/admin">管理後台</a>}
+      {admin && <a href="/admin/orders">訂單管理</a>}
       {
         !admin && (
           <a href="/cart">

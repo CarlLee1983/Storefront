@@ -190,6 +190,15 @@ export async function selectPaymentSummaries(
   now: number,
   orderId?: number,
 ): Promise<Map<number, PaymentSummary[]>> {
+  return selectSummaries(db, now, and(eq(orders.customerId, customerId), orderId === undefined ? undefined : eq(orders.id, orderId)));
+}
+
+/** 管理員讀某張訂單的付款嘗試摘要（不限顧客），形狀與顧客看到的相同。 */
+export async function selectOrderPaymentSummaries(db: DrizzleD1Database, now: number, orderId: number): Promise<PaymentSummary[]> {
+  return (await selectSummaries(db, now, eq(orders.id, orderId))).get(orderId) ?? [];
+}
+
+async function selectSummaries(db: DrizzleD1Database, now: number, where: SQL | undefined): Promise<Map<number, PaymentSummary[]>> {
   const rows = await db
     .select({
       orderId: payments.orderId,
@@ -201,7 +210,7 @@ export async function selectPaymentSummaries(
     })
     .from(payments)
     .innerJoin(orders, eq(orders.id, payments.orderId))
-    .where(and(eq(orders.customerId, customerId), orderId === undefined ? undefined : eq(orders.id, orderId)))
+    .where(where)
     .orderBy(asc(payments.id));
 
   const byOrder = new Map<number, PaymentSummary[]>();

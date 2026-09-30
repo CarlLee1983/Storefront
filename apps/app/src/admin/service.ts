@@ -4,11 +4,16 @@ import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
+import { selectOrderCustomerEmail, selectOrdersForAdmin } from "../orders/admin-queries";
+import { orderIdInput } from "../orders/input";
+import { markOrderShipped, orderExists, selectOrderById } from "../orders/queries";
+import { SHIPPED } from "../orders/schema";
+import { selectOrderPaymentSummaries } from "../payments/queries";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, createProductInput, productIdInput, updateProductInput } from "./input";
+import { adjustStockInput, createProductInput, listOrdersInput, productIdInput, shipOrderInput, updateProductInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig) {
   const db = drizzle(d1);
@@ -78,6 +83,36 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 庫存調整：只接受增減量，不能覆寫成某個數字。 */
     adjustStock(jwt: unknown, input: unknown) {
       return authorized(jwt, adjustStockInput, input, (_actor, { id, delta }) => adjustOnHand(db, id, delta));
+    },
+
+    /** 所有訂單，可依訂單狀態篩選；新的在前。`input` 可省略（不篩選）。 */
+    listOrdersForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, listOrdersInput, input ?? {}, async (_actor, { status }) => ok(await selectOrdersForAdmin(db, status)));
+    },
+
+    /**
+     * 出貨（Shipment）：把已付款的訂單標為已出貨，物流單號可以不附；已出貨是終點，不能撤回。
+     * 不是已付款（待付款、已逾期、已取消、已出貨）回 `order_not_shippable`，不存在回 `order_not_found`。
+     */
+    shipOrder(jwt: unknown, input: unknown) {
+      return authorized(jwt, shipOrderInput, input, async (actor, { orderId, trackingNumber }) => {
+        if (await markOrderShipped(d1, orderId, trackingNumber, clock.now())) {
+          console.log(JSON.stringify({ event: "order_shipped", orderId, actor: actor.email, hasTrackingNumber: trackingNumber !== null }));
+          return ok({ orderId, status: SHIPPED });
+        }
+        return fail((await orderExists(db, orderId)) ? "order_not_shippable" : "order_not_found");
+      });
+    },
+
+    /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */
+    getOrderForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, orderIdInput, input, async (_actor, { orderId }) => {
+        const order = await selectOrderById(db, orderId);
+        const customerEmail = await selectOrderCustomerEmail(db, orderId);
+        if (!order || customerEmail === undefined) return fail("order_not_found");
+        const payments = await selectOrderPaymentSummaries(db, clock.now(), orderId);
+        return ok({ ...order, customerEmail, payments });
+      });
     },
   };
 }

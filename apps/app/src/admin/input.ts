@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { orderIdInput } from "../orders/input";
+import { ORDER_STATUSES } from "../orders/schema";
 import { wholeNumber } from "../shared/input";
 
 // 上限：擋掉明顯的手誤與亂填（超長文字、離譜的價格），不是業務規則
@@ -38,3 +40,18 @@ const stockDelta = wholeNumber("增減量")
   .max(MAX_STOCK_DELTA, `增減量不可超過 ${MAX_STOCK_DELTA}`);
 
 export const adjustStockInput = z.object({ id: productId, delta: stockDelta });
+
+const MAX_TRACKING_NUMBER_LENGTH = 100;
+
+/** 物流單號：選填；trim 後是空字串就視為沒有（存 null）。 */
+const trackingNumber = z
+  .string({ error: "物流單號必須是文字" })
+  .trim()
+  .max(MAX_TRACKING_NUMBER_LENGTH, `物流單號不可超過 ${MAX_TRACKING_NUMBER_LENGTH} 個字`)
+  .transform((value) => (value === "" ? null : value))
+  .optional()
+  .transform((value) => value ?? null);
+
+export const shipOrderInput = z.object({ orderId: orderIdInput.shape.orderId, trackingNumber });
+
+export const listOrdersInput = z.object({ status: z.enum(ORDER_STATUSES, { error: "訂單狀態無效" }).optional() });

@@ -9,6 +9,9 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "已取消",
 };
 
+/** 五種訂單狀態的代碼（後台篩選用），順序即顯示順序。 */
+export const ORDER_STATUS_CODES = Object.keys(STATUS_LABELS);
+
 export function orderStatusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }

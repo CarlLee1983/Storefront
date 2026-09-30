@@ -155,6 +155,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   adjustStock(jwt: string, input: unknown) {
     return this.#admin().adjustStock(jwt, input);
   }
+
+  listOrdersForAdmin(jwt: string, input?: unknown) {
+    return this.#admin().listOrdersForAdmin(jwt, input);
+  }
+
+  getOrderForAdmin(jwt: string, input: unknown) {
+    return this.#admin().getOrderForAdmin(jwt, input);
+  }
+
+  shipOrder(jwt: string, input: unknown) {
+    return this.#admin().shipOrder(jwt, input);
+  }
 }
 
 export default AppEntrypoint;

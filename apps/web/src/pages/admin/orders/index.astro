@@ -1,0 +1,60 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { parseStatusFilter } from "../../../admin/order-form";
+import Layout from "../../../layouts/Layout.astro";
+import { formatDateTime, ORDER_STATUS_CODES, orderStatusLabel } from "../../../orders/labels";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const status = parseStatusFilter(Astro.url.searchParams.get("status"));
+const orders = await env.APP.listOrdersForAdmin(jwt, status === undefined ? {} : { status });
+if (!orders.ok) Astro.response.status = 403;
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+
+<Layout title="訂單管理" admin>
+  {
+    !orders.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        <form method="get">
+          <label>
+            訂單狀態
+            <select name="status">
+              <option value="" selected={status === undefined}>全部</option>
+              {ORDER_STATUS_CODES.map((code) => (
+                <option value={code} selected={status === code}>{orderStatusLabel(code)}</option>
+              ))}
+            </select>
+          </label>
+          <button type="submit">篩選</button>
+        </form>
+        {orders.data.length === 0 && <p>沒有符合的訂單。</p>}
+        {
+          orders.data.length > 0 && (
+            <table>
+              <thead>
+                <tr><th>訂單</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th></tr>
+              </thead>
+              <tbody>
+                {orders.data.map((order) => (
+                  <tr>
+                    <td><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
+                    <td>{order.customerEmail}</td>
+                    <td>{formatDateTime(order.createdAt)}</td>
+                    <td>{orderStatusLabel(order.status)}</td>
+                    <td>NT$ {priceFormat.format(order.totalTwd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        }
+      </>
+    )
+  }
+</Layout>

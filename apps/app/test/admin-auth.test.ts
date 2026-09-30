@@ -19,6 +19,9 @@ const adminCalls = (jwt: string) => ({
   unlistProduct: () => app.unlistProduct(jwt, { id: 1 }),
   relistProduct: () => app.relistProduct(jwt, { id: 1 }),
   listProductsForAdmin: () => app.listProductsForAdmin(jwt),
+  listOrdersForAdmin: () => app.listOrdersForAdmin(jwt, {}),
+  getOrderForAdmin: () => app.getOrderForAdmin(jwt, { orderId: 1 }),
+  shipOrder: () => app.shipOrder(jwt, { orderId: 1 }),
 });
 
 async function expectAllRejected(jwt: string) {

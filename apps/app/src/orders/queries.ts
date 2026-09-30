@@ -6,7 +6,7 @@ import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import type { ProductState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
-import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, type OrderStatus } from "./schema";
+import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, SHIPPED, type OrderStatus } from "./schema";
 import { canTransitionTo } from "./transitions";
 
 export interface CheckoutRequest extends CheckoutInput {
@@ -104,6 +104,10 @@ export interface OrderView {
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
   lines: { productId: number; productName: string; quantity: number; unitPriceTwd: number }[];
+  /** 出貨時附的物流單號；未出貨或出貨時沒附為 null。 */
+  trackingNumber: string | null;
+  /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
+  shippedAt: number | null;
 }
 
 export type OrderScope = { orderId: number } | { idempotencyKey: string };
@@ -124,6 +128,17 @@ export async function selectRequestHash(db: DrizzleD1Database, customerId: strin
 
 /** 顧客自己的訂單（含訂單明細，名稱與單價都是下單當時的快照），新的在前；`scope` 再收窄到某一張。永遠限定顧客，看不到別人的。 */
 export async function selectOrders(db: DrizzleD1Database, customerId: string, scope?: OrderScope): Promise<OrderView[]> {
+  return selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)));
+}
+
+/** 管理員讀單張訂單（不限顧客）；不存在回 undefined。 */
+export async function selectOrderById(db: DrizzleD1Database, orderId: number): Promise<OrderView | undefined> {
+  const [view] = await selectOrderViews(db, eq(orders.id, orderId));
+  return view;
+}
+
+/** 訂單視圖的共同查詢：範圍（誰的、哪一張）由呼叫端的 `where` 決定。 */
+async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): Promise<OrderView[]> {
   const rows = await db
     .select({
       order: orders,
@@ -135,7 +150,7 @@ export async function selectOrders(db: DrizzleD1Database, customerId: string, sc
     .from(orders)
     // 用 left join：正常情況每張訂單都有明細，但若有殘留的空訂單，要讓它在讀取時看得見，而不是被 join 悄悄藏起來
     .leftJoin(orderLines, eq(orderLines.orderId, orders.id))
-    .where(and(eq(orders.customerId, customerId), scopeFilter(scope)))
+    .where(where)
     .orderBy(desc(orders.id), asc(orderLines.id));
 
   const views = new Map<number, OrderView>();
@@ -150,6 +165,8 @@ export async function selectOrders(db: DrizzleD1Database, customerId: string, sc
         paymentDeadline: order.paymentDeadline,
         createdAt: order.createdAt,
         lines: [],
+        trackingNumber: order.trackingNumber,
+        shippedAt: order.shippedAt,
       };
       views.set(order.id, view);
     }
@@ -176,6 +193,27 @@ export async function cancelPendingOrder(db: DrizzleD1Database, customerId: stri
     .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), canTransitionTo(CANCELLED)))
     .returning({ id: orders.id });
   return rows.length > 0;
+}
+
+/**
+ * 管理員出貨：單一條件式 UPDATE，是否成功由受影響列數判斷（不先讀再寫）；來源狀態由轉換表決定（只有已付款）。
+ * 並行的兩次出貨，先落地的一方贏，另一方影響 0 列，物流單號不會被蓋掉。出貨時間用高水位的有效時間
+ * （Holdfast ADR 0011），`now` 只用來推進高水位。回傳 false 時不知道原因（不存在、或不是已付款），由呼叫端再讀一次區分。
+ */
+export async function markOrderShipped(d1: D1Database, orderId: number, trackingNumber: string | null, now: number): Promise<boolean> {
+  const [result] = await batchAtEffectiveNow(d1, now, [
+    sql`
+      UPDATE orders SET status = ${SHIPPED}, tracking_number = ${trackingNumber}, shipped_at = ${effectiveNow}
+      WHERE id = ${orderId} AND ${canTransitionTo(SHIPPED)}
+    `,
+  ]);
+  return result!.meta.changes > 0;
+}
+
+/** 某張訂單的存在與否（不限顧客，管理員用）。 */
+export async function orderExists(db: DrizzleD1Database, orderId: number): Promise<boolean> {
+  const [row] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, orderId));
+  return row !== undefined;
 }
 
 /** 顧客自己的某張訂單的 `{ id, status }`（不讀明細）；別人的或不存在回 undefined。 */

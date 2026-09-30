@@ -50,6 +50,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {order.status === "paid" && <p role="status">已收到付款，訂單已付款。</p>}
         <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
         {statusNote && <p>{statusNote}</p>}
+        {
+          order.status === "shipped" && (
+            <p>
+              {order.shippedAt !== null && `出貨時間：${formatDateTime(order.shippedAt)}；`}
+              物流單號：{order.trackingNumber ?? "（未提供）"}
+            </p>
+          )
+        }
         {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
         {
           order.status === "pending_payment" && (
