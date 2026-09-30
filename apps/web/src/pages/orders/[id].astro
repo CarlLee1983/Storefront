@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel } from "../../orders/labels";
+import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel, shipmentSummary } from "../../orders/labels";
 import { paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
@@ -50,6 +50,9 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {order.status === "paid" && <p role="status">已收到付款，訂單已付款。</p>}
         <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
         {statusNote && <p>{statusNote}</p>}
+        {
+          order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
+        }
         {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
         {
           order.status === "pending_payment" && (

@@ -24,7 +24,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     orders.data.length > 0 && (
       <table>
         <thead>
-          <tr><th>訂單</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th></tr>
+          <tr><th>訂單</th><th>成立時間</th><th>訂單狀態</th><th>物流單號</th><th>總金額</th></tr>
         </thead>
         <tbody>
           {orders.data.map((order) => (
@@ -32,6 +32,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               <td><a href={`/orders/${order.id}`}>#{order.id}</a></td>
               <td>{formatDateTime(order.createdAt)}</td>
               <td>{orderStatusLabel(order.status)}</td>
+              <td>{order.status === "shipped" ? (order.trackingNumber ?? "（未附）") : ""}</td>
               <td>NT$ {priceFormat.format(order.totalTwd)}</td>
             </tr>
           ))}

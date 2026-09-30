@@ -1,0 +1,113 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
+import Layout from "../../../layouts/Layout.astro";
+import { formToRecord } from "../../../shared/form-values";
+import { formatDateTime, orderStatusLabel, parseOrderId, paymentStatusLabel, shipmentSummary } from "../../../orders/labels";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const orderId = parseOrderId(Astro.params.id);
+let failure: ReturnType<typeof describeShipFailure> | undefined;
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+// 出貨（POST）：成功後 303 回到本頁；訂單已不是已付款（例如另一位管理員剛出貨）會顯示原因與最新狀態
+if (orderId !== null && Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = formToRecord(form);
+  const result = await env.APP.shipOrder(jwt, shipFormToInput(form, orderId));
+  if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=shipped`, 303);
+  if (result.reason === "unauthorized") unauthorized = true;
+  else failure = describeShipFailure(result);
+}
+
+const found = orderId === null || unauthorized ? null : await env.APP.getOrderForAdmin(jwt, { orderId });
+if (unauthorized || (found && !found.ok && found.reason === "unauthorized")) Astro.response.status = 403;
+const order = found?.ok ? found.data : undefined;
+// 頁面的三種呈現，由這一處決定；狀態碼與下面的模板都看它
+const view: "forbidden" | "not_found" | "ok" = Astro.response.status === 403 ? "forbidden" : order ? "ok" : "not_found";
+if (view === "not_found") Astro.response.status = 404;
+const shipped = Astro.url.searchParams.get("saved") === "shipped";
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+
+<Layout title={order ? `訂單 #${order.id}` : "訂單"} admin>
+  {
+    view === "forbidden" ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : view === "not_found" || !order ? (
+      <p class="error" role="alert">找不到這張訂單。<a href="/admin/orders">回訂單管理</a></p>
+    ) : (
+      <>
+        {shipped && <p role="status">已標為已出貨。</p>}
+        <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
+        <p>顧客：{order.customerEmail}</p>
+        <p>成立時間：{formatDateTime(order.createdAt)}</p>
+        {
+          order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
+        }
+        {
+          order.status === "paid" && (
+            <>
+              {failure && <p class="error" role="alert">{failure.message}</p>}
+              <form method="post" onsubmit="return confirm('確定要標為已出貨嗎？出貨後無法撤回。')">
+                <label>
+                  物流單號（可留空）
+                  <input name="trackingNumber" value={submitted.trackingNumber ?? ""} maxlength="100" />
+                  {failure?.fields.trackingNumber?.map((m) => <span class="error">{m}</span>)}
+                </label>
+                <p>出貨後無法撤回。</p>
+                <button type="submit">標為已出貨</button>
+              </form>
+            </>
+          )
+        }
+        {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
+        <table>
+          <thead>
+            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
+          </thead>
+          <tbody>
+            {order.lines.map((line) => (
+              <tr>
+                <td>{line.productName}</td>
+                <td>NT$ {priceFormat.format(line.unitPriceTwd)}</td>
+                <td>{line.quantity}</td>
+                <td>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+        <h2>付款嘗試</h2>
+        {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
+        {
+          order.payments.length > 0 && (
+            <table>
+              <thead>
+                <tr><th>發起時間</th><th>金額</th><th>狀態</th></tr>
+              </thead>
+              <tbody>
+                {order.payments.map((payment) => (
+                  <tr>
+                    <td>{formatDateTime(payment.createdAt)}</td>
+                    <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
+                    <td>{paymentStatusLabel(payment.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        }
+        <h2>收件資訊</h2>
+        <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
+        <p>{order.shippingInfo.address}</p>
+        <p><a href="/admin/orders">回訂單管理</a></p>
+      </>
+    )
+  }
+</Layout>

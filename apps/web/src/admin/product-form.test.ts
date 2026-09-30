@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   describeFailure,
   dispatchProductForm,
-  formToRecord,
   parseProductId,
   productFormToInput,
   productUpdateFormToInput,
@@ -29,12 +28,6 @@ describe("productFormToInput", () => {
     expect(input.name).toBe("");
     expect(input.description).toBe("");
     expect(input.priceTwd).toBeNaN();
-  });
-});
-
-describe("formToRecord", () => {
-  it("轉成欄位名稱到字串的對照，供驗證失敗時回填", () => {
-    expect(formToRecord(form({ name: "馬克杯", priceTwd: "0" }))).toEqual({ name: "馬克杯", priceTwd: "0" });
   });
 });
 

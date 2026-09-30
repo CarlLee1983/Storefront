@@ -16,6 +16,9 @@ export const EXPIRED = "expired" satisfies OrderStatus;
 /** 已取消：顧客在付款前主動終止，是終點。 */
 export const CANCELLED = "cancelled" satisfies OrderStatus;
 
+/** 已出貨：管理員標記出貨，是終點，不能撤回。 */
+export const SHIPPED = "shipped" satisfies OrderStatus;
+
 export const orders = sqliteTable(
   "orders",
   {
@@ -39,6 +42,10 @@ export const orders = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull(),
     /** 結帳內容（正規化後的明細與收件資訊）的 SHA-256 hex；同一個冪等鍵帶不同內容時靠它認出來。 */
     requestHash: text("request_hash").notNull(),
+    /** 出貨時管理員填的物流單號；可空（出貨時可以不附）。 */
+    trackingNumber: text("tracking_number"),
+    /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
+    shippedAt: integer("shipped_at"),
   },
   (table) => [
     uniqueIndex("orders_customer_idempotency_uidx").on(table.customerId, table.idempotencyKey),
