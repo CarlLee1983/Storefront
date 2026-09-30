@@ -33,6 +33,13 @@ const customer = admin ? null : Astro.locals.customer;
       <a href="/">Storefront</a>
       {admin && <a href="/admin">管理後台</a>}
       {
+        !admin && (
+          <a href="/cart">
+            購物車（<span id="cart-count">0</span>）
+          </a>
+        )
+      }
+      {
         !admin &&
           (customer ? (
             <>
@@ -51,6 +58,18 @@ const customer = admin ? null : Astro.locals.customer;
     </main>
     <script>
       import { requestSignOut } from "../auth/client";
+      import { cartCount } from "../cart/cart";
+      import { loadCart, storageOf } from "../cart/storage";
+      import { CART_CHANGED_EVENT } from "../cart/store";
+
+      // 購物車件數：載入時、本頁改動時、其他分頁改動時（storage 事件）都重讀 localStorage
+      const cartCountEl = document.querySelector<HTMLElement>("#cart-count");
+      const showCartCount = () => {
+        if (cartCountEl) cartCountEl.textContent = String(cartCount(loadCart(storageOf(window))));
+      };
+      showCartCount();
+      window.addEventListener(CART_CHANGED_EVENT, showCartCount);
+      window.addEventListener("storage", showCartCount);
 
       // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
       const signOut = document.querySelector<HTMLButtonElement>("#sign-out");

@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { MAX_QUANTITY } from "../cart/cart";
 import Layout from "../layouts/Layout.astro";
 
 export const prerender = false;
@@ -20,9 +21,42 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <p>{p.description}</p>
             <p>NT$ {priceFormat.format(p.priceTwd)}</p>
             <p>{p.purchasable ? "可購買" : "已售完"}</p>
+            {p.purchasable && (
+              <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd}>
+                <label>
+                  數量
+                  <input type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" required />
+                </label>
+                <button type="submit">加入購物車</button>
+                <span class="cart-status" role="status"></span>
+              </form>
+            )}
           </li>
         ))}
       </ul>
     )
   }
 </Layout>
+
+<script>
+  import { addToCart } from "../cart/cart";
+  import { addFeedback } from "../cart/feedback";
+  import { storageOf } from "../cart/storage";
+  import { updateCart } from "../cart/store";
+
+  // 商品資料來自頁面上的 data 屬性（伺服器端渲染時放入），加入當下的單價就是顧客看到的單價
+  for (const form of document.querySelectorAll<HTMLFormElement>("form.add-to-cart")) {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const item = {
+        productId: Number(form.dataset.productId),
+        name: form.dataset.name ?? "",
+        unitPriceTwd: Number(form.dataset.price),
+      };
+      const quantity = Number(new FormData(form).get("quantity"));
+      form.querySelector<HTMLElement>(".cart-status")!.textContent = addFeedback(quantity, item.productId, () =>
+        updateCart(storageOf(window), window, (current) => addToCart(current, item, quantity)),
+      );
+    });
+  }
+</script>
