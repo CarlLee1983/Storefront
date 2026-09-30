@@ -3,8 +3,8 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel, shipmentSummary } from "../../orders/labels";
-import { paymentErrorMessage } from "../../payments/redirects";
+import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../orders/labels";
+import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
 
@@ -17,11 +17,14 @@ if (entry.kind === "redirect") {
 const orderId = parseOrderId(Astro.params.id);
 const cookie = Astro.request.headers.get("cookie") ?? "";
 
-// 取消訂單（POST）：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期）也回本頁，讓顧客看到最新狀態
+// 取消訂單（POST）：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
+// 讓顧客看到最新狀態；進行中的付款處理不了（閘道連不上等）回本頁並帶上原因，訂單維持待付款。找不到訂單則落到下面顯示 404
 if (orderId !== null && Astro.request.method === "POST") {
   const cancelled = await env.APP.cancelOrder(cookie, { orderId });
   if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
-  if (cancelled.ok || cancelled.reason === "order_not_cancellable") return Astro.redirect(Astro.url.pathname, 303);
+  if (cancelled.ok || !["order_not_found", "invalid_input"].includes(cancelled.reason)) {
+    return Astro.redirect(cancelOrderLocation(orderId, cancelled), 303);
+  }
 }
 
 const found =
@@ -34,6 +37,7 @@ const placed = Astro.url.searchParams.get("placed") === "1";
 const statusNote = order ? orderStatusNote(order.status) : null;
 // 發起付款被拒（/orders/:id/pay 帶回原因），或付款完導回時閘道暫時查不到結果（/orders/:id/payment-return）
 const paymentError = paymentErrorMessage(Astro.url.searchParams.get("payment_error"));
+const cancelError = cancelErrorMessage(Astro.url.searchParams.get("cancel_error"));
 const paymentUnconfirmed = Astro.url.searchParams.get("payment") === "unconfirmed";
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
@@ -46,6 +50,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <>
         {placed && <p role="status">訂單已成立，商品已為你保留。</p>}
         {paymentError && <p class="error" role="alert">{paymentError}</p>}
+        {cancelError && <p class="error" role="alert">{cancelError}</p>}
         {paymentUnconfirmed && <p role="status">付款結果暫時無法確認，請稍後重新整理本頁；結果確認後訂單狀態會自動更新。</p>}
         {order.status === "paid" && <p role="status">已收到付款，訂單已付款。</p>}
         <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
@@ -97,7 +102,10 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <tr>
                       <td>{formatDateTime(payment.createdAt)}</td>
                       <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
-                      <td>{paymentStatusLabel(payment.status)}</td>
+                      <td>
+                        {paymentStatusLabel(payment.status)}
+                        {refundReasonLabel(payment.refundReason) && <small>（{refundReasonLabel(payment.refundReason)}）</small>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

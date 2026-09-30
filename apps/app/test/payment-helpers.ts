@@ -31,3 +31,10 @@ export async function stockOf(productId: number): Promise<{ onHand: number; avai
   if (!found.ok) throw new Error("讀取商品失敗");
   return { onHand: found.data.onHand, available: found.data.available };
 }
+
+/** 發起一筆付款，回傳閘道付款 ID（呼叫端須先 `installFakeGateway`，並設好注入時鐘）。 */
+export async function startPaymentFor(cookie: string, orderId: number, gateway: { lastPaymentId(): string }): Promise<string> {
+  const started = await app.startPayment(cookie, { orderId });
+  if (!started.ok) throw new Error(`發起付款失敗：${started.reason}`);
+  return gateway.lastPaymentId();
+}

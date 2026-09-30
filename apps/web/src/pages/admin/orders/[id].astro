@@ -4,7 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
 import Layout from "../../../layouts/Layout.astro";
 import { formToRecord } from "../../../shared/form-values";
-import { formatDateTime, orderStatusLabel, parseOrderId, paymentStatusLabel, shipmentSummary } from "../../../orders/labels";
+import { formatDateTime, orderStatusLabel, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../../orders/labels";
 
 export const prerender = false;
 
@@ -89,14 +89,19 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           order.payments.length > 0 && (
             <table>
               <thead>
-                <tr><th>發起時間</th><th>金額</th><th>狀態</th></tr>
+                <tr><th>發起時間</th><th>金額</th><th>狀態</th><th>退款原因</th><th>退款時間</th></tr>
               </thead>
               <tbody>
                 {order.payments.map((payment) => (
                   <tr>
                     <td>{formatDateTime(payment.createdAt)}</td>
                     <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
-                    <td>{paymentStatusLabel(payment.status)}</td>
+                    <td>
+                      {paymentStatusLabel(payment.status)}
+                      {payment.needsAttention && <strong class="error">（需要處理：付款成功但訂單不是由這筆支付，也沒有退款紀錄）</strong>}
+                    </td>
+                    <td>{refundReasonLabel(payment.refundReason) ?? "—"}</td>
+                    <td>{payment.refundAt === null ? "—" : formatDateTime(payment.refundAt)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,22 +1,48 @@
 import { sql, type SQL } from "drizzle-orm";
+import { availableExpr } from "../catalog/stock";
 import { allowedSources, canTransitionTo } from "../orders/transitions";
-import { PENDING_PAYMENT, type OrderStatus } from "../orders/schema";
+import { EXPIRED, PENDING_PAYMENT, type OrderStatus } from "../orders/schema";
 
 /**
- * 「付款成功可以讓訂單轉為已付款」的來源狀態，發起付款與套用付款結果共用這一處。
+ * 訂單「現在可以發起付款、也可以因付款成功而轉為已付款」的來源狀態：只有待付款。
  *
- * 狀態轉換表（`orders/transitions.ts`）允許「已逾期 → 已付款」（遲到的付款成功，ADR 0001），但那一段要先重新保留庫存、
- * 保留不到就退款，屬於 #11。本票只接受「待付款 → 已付款」：付款成功落在已逾期的訂單上，仍走「非待付款」分支
- * （付款記為成功、訂單與庫存不動、記一行 log 交給 #11）。所以來源要「同時」是轉換表允許的、又明確限縮在待付款；
- * #11 接手時只需放寬這裡的限縮。
+ * 狀態轉換表（`orders/transitions.ts`）允許兩個來源轉為已付款：待付款與已逾期（遲到的付款成功，ADR 0001）。
+ * 這裡明確限縮在待付款，所以發起付款不會對已逾期的訂單開放；已逾期只能經 `LATE_SUCCESS_FROM` 的重新保留路徑轉為已付款。
+ * 兩份來源都要「同時」是轉換表允許的，轉換表改了這裡自動跟著變。
  */
-const SETTLE_ONLY_FROM: readonly OrderStatus[] = [PENDING_PAYMENT];
+const PAYABLE_FROM: readonly OrderStatus[] = [PENDING_PAYMENT];
 
-export function isPayableStatus(status: OrderStatus): boolean {
-  return SETTLE_ONLY_FROM.includes(status) && allowedSources("paid").includes(status);
+/** 遲到的付款成功（ADR 0001）能重新保留的來源狀態：只有已逾期；已取消不適用（終點，一律退款）。 */
+const LATE_SUCCESS_FROM: readonly OrderStatus[] = [EXPIRED];
+
+/** WHERE 片段（訂單自己的 `status` 欄位）：現在的狀態屬於 `from`，且轉換表允許它轉為已付款。 */
+function payableFromSql(from: readonly OrderStatus[]): SQL {
+  return sql`(${canTransitionTo("paid")} AND status IN (${sql.join(from.map((source) => sql`${source}`), sql`, `)}))`;
 }
 
-/** WHERE 片段（訂單自己的 `status` 欄位）：這張訂單現在能因付款成功而轉為已付款。 */
+export function isPayableStatus(status: OrderStatus): boolean {
+  return PAYABLE_FROM.includes(status) && allowedSources("paid").includes(status);
+}
+
+/** WHERE 片段（訂單自己的 `status` 欄位）：這張訂單現在能發起付款、也能因付款成功而直接轉為已付款。 */
 export function payableStatusSql(): SQL {
-  return sql`(${canTransitionTo("paid")} AND status IN (${sql.join(SETTLE_ONLY_FROM.map((source) => sql`${source}`), sql`, `)}))`;
+  return payableFromSql(PAYABLE_FROM);
+}
+
+/** WHERE 片段（訂單自己的 `status` 欄位）：這張訂單是已逾期，遲到的付款成功可以嘗試重新保留。 */
+export function lateSuccessStatusSql(): SQL {
+  return payableFromSql(LATE_SUCCESS_FROM);
+}
+
+/**
+ * WHERE 片段：訂單 `orderId` 的「每一筆」明細都能重新保留，即可售數量（在庫數 − 其他待付款訂單的保留）≥ 明細數量。
+ * 呼叫端的訂單此時是已逾期，本身不在保留裡，所以不必扣掉自己。可售數量的算法只在 `catalog/stock.ts` 定義。
+ * 這是條件的一部分、與轉換寫在同一句 UPDATE：判定發生在寫入當下，不能先讀可售數量再寫。
+ */
+export function everyLineReclaimableSql(orderId: number): SQL {
+  return sql`NOT EXISTS (
+    SELECT 1 FROM order_lines line
+    JOIN products stocked ON stocked.id = line.product_id
+    WHERE line.order_id = ${orderId} AND ${availableExpr(sql`stocked.on_hand`, sql`stocked.id`)} < line.quantity
+  )`;
 }

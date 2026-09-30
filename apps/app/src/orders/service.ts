@@ -3,19 +3,27 @@ import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { selectPaymentSummaries } from "../payments/queries";
+import type { InvalidatePaymentsRefusal } from "../payments/shared";
 import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
 import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectProductStates, selectRequestHash } from "./queries";
 import { requestHash } from "./request-hash";
 import { CANCELLED } from "./schema";
+import { allowedSources } from "./transitions";
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
 export type AuthenticateCustomer = (cookie: string) => Promise<string | null>;
 
+/**
+ * 讓訂單上進行中的付款失效（由付款模組提供，見 `payments/service.ts` 的 `invalidatePendingPayments`）：
+ * 全部失效回 null，否則回要拒絕的原因。以注入的函式接入，訂單模組不依賴付款 service 與閘道。
+ */
+export type InvalidatePayments = (orderId: number) => Promise<{ ok: false; reason: InvalidatePaymentsRefusal } | null>;
+
 /** 診斷不出原因時的重試次數上限。 */
 const MAX_ATTEMPTS = 3;
 
-export function createOrderService(d1: D1Database, clock: Clock, authenticate: AuthenticateCustomer) {
+export function createOrderService(d1: D1Database, clock: Clock, authenticate: AuthenticateCustomer, invalidatePayments: InvalidatePayments) {
   const db = drizzle(d1);
   const unauthorized: Unauthorized = { ok: false, reason: "unauthorized" };
 
@@ -89,7 +97,13 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
     /**
      * 取消自己的待付款訂單（已取消是終點）。別人的或不存在的訂單一律 `order_not_found`，不洩漏存在與否；
      * 自己的但不是待付款（已逾期、已取消、已付款、已出貨）回 `order_not_cancellable`。
-     * 尚未處理「進行中的付款要先失效」，那是 #11。
+     *
+     * 待付款的訂單先讓進行中的付款全部失效，再執行條件式取消（US 22）：
+     * - 閘道取消不掉、查詢後發現付款其實已成功：那筆付款會讓訂單轉為已付款，取消回 `order_not_cancellable`。
+     * - 閘道連不上、付款仍在進行中、或付款設定不全：回 `payment_gateway_unavailable`／`payment_in_progress`／`payment_unavailable`，
+     *   訂單不取消（不能在付款可能還活著時就取消）。
+     * 即便如此，取消之後仍可能有付款成功落在已取消的訂單上（與新付款競態），那由「套用付款結果」退款。
+     * 前面對訂單狀態的讀取只用來決定要不要碰閘道，取消本身仍是單句條件式 UPDATE，是否成功由受影響列數判斷。
      */
     async cancelOrder(cookie: unknown, input: unknown) {
       const customerId = await customerOf(cookie);
@@ -98,12 +112,18 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       if (!parsed.ok) return parsed;
 
       const { orderId } = parsed.data;
+      const order = await selectOrderStatus(db, customerId, orderId);
+      if (!order) return fail("order_not_found");
+      if (!allowedSources(CANCELLED).includes(order.status)) return fail("order_not_cancellable");
+
+      const blocked = await invalidatePayments(orderId);
+      if (blocked) return fail(blocked.reason === "payment_already_succeeded" ? "order_not_cancellable" : blocked.reason);
       if (await cancelPendingOrder(db, customerId, orderId)) {
         console.log(JSON.stringify({ event: "order_cancelled", orderId }));
         return ok({ orderId, status: CANCELLED });
       }
-      const order = await selectOrderStatus(db, customerId, orderId);
-      return fail(order ? "order_not_cancellable" : "order_not_found");
+      // 失效付款的空檔裡訂單被別的動作轉走了（例如剛好逾期）
+      return fail("order_not_cancellable");
     },
   };
 }

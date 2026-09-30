@@ -52,7 +52,7 @@ export async function handlePaymentWebhook(request: Request, { secret, nowMs, ap
   const payload = parsePayload(body);
   if (!payload) return text(400, "Invalid payload");
   const outcome = OUTCOME_BY_EVENT_TYPE[payload.type];
-  // 退款等其他事件本票不處理（#11）：簽章正確就回 200，讓閘道視為送達
+  // 退款等其他事件不需要套用（退款是本站發起、結果已由 App 記在付款上）：簽章正確就回 200，讓閘道視為送達
   if (!outcome) return text(200, "Ignored");
 
   const result = await apply({ eventId: payload.eventId, gatewayPaymentId: payload.paymentId, outcome });

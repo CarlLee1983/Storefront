@@ -1,6 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { user } from "../auth/schema";
+import { paymentNeedsAttentionSql } from "../payments/attention";
 import { orders, type OrderStatus } from "./schema";
 
 export interface AdminOrderSummary {
@@ -11,6 +12,8 @@ export interface AdminOrderSummary {
   customerEmail: string;
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
+  /** 有付款成功但未處理（見 `payments/attention.ts`）；清單上標「需要處理」。 */
+  needsAttention: boolean;
 }
 
 /**
@@ -28,6 +31,7 @@ export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: Order
       totalTwd: orders.totalTwd,
       customerEmail: user.email,
       createdAt: orders.createdAt,
+      needsAttention: sql<boolean>`EXISTS (SELECT 1 FROM payments WHERE payments.order_id = ${orders.id} AND ${paymentNeedsAttentionSql()})`.mapWith(Boolean),
     })
     .from(orders)
     // 顧客不會被刪除（Better Auth 帳號不提供刪除），訂單一定對得到顧客，所以 innerJoin 不會漏掉訂單

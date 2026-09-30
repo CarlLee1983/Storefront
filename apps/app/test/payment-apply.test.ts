@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setNow } from "./clock";
 import { signInCustomer } from "./customers";
-import { forceOrderStatus, resetDb, seedPayment } from "./db";
+import { resetDb, seedPayment } from "./db";
 import { installFakeGateway, type FakeGateway } from "./fake-gateway";
 import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 
@@ -13,19 +13,6 @@ async function startPayment(cookie: string, orderId: number, gateway: FakeGatewa
   const started = await app.startPayment(cookie, { orderId });
   if (!started.ok) throw new Error(`發起付款失敗：${started.reason}`);
   return gateway.lastPaymentId();
-}
-
-/** 測試期間 App 記下的結構化事件（console.log 的 JSON 行）。 */
-function loggedEvents(spy: { mock: { calls: unknown[][] } }, event: string): unknown[] {
-  return spy.mock.calls
-    .map(([line]) => {
-      try {
-        return JSON.parse(String(line)) as { event?: string };
-      } catch {
-        return {};
-      }
-    })
-    .filter((entry) => entry.event === event);
 }
 
 describe("applyPaymentResult：付款成功", () => {
@@ -147,14 +134,14 @@ describe("applyPaymentResult：冪等與並行", () => {
     expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
   });
 
-  it("兩筆付款都成功（同時送達）：只有一筆讓訂單轉已付款，在庫數只扣一次，另一筆記下事件留給退款處理", async () => {
+  it("兩筆付款都成功（同時送達）：只有一筆讓訂單轉已付款，在庫數只扣一次，另一筆退款（duplicate_success）", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, productId, totalTwd } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const first = await startPayment(alice, orderId, gateway);
     // 發起新付款會取消前一筆；「兩筆付款同時都是 pending」（例如取消晚了一步、顧客其實已付款）只能直接安排
     const second = await seedPayment(orderId, "pending");
-    const log = vi.spyOn(console, "log");
+    gateway.adopt(second, { amountTwd: totalTwd, merchantReference: String(orderId) });
 
     await Promise.all([
       app.applyPaymentResult(gateway.settle(first, "succeeded")),
@@ -164,62 +151,27 @@ describe("applyPaymentResult：冪等與並行", () => {
     expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
-    expect(order.payments).toMatchObject([{ status: "succeeded" }, { status: "succeeded" }]);
-    expect(loggedEvents(log, "payment_succeeded_on_non_pending_order")).toHaveLength(1);
+    expect(order.payments.map((payment) => payment.status).sort()).toEqual(["refunded", "succeeded"]);
+    expect(order.payments.filter((payment) => payment.refundReason === "duplicate_success")).toHaveLength(1);
+    expect(gateway.refunded).toHaveLength(1);
   });
-});
-
-describe("applyPaymentResult：訂單已不是待付款", () => {
-  beforeEach(resetDb);
-  afterEach(() => vi.restoreAllMocks());
-
-  it.each(["expired", "cancelled"])(
-    "訂單是 %s：付款記為成功，訂單與在庫數不動，記一行 payment_succeeded_on_non_pending_order（重送不重複記）",
-    async (status) => {
-      const alice = await signInCustomer("alice");
-      const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
-      const gateway = installFakeGateway();
-      const gatewayPaymentId = await startPayment(alice, orderId, gateway);
-      await forceOrderStatus(orderId, status);
-      const before = await stockOf(productId);
-      const log = vi.spyOn(console, "log");
-      const event = gateway.settle(gatewayPaymentId, "succeeded");
-
-      const result = await app.applyPaymentResult(event);
-      await app.applyPaymentResult(event);
-
-      expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: status } });
-      expect(await stockOf(productId)).toEqual(before);
-      const order = await orderOf(alice, orderId);
-      expect(order.status).toBe(status);
-      expect(order.payments).toMatchObject([{ status: "succeeded" }]);
-      expect(loggedEvents(log, "payment_succeeded_on_non_pending_order")).toEqual([
-        { event: "payment_succeeded_on_non_pending_order", orderId, gatewayPaymentId, orderStatus: status },
-      ]);
-    },
-  );
 });
 
 describe("已取消訂單上的付款摘要", () => {
   beforeEach(resetDb);
   afterEach(() => vi.restoreAllMocks());
 
-  it("顧客取消訂單後，付款嘗試仍照實顯示；之後付款成功落在已取消的訂單上，顯示成功、訂單維持已取消、在庫數不動", async () => {
+  it("顧客取消訂單後，進行中的付款已失效並照實顯示，訂單已取消、保留釋放", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
-    const gatewayPaymentId = await startPayment(alice, orderId, gateway);
+    await startPayment(alice, orderId, gateway);
 
     expect(await app.cancelOrder(alice, { orderId })).toMatchObject({ ok: true });
-    const afterCancel = await orderOf(alice, orderId);
-    expect(afterCancel.status).toBe("cancelled");
-    expect(afterCancel.payments).toMatchObject([{ status: "pending" }]);
-
-    await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
 
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("cancelled");
-    expect(order.payments).toMatchObject([{ status: "succeeded" }]);
+    expect(order.payments).toMatchObject([{ status: "expired" }]);
     expect(await stockOf(productId)).toEqual({ onHand: 10, available: 10 });
   });
 });

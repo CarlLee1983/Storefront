@@ -14,6 +14,8 @@ export class FakeGateway {
   /** 收到的建立付款請求，依序。 */
   readonly created: CreatePaymentInput[] = [];
   readonly cancelled: string[] = [];
+  /** 成功處理的退款請求（閘道付款 ID），依序；被 `failNext("refund")` 擋掉的不計。 */
+  readonly refunded: string[] = [];
   /** 取消這些付款一律回 409 payment_not_cancellable。 */
   readonly uncancellable = new Set<string>();
   /** 下一次指定操作以此 HTTP 狀態失敗（用完即清）；0 表示連線失敗。 */
@@ -21,8 +23,12 @@ export class FakeGateway {
   private counter = 0;
   /** 建立付款請求處理到一半（付款已成立、回應送出前）執行的動作，用來製造「呼叫閘道期間狀態變了」。 */
   onCreate: (() => Promise<void>) | undefined;
+  /** 退款請求處理到一半（退款已成立、回應送出前）執行的動作，用來製造「呼叫閘道期間狀態變了」。 */
+  /** 覆寫建立付款時回報的失效時間（參數是本站要求的失效時間），用來模擬回應不合法的閘道。 */
+  expiresAtOverride: ((requested: number) => number) | undefined;
+  onRefund: (() => Promise<void>) | undefined;
 
-  failNext(operation: "create" | "get", status = 502): void {
+  failNext(operation: "create" | "get" | "cancel" | "refund", status = 502): void {
     this.failures.set(operation, status);
   }
 
@@ -33,6 +39,21 @@ export class FakeGateway {
     payment.status = outcome;
     payment.eventId = `evt_${this.counter}`;
     return { eventId: payment.eventId, gatewayPaymentId, outcome };
+  }
+
+  /** 讓閘道知道一筆本地直接寫入的付款（測試安排「同一訂單有兩筆付款同時進行」這種正常流程做不到的前置狀態）。 */
+  adopt(gatewayPaymentId: string, { amountTwd, merchantReference }: { amountTwd: number; merchantReference: string }): void {
+    const expiresAt = Date.now() + 600_000;
+    this.payments.set(gatewayPaymentId, {
+      id: gatewayPaymentId,
+      status: "pending",
+      eventId: null,
+      amountTwd,
+      merchantReference,
+      expiresAt,
+      returnUrl: "",
+      webhookUrl: "",
+    });
   }
 
   /** 最近一次建立的閘道付款 ID。 */
@@ -65,7 +86,7 @@ export class FakeGateway {
       this.payments.set(id, payment);
       await this.onCreate?.();
       // 與真實閘道一致：失效時間是 min(建立時間 + 10 分鐘, 要求的 expiresAt)
-      const expiresAt = Math.min(Date.now() + 600_000, input.expiresAt);
+      const expiresAt = this.expiresAtOverride?.(input.expiresAt) ?? Math.min(Date.now() + 600_000, input.expiresAt);
       payment.expiresAt = expiresAt;
       return success({ paymentId: id, paymentUrl: `${TEST_GATEWAY_BASE_URL}/pay/${id}`, expiresAt }, 201);
     }
@@ -85,6 +106,8 @@ export class FakeGateway {
       });
     }
     if (request.method === "POST" && match[2] === "/cancel") {
+      const failed = this.takeFailure("cancel");
+      if (failed) return failed;
       // 已有結果的付款不能取消（與真實閘道一致）；`uncancellable` 可強制拒絕，模擬「其實已經成功」
       if (this.uncancellable.has(payment.id) || payment.status === "succeeded" || payment.status === "failed") {
         return error(409, "payment_not_cancellable");
@@ -94,6 +117,10 @@ export class FakeGateway {
       return success({ paymentId: payment.id, status: "expired" });
     }
     if (request.method === "POST" && match[2] === "/refund") {
+      const failed = this.takeFailure("refund");
+      if (failed) return failed;
+      this.refunded.push(payment.id);
+      await this.onRefund?.();
       payment.status = "refunded";
       return success({ paymentId: payment.id, status: "refunded" });
     }

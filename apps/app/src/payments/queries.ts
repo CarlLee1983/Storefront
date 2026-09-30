@@ -1,9 +1,12 @@
 import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
+import { PAYMENT_CUTOFF_BEFORE_DEADLINE_MS } from "../orders/payment-deadline";
+import { clock } from "../shared/schema";
 import { orders, type OrderStatus } from "../orders/schema";
-import { payableStatusSql } from "./payable";
-import { payments, type PaymentStatus } from "./schema";
+import { everyLineReclaimableSql, lateSuccessStatusSql, payableStatusSql } from "./payable";
+import { paymentNeedsAttentionSql } from "./attention";
+import { payments, type PaymentStatus, type RefundReason } from "./schema";
 import type { PaymentEvent } from "./shared";
 
 export interface OrderForPayment {
@@ -54,7 +57,7 @@ export async function expirePayment(db: DrizzleD1Database, paymentId: number): P
 }
 
 /**
- * 記錄一筆付款，單句條件寫入：只有「這是該顧客的訂單、仍是待付款、付款期限未到、沒有成功的付款、
+ * 記錄一筆付款，單句條件寫入：只有「這是該顧客的訂單、仍是待付款、還沒進入付款期限前 2 分鐘、沒有成功的付款、
  * 也沒有其他 pending 的付款」時才寫入，金額取自訂單本身。「最多一筆 pending」由這句保證：
  * 兩個分頁同時發起付款，D1 逐句執行，後到的那句看得見先到的 pending 而被擋下。付款期限用高水位的有效時間判定（Holdfast ADR 0011，
  * https://github.com/CarlLee1983/Holdfast/blob/main/docs/adr/0011-expiry-clock-source.md），`now` 只用來推進高水位。
@@ -75,11 +78,17 @@ export async function insertPaymentIfPayable(
       WHERE o.id = ${orderId}
         AND o.customer_id = ${customerId}
         AND ${payableStatusSql()}
-        AND o.payment_deadline > ${effectiveNow}
+        AND o.payment_deadline - ${PAYMENT_CUTOFF_BEFORE_DEADLINE_MS} > ${effectiveNow}
         AND NOT EXISTS (SELECT 1 FROM payments other WHERE other.order_id = o.id AND other.status IN ('succeeded', 'pending'))
     `,
   ]);
   return inserted!.meta.changes > 0 ? inserted!.meta.last_row_id : null;
+}
+
+/** 高水位時鐘目前的有效時間（只讀，給診斷用）；還沒有任何寫入推進過時為 0。 */
+export async function selectHighWaterMark(db: DrizzleD1Database): Promise<number> {
+  const [row] = await db.select({ hwm: clock.hwm }).from(clock);
+  return row?.hwm ?? 0;
 }
 
 export interface PaymentRef {
@@ -117,28 +126,40 @@ export async function selectPaymentAndOrderStatus(
  *
  * 0. （batchAtEffectiveNow）先推進高水位，`applied_at` 與其他欄位一樣用有效時間。
  * 1. 記錄事件（`event_id` 唯一，`ON CONFLICT DO NOTHING`）：這是冪等的關卡。這次呼叫搶到事件才會有 `claim` 對得上的那一列，
- *    後面每一句都要求 `won`，所以同一個事件重送或同時送達，只有第一次的寫入生效。
- * 2. （成功時）把訂單明細的數量從在庫數正式扣除。
- * 3. （成功時）訂單「僅在仍是待付款時」轉為已付款。保留因此自然消失（保留只算待付款訂單的明細）。
- *    2 與 3 用同一組條件：訂單仍是待付款、搶到事件、這筆付款還在 pending。這組條件寫在 SQL 裡而不是先讀後寫，
- *    所以同一張訂單的兩筆付款同時成功時，只有先執行的那一筆扣庫存並轉已付款；另一筆的 2、3 都是 0 列。
- *    2 必須排在 3 前面：3 執行之後訂單就不是待付款了。
+ *    後面每一句都要求 `won`，所以同一個事件重送或同時送達，只有第一次的寫入生效；退款也只由搶到事件的那次觸發。
+ * 2. （成功時）訂單轉為已付款，依訂單當下狀態分流，條件都寫在這一句裡（不是先讀後寫）：
+ *    - 待付款 → 已付款：付款已成功，保留就地轉為扣除。
+ *    - 已逾期 → 已付款（遲到的付款成功，ADR 0001）：「重新保留」。只有訂單的每一筆明細都滿足可售數量
+ *      （`everyLineReclaimableSql`）才轉；一筆不滿足就整張都不轉（全有全無）。可售數量的判定與轉換在同一句，
+ *      與並行的結帳搶最後一件時，D1 逐句執行，後到的那句看見先到的結果，不會超賣。
+ *    - 已取消、已付款（另一筆付款先成功）、已出貨：不轉，0 列。
+ *    同一組條件還要求：搶到事件、這筆付款還在 pending。所以同一張訂單的兩筆付款同時成功時，只有先執行的那一筆轉已付款。
+ * 3. （成功時）把訂單明細的數量從在庫數正式扣除。條件：訂單是已付款、`paid_by_payment_id` 是這筆付款、
+ *    這筆付款搶到事件且還在 pending。第 2 句轉已付款時同一句寫入 `paid_by_payment_id`，所以這個條件等於「剛剛第 2 句是這次呼叫轉的」；
+ *    訂單早已由別筆付款轉為已付款（含已出貨）時不會重複扣。
+ *    3 排在 2 後面：重新保留的可售數量檢查要在扣除之前、以扣除前的在庫數判定。
  * 4. 付款轉為事件的結果，僅限仍是 pending 的付款（狀態只往前走，已成功的付款不會被後來的失敗事件蓋掉）。
+ * 5. 讀回訂單狀態（`orderStatus`）：就是 batch 當下訂單沒轉成的原因，呼叫端據此決定退款原因。
  *
- * 訂單若已不是待付款（已逾期、已取消、已付款），2 與 3 都寫 0 列：付款仍記為成功，訂單與庫存不動；
- * 呼叫端據此得知「付款成功落在非待付款的訂單上」（`orderSettled` 為 false）。
+ * 付款成功但第 2 句沒轉（`orderSettled` 為 false）時，付款仍記為成功、訂單與庫存不動；呼叫端據此決定是否退款（在 batch 之外呼叫閘道）。
  * 保留判定不看付款期限：期限已過但 Cron 還沒轉逾期時，訂單仍是待付款，保留仍在，扣除與保留一致。
  */
 export async function applyPaymentEvent(
   d1: D1Database,
   event: PaymentEvent & { orderId: number },
   now: number,
-): Promise<{ paymentSettled: boolean; orderSettled: boolean }> {
+): Promise<{ paymentSettled: boolean; orderSettled: boolean; orderStatus: OrderStatus }> {
   const { eventId, gatewayPaymentId, orderId, outcome } = event;
   const claim = crypto.randomUUID();
   const won = sql`EXISTS (SELECT 1 FROM payment_events WHERE event_id = ${eventId} AND claim = ${claim})`;
   const paymentPending = sql`EXISTS (SELECT 1 FROM payments WHERE gateway_payment_id = ${gatewayPaymentId} AND status = 'pending')`;
-  const orderPending = sql`EXISTS (SELECT 1 FROM orders WHERE id = ${orderId} AND ${payableStatusSql()})`;
+  const settlesOrder = sql`(${payableStatusSql()} OR (${lateSuccessStatusSql()} AND ${everyLineReclaimableSql(orderId)}))`;
+  const orderBecamePaidByThisPayment = sql`
+    EXISTS (
+      SELECT 1 FROM orders
+      WHERE id = ${orderId} AND status = 'paid'
+        AND paid_by_payment_id = (SELECT id FROM payments WHERE gateway_payment_id = ${gatewayPaymentId})
+    )`;
 
   const statements: SQL[] = [
     sql`
@@ -150,14 +171,14 @@ export async function applyPaymentEvent(
   if (outcome === "succeeded") {
     statements.push(
       sql`
+        UPDATE orders SET status = 'paid', paid_by_payment_id = (SELECT id FROM payments WHERE gateway_payment_id = ${gatewayPaymentId})
+        WHERE id = ${orderId} AND ${settlesOrder} AND ${won} AND ${paymentPending}
+      `,
+      sql`
         UPDATE products
         SET on_hand = on_hand - (SELECT line.quantity FROM order_lines line WHERE line.order_id = ${orderId} AND line.product_id = products.id)
         WHERE id IN (SELECT product_id FROM order_lines WHERE order_id = ${orderId})
-          AND ${orderPending} AND ${won} AND ${paymentPending}
-      `,
-      sql`
-        UPDATE orders SET status = 'paid'
-        WHERE id = ${orderId} AND ${payableStatusSql()} AND ${won} AND ${paymentPending}
+          AND ${orderBecamePaidByThisPayment} AND ${won} AND ${paymentPending}
       `,
     );
   }
@@ -165,11 +186,33 @@ export async function applyPaymentEvent(
     UPDATE payments SET status = ${outcome}
     WHERE gateway_payment_id = ${gatewayPaymentId} AND status = 'pending' AND ${won}
   `);
+  // 5. 讀回 batch 當下（前面各句之後、同一個交易內）的訂單狀態：退款原因依它決定，不在 batch 之後另讀（之後訂單可能已被別的呼叫轉走）
+  statements.push(sql`SELECT status FROM orders WHERE id = ${orderId}`);
 
   const results = await batchAtEffectiveNow(d1, now, statements);
-  const paymentSettled = results[results.length - 1]!.meta.changes > 0;
-  const orderSettled = outcome === "succeeded" && results[results.length - 2]!.meta.changes > 0;
-  return { paymentSettled, orderSettled };
+  const paymentSettled = results[results.length - 2]!.meta.changes > 0;
+  const orderSettled = outcome === "succeeded" && results[1]!.meta.changes > 0;
+  const orderStatus = (results[results.length - 1]!.results[0] as { status: OrderStatus }).status;
+  return { paymentSettled, orderSettled, orderStatus };
+}
+
+/**
+ * 記下退款的結果，僅限仍是 succeeded 的付款（條件式 UPDATE，狀態只往前走）：成功轉為 refunded、閘道退款失敗轉為 refund_failed，
+ * 連同觸發原因與時間（高水位的有效時間，`now` 只用來推進高水位）。回傳這次呼叫是否真的記下了。
+ */
+export async function recordRefundResult(
+  d1: D1Database,
+  gatewayPaymentId: string,
+  result: { status: "refunded" | "refund_failed"; reason: RefundReason },
+  now: number,
+): Promise<boolean> {
+  const [updated] = await batchAtEffectiveNow(d1, now, [
+    sql`
+      UPDATE payments SET status = ${result.status}, refund_reason = ${result.reason}, refund_at = ${effectiveNow}
+      WHERE gateway_payment_id = ${gatewayPaymentId} AND status = 'succeeded'
+    `,
+  ]);
+  return updated!.meta.changes > 0;
 }
 
 export interface PaymentSummary {
@@ -178,6 +221,12 @@ export interface PaymentSummary {
   status: PaymentStatus;
   /** 發起時間，UTC epoch 毫秒。 */
   createdAt: number;
+  /** 退款的觸發原因；沒有觸發過退款為 null（退款的結果在 `status`）。 */
+  refundReason: RefundReason | null;
+  /** 退款結果記下的時間（成功或失敗），UTC epoch 毫秒；沒有觸發過退款為 null。 */
+  refundAt: number | null;
+  /** 需要處理（見 `attention.ts`）：付款成功卻沒有退款紀錄、而訂單不是由這筆支付，或退款失敗；管理端要顯示「需要處理」。 */
+  needsAttention: boolean;
 }
 
 /**
@@ -207,6 +256,9 @@ async function selectSummaries(db: DrizzleD1Database, now: number, where: SQL | 
       status: payments.status,
       createdAt: payments.createdAt,
       expiresAt: payments.expiresAt,
+      refundReason: payments.refundReason,
+      refundAt: payments.refundAt,
+      needsAttention: sql<number>`CASE WHEN ${paymentNeedsAttentionSql()} THEN 1 ELSE 0 END`,
     })
     .from(payments)
     .innerJoin(orders, eq(orders.id, payments.orderId))
@@ -214,9 +266,9 @@ async function selectSummaries(db: DrizzleD1Database, now: number, where: SQL | 
     .orderBy(asc(payments.id));
 
   const byOrder = new Map<number, PaymentSummary[]>();
-  for (const { orderId: owner, expiresAt, status, ...summary } of rows) {
+  for (const { orderId: owner, expiresAt, status, needsAttention, ...summary } of rows) {
     const displayed: PaymentStatus = status === "pending" && now >= expiresAt ? "expired" : status;
-    byOrder.set(owner, [...(byOrder.get(owner) ?? []), { ...summary, status: displayed }]);
+    byOrder.set(owner, [...(byOrder.get(owner) ?? []), { ...summary, status: displayed, needsAttention: needsAttention === 1 }]);
   }
   return byOrder;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePaymentReturn, paymentErrorMessage, paymentReturnLocation, startPaymentLocation } from "./redirects";
+import { cancelErrorMessage, cancelOrderLocation, parsePaymentReturn, paymentErrorMessage, paymentReturnLocation, startPaymentLocation } from "./redirects";
 
 describe("parsePaymentReturn（閘道導回的網址）", () => {
   it("取出訂單編號與閘道付款 ID", () => {
@@ -44,9 +44,32 @@ describe("startPaymentLocation（發起付款完導向哪裡）", () => {
 describe("paymentErrorMessage", () => {
   it("已知的原因有專屬說明，未知的一律用通用說明（不回顯網址上的字串）", () => {
     expect(paymentErrorMessage("payment_deadline_passed")).toContain("付款期限");
+    expect(paymentErrorMessage("payment_window_closed")).toContain("付款期限前");
     expect(paymentErrorMessage("payment_gateway_unavailable")).toContain("金流");
     expect(paymentErrorMessage("payment_in_progress")).toContain("進行中");
     expect(paymentErrorMessage("<script>")).toBe(paymentErrorMessage("no_such_reason"));
     expect(paymentErrorMessage(null)).toBeNull();
+  });
+});
+
+describe("cancelOrderLocation（取消訂單完導向哪裡）", () => {
+  it.each<[string, { ok: true } | { ok: false; reason: string }]>([
+    ["取消成功", { ok: true }],
+    ["訂單已不是待付款（含付款其實已成功）", { ok: false, reason: "order_not_cancellable" }],
+  ])("%s：回訂單頁，讓顧客看到最新狀態", (_label, result) => {
+    expect(cancelOrderLocation(12, result)).toBe("/orders/12");
+  });
+
+  it("進行中的付款處理不了：回訂單頁並帶上原因", () => {
+    expect(cancelOrderLocation(12, { ok: false, reason: "payment_gateway_unavailable" })).toBe("/orders/12?cancel_error=payment_gateway_unavailable");
+  });
+});
+
+describe("cancelErrorMessage", () => {
+  it("說明訂單沒有取消；不認得的原因用通用說明，不回顯網址上的字串", () => {
+    expect(cancelErrorMessage("payment_gateway_unavailable")).toContain("訂單未取消");
+    expect(cancelErrorMessage("payment_in_progress")).toContain("進行中");
+    expect(cancelErrorMessage("<script>")).toBe(cancelErrorMessage("no_such_reason"));
+    expect(cancelErrorMessage(null)).toBeNull();
   });
 });

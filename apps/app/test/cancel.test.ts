@@ -87,7 +87,7 @@ describe("Cron 與顧客取消並行", () => {
     // 取消走 service 並以固定身分取代 session 驗證：驗證的延遲會讓取消整批晚於 Cron，兩邊的語句就不會交錯。
     // Cron 與全部取消同時送出，語句在 D1 上可能交錯（交錯與否不保證）；不論怎麼交錯，下面的不變量都必須成立
     const { customer } = await app.getCustomerSession(cookie);
-    const orderService = createOrderService(env.DB, systemClock, async () => customer!.customerId);
+    const orderService = createOrderService(env.DB, systemClock, async () => customer!.customerId, async () => null);
     const [cancelResults] = await Promise.all([
       Promise.all(orders.map(({ orderId }) => orderService.cancelOrder(cookie, { orderId }))),
       runCron(at),

@@ -191,7 +191,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
  * 條件含顧客編號與待付款狀態；與 Cron 逾期並行時，先落地的一方贏，另一方影響 0 列。
  * 回傳 false 時不知道原因（別人的、不存在、或已不是待付款），由呼叫端再讀一次區分。
  *
- * 注意：這裡不處理「進行中的付款要先失效」，那是 #11 的範圍。
+ * 注意：這裡不處理「進行中的付款要先失效」，那一步在呼叫端（`cancelOrder`）先完成，再呼叫這個條件式取消。
  */
 export async function cancelPendingOrder(db: DrizzleD1Database, customerId: string, orderId: number): Promise<boolean> {
   const rows = await db

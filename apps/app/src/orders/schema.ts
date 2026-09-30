@@ -42,6 +42,11 @@ export const orders = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull(),
     /** 結帳內容（正規化後的明細與收件資訊）的 SHA-256 hex；同一個冪等鍵帶不同內容時靠它認出來。 */
     requestHash: text("request_hash").notNull(),
+    /**
+     * 讓訂單轉為已付款的那筆付款（`payments.id`）；還沒付款為 null。與轉已付款在同一句 UPDATE 寫入，
+     * 「訂單是由哪一筆付款支付」以它為準：扣庫存與「需要處理」的判定都看它（沒有外鍵：orders 與 payments 互相參照）。
+     */
+    paidByPaymentId: integer("paid_by_payment_id"),
     /** 出貨時管理員填的物流單號；可空（出貨時可以不附）。 */
     trackingNumber: text("tracking_number"),
     /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */

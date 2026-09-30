@@ -26,8 +26,8 @@ describe("管理員訂單清單", () => {
     expect(result).toEqual({
       ok: true,
       data: [
-        { id: second.orderId, status: "pending_payment", totalTwd: 320, customerEmail: "bob@example.com", createdAt: expect.any(Number) },
-        { id: first.orderId, status: "pending_payment", totalTwd: 640, customerEmail: "alice@example.com", createdAt: expect.any(Number) },
+        { id: second.orderId, status: "pending_payment", totalTwd: 320, customerEmail: "bob@example.com", createdAt: expect.any(Number), needsAttention: false },
+        { id: first.orderId, status: "pending_payment", totalTwd: 640, customerEmail: "alice@example.com", createdAt: expect.any(Number), needsAttention: false },
       ],
     });
   });
@@ -73,8 +73,9 @@ describe("管理員訂單明細", () => {
         createdAt: expect.any(Number),
         lines: [{ productId, productName: "馬克杯", quantity: 2, unitPriceTwd: 320 }],
         payments: [
-          { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0 },
-          { id: expect.any(Number), amountTwd: 1, status: "succeeded", createdAt: 0 },
+          { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, refundReason: null, refundAt: null, needsAttention: false },
+          // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄
+          { id: expect.any(Number), amountTwd: 1, status: "succeeded", createdAt: 0, refundReason: null, refundAt: null, needsAttention: true },
         ],
         trackingNumber: null,
         shippedAt: null,

@@ -12,6 +12,8 @@ import { createPaymentService } from "../src/payments/service";
 const app = exports.default;
 const WEB_ORIGIN = "http://localhost:4321";
 const PAYMENT_WINDOW_MS = 15 * 60 * 1000;
+const GATEWAY_PAYMENT_LIFETIME_MS = 10 * 60 * 1000;
+const PAYMENT_CUTOFF_MS = 2 * 60 * 1000;
 
 describe("startPayment：發起付款", () => {
   beforeEach(resetDb);
@@ -32,13 +34,14 @@ describe("startPayment：發起付款", () => {
       {
         merchantReference: String(orderId),
         amountTwd: totalTwd,
-        expiresAt: paymentDeadline,
+        // 付款期限 15 分鐘、剛發起：取發起後 10 分鐘（比付款期限前 2 分鐘的 13 分鐘早）
+        expiresAt: now + GATEWAY_PAYMENT_LIFETIME_MS,
         returnUrl: `${WEB_ORIGIN}/orders/${orderId}/payment-return`,
         webhookUrl: `${WEB_ORIGIN}/api/payments/webhook`,
       },
     ]);
     expect((await orderOf(alice, orderId)).payments).toEqual([
-      { id: expect.any(Number), amountTwd: totalTwd, status: "pending", createdAt: now },
+      { id: expect.any(Number), amountTwd: totalTwd, status: "pending", createdAt: now, refundReason: null, refundAt: null, needsAttention: false },
     ]);
   });
 
@@ -51,20 +54,59 @@ describe("startPayment：發起付款", () => {
     expect(gateway.created).toHaveLength(1);
   });
 
-  it("付款的失效時間不超過付款期限：期限前 2 分鐘發起，閘道收到的 expiresAt 等於付款期限", async () => {
+  it("付款期限前 5 分鐘發起：閘道收到的失效時間是付款期限前 2 分鐘（發起後 10 分鐘與付款期限前 2 分鐘取較早的）", async () => {
     const alice = await signInCustomer("alice");
     const created = Date.now();
     setNow(created);
     const { orderId } = await placeMugOrder(alice);
     const gateway = installFakeGateway();
 
-    setNow(created + PAYMENT_WINDOW_MS - 2 * 60 * 1000);
-    await app.startPayment(alice, { orderId });
+    setNow(created + PAYMENT_WINDOW_MS - 5 * 60 * 1000);
+    expect(await app.startPayment(alice, { orderId })).toMatchObject({ ok: true });
 
-    expect(gateway.created[0]?.expiresAt).toBe(created + PAYMENT_WINDOW_MS);
-    // 閘道實際回的失效時間（min(建立 + 10 分鐘, 付款期限)）存在本地付款上：2 分鐘後失效，之後顯示為已失效
-    setNow(created + PAYMENT_WINDOW_MS);
+    expect(gateway.created[0]?.expiresAt).toBe(created + PAYMENT_WINDOW_MS - PAYMENT_CUTOFF_MS);
+    // 失效時間存在本地付款上：付款期限前 2 分鐘之後顯示為已失效
+    setNow(created + PAYMENT_WINDOW_MS - PAYMENT_CUTOFF_MS);
     expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "expired" }]);
+  });
+
+  it("付款期限前 1 分鐘（付款期限前 2 分鐘內）發起：payment_window_closed，不呼叫閘道也不留付款記錄", async () => {
+    const alice = await signInCustomer("alice");
+    const created = Date.now();
+    setNow(created);
+    const { orderId } = await placeMugOrder(alice);
+    const gateway = installFakeGateway();
+
+    setNow(created + PAYMENT_WINDOW_MS - 60 * 1000);
+    expect(await app.startPayment(alice, { orderId })).toEqual({ ok: false, reason: "payment_window_closed" });
+
+    expect(gateway.created).toEqual([]);
+    expect((await orderOf(alice, orderId)).payments).toEqual([]);
+  });
+
+  it("付款期限前 2 分鐘整點：關閉；再早 1 毫秒仍可發起", async () => {
+    const alice = await signInCustomer("alice");
+    const created = Date.now();
+    setNow(created);
+    const { orderId } = await placeMugOrder(alice);
+    installFakeGateway();
+
+    setNow(created + PAYMENT_WINDOW_MS - PAYMENT_CUTOFF_MS);
+    expect(await app.startPayment(alice, { orderId })).toEqual({ ok: false, reason: "payment_window_closed" });
+    setNow(created + PAYMENT_WINDOW_MS - PAYMENT_CUTOFF_MS - 1);
+    expect(await app.startPayment(alice, { orderId })).toMatchObject({ ok: true });
+  });
+
+  it("閘道回的失效時間不早於付款期限：視為閘道回應不合法，取消那筆付款，payment_gateway_unavailable，不留付款記錄", async () => {
+    const alice = await signInCustomer("alice");
+    const { orderId } = await placeMugOrder(alice);
+    const gateway = installFakeGateway();
+    gateway.expiresAtOverride = (requested) => requested + 10 * 60 * 1000; // 閘道把失效時間延後到付款期限之後
+
+    expect(await app.startPayment(alice, { orderId })).toEqual({ ok: false, reason: "payment_gateway_unavailable" });
+
+    expect(gateway.cancelled).toEqual(["pay_1"]);
+    expect((await orderOf(alice, orderId)).payments).toEqual([]);
   });
 
   it("本地仍是 pending、但已過失效時間的付款，訂單頁顯示為已失效；失效前仍是 pending", async () => {
@@ -255,7 +297,7 @@ describe("startPayment：發起付款", () => {
     expect(await app.startPayment(alice, { orderId })).toEqual({ ok: false, reason: "payment_deadline_passed" });
     expect(gateway.created).toEqual([]);
 
-    setNow(created + PAYMENT_WINDOW_MS - 1);
+    setNow(created + PAYMENT_WINDOW_MS - PAYMENT_CUTOFF_MS - 1);
     expect(await app.startPayment(alice, { orderId })).toMatchObject({ ok: true });
   });
 

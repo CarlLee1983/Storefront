@@ -39,7 +39,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           orders.data.length > 0 && (
             <table>
               <thead>
-                <tr><th>訂單</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th></tr>
+                <tr><th>訂單</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th><th>付款</th></tr>
               </thead>
               <tbody>
                 {orders.data.map((order) => (
@@ -49,6 +49,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <td>{formatDateTime(order.createdAt)}</td>
                     <td>{orderStatusLabel(order.status)}</td>
                     <td>NT$ {priceFormat.format(order.totalTwd)}</td>
+                    <td>{order.needsAttention ? <strong class="error">需要處理</strong> : ""}</td>
                   </tr>
                 ))}
               </tbody>
