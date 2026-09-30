@@ -60,3 +60,19 @@ API（JSON，`Authorization: Bearer <GATEWAY_API_KEY>`；回應 `{ ok: true, dat
 付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款回 502 `refund_failed`（狀態 `refund_failed`），旗標隨即消耗，重試即成功。
 
 Webhook：`POST <webhookUrl>`，本文 `{ eventId, type, paymentId, merchantReference, amountTwd, occurredAt }`（`type` 為 `payment.succeeded / payment.failed / payment.refunded`；`occurredAt` 是事件建立時間的 epoch 毫秒，重送不變）。Header `Gateway-Signature: t=<unix 秒>,v1=<hex(HMAC-SHA256(GATEWAY_WEBHOOK_SECRET, "<t>.<原始 body>"))>`，`t` 是每次投遞當下的時間。接收端用 `@storefront/gateway/webhook-signature` 的 `verifyWebhookSignature` 驗證（預設容忍 5 分鐘），並以 `eventId` 去重。
+
+## E2E
+
+`e2e/`（`@storefront/e2e`）用 Playwright 跑一條關鍵流程，確認三個 Worker 真正串在一起：管理員（Access JWT）上架並補貨 → 顧客登入、加入購物車、結帳 → 在模擬閘道付款頁選成功與立即回呼 → 閘道送出真的簽章 webhook 並導回、訂單頁顯示已付款 → 管理員在 `/admin/orders` 出貨 → 顧客看到已出貨與物流單號。webhook 驗簽與導回查詢都不 mock。
+
+```sh
+bunx playwright install chromium   # 第一次執行前安裝瀏覽器
+bun run e2e
+```
+
+`bun run e2e` 由 Playwright 的 `webServer` 執行 `e2e/harness/serve.ts`：每次都清掉 `.wrangler/e2e/`、建置 Web、對 App 與閘道各自的本機 D1 重新套用 migration，再以 `wrangler dev` 跑 Web + App（埠 8790）與閘道（埠 8791）。不會動到開發中的 `.wrangler/state` 與任何 `.dev.vars`；secrets 是 `e2e/harness/constants.ts` 的明顯假值，只寫進 `.wrangler/e2e/` 下自己產生的 `.dev.vars`。
+
+- 顧客登入沿用 Holdfast ADR 0013：harness 直接把 `user` 與 `session` 寫進 E2E 專用的本機 D1，並用測試的 `BETTER_AUTH_SECRET` 簽 cookie；production 沒有任何測試登入路徑。
+- 管理員以 `Cf-Access-Jwt-Assertion` header 帶 harness 簽的 Access JWT（與 Cloudflare Access 相同），App 以內嵌 JWKS 驗簽；E2E 跑的是 production 建置，Web 不讀 `ACCESS_DEV_JWT`。
+- 失敗時 trace 與報告在 `e2e/test-results/`、`e2e/playwright-report/`（已 gitignore），CI 會上傳成 artifact。
+- 需要 8790、8791 與 9330、9331 埠空閒。
