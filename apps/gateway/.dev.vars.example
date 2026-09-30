@@ -1,0 +1,6 @@
+# 複製成 .dev.vars（已 gitignore）。兩個都必填；缺少任一個時閘道所有請求回 503。
+# 呼叫端（App）以 `Authorization: Bearer <GATEWAY_API_KEY>` 認證；/console 用同一把金鑰做 HTTP Basic（帳號任意，密碼為金鑰）。
+# 例如 `openssl rand -base64 32`
+GATEWAY_API_KEY=
+# 簽 webhook 用，App 端驗簽要用同一把。
+GATEWAY_WEBHOOK_SECRET=

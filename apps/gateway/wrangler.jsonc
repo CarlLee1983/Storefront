@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "storefront-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  // 付款頁要讓顧客的瀏覽器直接開啟，所以部署環境只從自訂網域對外；與 App 一樣關閉 workers.dev 與 preview URL
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  // 模擬的「外部」金流閘道，自己的 D1，不與 App 共用。
+  // 秘密不寫在這裡：GATEWAY_API_KEY、GATEWAY_WEBHOOK_SECRET 用 `wrangler secret put`（見 README「模擬金流閘道」）。
+  // 缺少任一個時所有請求回 503（fail closed）。
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "storefront-gateway",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // d1_databases 不會被 env 繼承，各環境必須自己宣告；標示 REPLACE_WITH_ 的值部署前必須填入。
+  "env": {
+    "preview": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "REPLACE_WITH_PREVIEW_GATEWAY_DOMAIN", "custom_domain": true }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "storefront-gateway-preview",
+          "database_id": "REPLACE_WITH_PREVIEW_GATEWAY_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    },
+    "production": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "REPLACE_WITH_PRODUCTION_GATEWAY_DOMAIN", "custom_domain": true }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "storefront-gateway-production",
+          "database_id": "REPLACE_WITH_PRODUCTION_GATEWAY_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
+}

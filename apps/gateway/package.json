@@ -1,0 +1,33 @@
+{
+  "name": "@storefront/gateway",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./webhook-signature": "./src/webhook-signature.ts"
+  },
+  "scripts": {
+    "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "dev": "wrangler dev --persist-to ../../.wrangler/state",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply storefront-gateway --local --persist-to ../../.wrangler/state",
+    "db:migrate:preview": "wrangler d1 migrations apply DB --env preview --remote",
+    "deploy:preview": "wrangler deploy --env preview",
+    "db:migrate:production": "wrangler d1 migrations apply DB --env production --remote",
+    "deploy:production": "wrangler deploy --env production"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@types/node": "^26.6.3",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^6",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.144.0"
+  }
+}
