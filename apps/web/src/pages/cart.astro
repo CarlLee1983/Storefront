@@ -1,0 +1,92 @@
+---
+import { MAX_QUANTITY } from "../cart/cart";
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = false;
+---
+
+<Layout title="購物車" noindex>
+  <p id="cart-empty" hidden>購物車是空的。<a href="/">去逛逛商品</a></p>
+  <p id="cart-error" class="error" role="alert" hidden></p>
+  <div id="cart-content" hidden data-max-quantity={MAX_QUANTITY}>
+    <table>
+      <thead>
+        <tr><th>商品</th><th>單價</th><th>數量</th><th>小計</th><th></th></tr>
+      </thead>
+      <tbody id="cart-lines"></tbody>
+    </table>
+    <p>總金額：<strong>NT$ <span id="cart-total">0</span></strong>（新台幣、含稅、免運）</p>
+    <p>單價為加入購物車當時所見的價格。</p>
+    <p><a href="/checkout">前往結帳</a></p>
+  </div>
+</Layout>
+
+<script>
+  import { cartTotal, lineSubtotal, removeFromCart, setQuantity, type Cart, type CartLine } from "../cart/cart";
+  import { loadCart, storageOf } from "../cart/storage";
+  import { SAVE_FAILED_MESSAGE } from "../cart/feedback";
+  import { updateCart } from "../cart/store";
+
+  const priceFormat = new Intl.NumberFormat("zh-TW");
+  const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
+  const content = $("#cart-content");
+  const maxQuantity = Number(content.dataset.maxQuantity);
+
+  const cell = (text: string) => {
+    const td = document.createElement("td");
+    td.textContent = text;
+    return td;
+  };
+
+  // 商品名稱來自 localStorage，一律用 textContent，不當 HTML
+  function renderLine(line: CartLine) {
+    const row = document.createElement("tr");
+    const quantityCell = document.createElement("td");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.max = String(maxQuantity);
+    input.step = "1";
+    input.value = String(line.quantity);
+    input.setAttribute("aria-label", `${line.name} 數量`);
+    input.addEventListener("change", () => change((c) => setQuantity(c, line.productId, Number(input.value))));
+    quantityCell.appendChild(input);
+    const removeCell = document.createElement("td");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "移除";
+    remove.addEventListener("click", () => change((c) => removeFromCart(c, line.productId)));
+    removeCell.appendChild(remove);
+    for (const child of [
+      cell(line.name),
+      cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`),
+      quantityCell,
+      cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`),
+      removeCell,
+    ]) {
+      row.appendChild(child);
+    }
+    return row;
+  }
+
+  function render(cart: Cart) {
+    $("#cart-empty").hidden = cart.lines.length > 0;
+    content.hidden = cart.lines.length === 0;
+    $("#cart-total").textContent = priceFormat.format(cartTotal(cart));
+    $("#cart-lines").replaceChildren(...cart.lines.map(renderLine));
+  }
+
+  // 無效數量（如清空輸入框）會被 setQuantity 拒絕、購物車不變；照樣重畫，輸入框就還原成實際數量
+  function change(fn: (cart: Cart) => Cart) {
+    const { cart, saved } = updateCart(storageOf(window), window, fn);
+    const error = $("#cart-error");
+    error.textContent = saved ? "" : SAVE_FAILED_MESSAGE;
+    error.hidden = saved;
+    render(cart);
+  }
+
+  const refresh = () => render(loadCart(storageOf(window)));
+  refresh();
+  // 其他分頁改動了購物車時，本頁跟著更新
+  window.addEventListener("storage", refresh);
+</script>
