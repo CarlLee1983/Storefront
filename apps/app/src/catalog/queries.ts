@@ -33,3 +33,12 @@ export async function selectProductsForAdmin(db: DrizzleD1Database): Promise<Adm
     .from(products)
     .orderBy(asc(products.id));
 }
+
+/** 單一商品（含下架）；不存在回 null。 */
+export async function selectProductForAdmin(db: DrizzleD1Database, id: number): Promise<AdminProductSummary | null> {
+  const [row] = await db
+    .select({ ...summaryColumns, listed: products.listed })
+    .from(products)
+    .where(eq(products.id, id));
+  return row ?? null;
+}

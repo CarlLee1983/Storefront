@@ -6,6 +6,8 @@ const MAX_NAME_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 2000;
 const MAX_PRICE_TWD = 10_000_000;
 
+const productId = wholeNumber("商品編號").positive("商品編號無效");
+
 const name = z
   .string({ error: "名稱必須是文字" })
   .trim()
@@ -24,3 +26,6 @@ const priceTwd = wholeNumber("單價")
   .max(MAX_PRICE_TWD, `單價不可超過 ${MAX_PRICE_TWD}`);
 
 export const createProductInput = z.object({ name, description, priceTwd });
+
+export const updateProductInput = z.object({ id: productId, name, description, priceTwd });
+export const productIdInput = z.object({ id: productId });

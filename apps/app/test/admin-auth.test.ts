@@ -14,6 +14,10 @@ const app = exports.default;
 // 每個管理 RPC 方法都必須先驗 JWT；用合法輸入呼叫，確保拒絕的原因只可能是身分
 const adminCalls = (jwt: string) => ({
   createProduct: () => app.createProduct(jwt, { name: "馬克杯", description: "", priceTwd: 320 }),
+  updateProduct: () => app.updateProduct(jwt, { id: 1, name: "馬克杯", description: "", priceTwd: 320 }),
+  getProductForAdmin: () => app.getProductForAdmin(jwt, { id: 1 }),
+  unlistProduct: () => app.unlistProduct(jwt, { id: 1 }),
+  relistProduct: () => app.relistProduct(jwt, { id: 1 }),
   listProductsForAdmin: () => app.listProductsForAdmin(jwt),
 });
 
