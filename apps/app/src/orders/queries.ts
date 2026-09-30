@@ -158,6 +158,7 @@ export async function selectOrders(db: DrizzleD1Database, customerId: string, sc
       view.lines.push({ productId, productName, quantity, unitPriceTwd });
     }
   }
+
   return [...views.values()];
 }
 

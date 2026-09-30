@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId } from "./labels";
+import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel } from "./labels";
 
 describe("orderStatusNote", () => {
   it("已逾期說明保留已釋放；已取消說明是終點", () => {
@@ -25,6 +25,23 @@ describe("orderStatusLabel", () => {
 
   it("不認得的狀態原樣顯示，不讓頁面壞掉", () => {
     expect(orderStatusLabel("mystery")).toBe("mystery");
+  });
+});
+
+describe("paymentStatusLabel", () => {
+  it.each([
+    ["pending", "等待付款"],
+    ["succeeded", "付款成功"],
+    ["failed", "付款失敗"],
+    ["expired", "已失效"],
+    ["refunded", "已退款"],
+    ["refund_failed", "退款失敗"],
+  ])("%s → %s", (status, label) => {
+    expect(paymentStatusLabel(status)).toBe(label);
+  });
+
+  it("不認得的狀態原樣顯示", () => {
+    expect(paymentStatusLabel("mystery")).toBe("mystery");
   });
 });
 

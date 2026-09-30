@@ -1,3 +1,5 @@
+import type { PaymentStatus } from "@storefront/app/payments-shared";
+
 /** 訂單狀態（CONTEXT.md 的五種）的顯示名稱；App 回傳的是英文代碼。不認得的原樣顯示。 */
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "待付款",
@@ -19,6 +21,20 @@ const STATUS_NOTES: Record<string, string> = {
 /** 已逾期、已取消的補充說明（依 CONTEXT.md）；其他狀態沒有，回傳 null。 */
 export function orderStatusNote(status: string): string | null {
   return STATUS_NOTES[status] ?? null;
+}
+
+/** 付款（Payment）狀態的顯示名稱；App 回傳的是英文代碼，與金流閘道的狀態一一對應。 */
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending: "等待付款",
+  succeeded: "付款成功",
+  failed: "付款失敗",
+  expired: "已失效",
+  refunded: "已退款",
+  refund_failed: "退款失敗",
+};
+
+export function paymentStatusLabel(status: string): string {
+  return Object.hasOwn(PAYMENT_STATUS_LABELS, status) ? PAYMENT_STATUS_LABELS[status as PaymentStatus] : status;
 }
 
 const dateTimeFormat = new Intl.DateTimeFormat("zh-TW", {

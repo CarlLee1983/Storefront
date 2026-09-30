@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/entrypoint.ts",
-    "./auth-paths": "./src/auth/paths.ts"
+    "./auth-paths": "./src/auth/paths.ts",
+    "./payments-shared": "./src/payments/shared.ts"
   },
   "scripts": {
     "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

@@ -2,7 +2,7 @@ import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 import { generateDevKeys } from "./scripts/dev-keys.ts";
-import { TEST_AUD, TEST_KID, TEST_TEAM_DOMAIN } from "./test/constants.ts";
+import { TEST_AUD, TEST_GATEWAY_API_KEY, TEST_GATEWAY_BASE_URL, TEST_KID, TEST_TEAM_DOMAIN } from "./test/constants.ts";
 
 export default defineConfig({
   plugins: [
@@ -26,6 +26,8 @@ export default defineConfig({
             GOOGLE_CLIENT_SECRET: "test-google-client-secret",
             LINE_CHANNEL_ID: "test-line-channel-id",
             LINE_CHANNEL_SECRET: "test-line-channel-secret",
+            GATEWAY_BASE_URL: TEST_GATEWAY_BASE_URL,
+            GATEWAY_API_KEY: TEST_GATEWAY_API_KEY,
             TEST_ACCESS_PRIVATE_JWK: JSON.stringify(privateJwk),
           },
         },

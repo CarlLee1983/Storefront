@@ -1,0 +1,6 @@
+# 複製成 .dev.vars（已 gitignore）。`bun run admin:dev-token` 會把本機後台所需的 ACCESS_DEV_JWT 寫進 .dev.vars，其餘手動填。
+#
+# 付款：驗證金流閘道 webhook 簽章用，必須與 apps/gateway/.dev.vars 的 GATEWAY_WEBHOOK_SECRET 相同。
+# 不填時 webhook 端點回 503（fail closed），顧客付完款仍會在導回時由 App 主動向閘道查詢，看到最新狀態。
+# 例如 `openssl rand -base64 32`
+GATEWAY_WEBHOOK_SECRET=

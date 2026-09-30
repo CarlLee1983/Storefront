@@ -1,5 +1,5 @@
 # push 到 main 部署 production；手動觸發（任何分支）部署 preview。
-# 順序固定：檢查 secrets → 檢查顧客登入設定 → 檢查 Gateway secrets → typecheck / test → Gateway 的 D1 migration 與部署 → App 的 D1 migration → App → Web。
+# 順序固定：檢查 secrets → 檢查顧客登入與付款設定 → 檢查 Gateway secrets → typecheck / test → Gateway 的 D1 migration 與部署 → App 的 D1 migration → App → Web。
 # Gateway 排在 App 前面：它不依賴 App，而 App（#10）上線後會呼叫它；先部署可以保證 App 開始用它時閘道已經在。
 name: Deploy
 
@@ -39,8 +39,9 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
 
-      # 顧客登入設定不全或 BETTER_AUTH_URL 填錯時，部署出去的登入是壞的；在 migration 之前擋下
-      - name: 檢查顧客登入設定（${{ env.DEPLOY_ENV }}）
+      # 顧客登入設定不全或 BETTER_AUTH_URL 填錯、付款設定（GATEWAY_BASE_URL、App 的 GATEWAY_API_KEY、Web 的 GATEWAY_WEBHOOK_SECRET）不全時，
+      # 部署出去的登入或付款是壞的；在 migration 之前擋下
+      - name: 檢查顧客登入與付款設定（${{ env.DEPLOY_ENV }}）
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

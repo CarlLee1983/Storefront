@@ -6,6 +6,8 @@ import { readCustomerSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { createOrderService } from "./orders/service";
+import { readPaymentConfig } from "./payments/config";
+import { createPaymentService } from "./payments/service";
 import { systemClock } from "./shared/clock";
 
 /**
@@ -33,6 +35,20 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       const { customer } = await readCustomerSession(this.#auth(), cookie);
       return customer?.customerId ?? null;
     });
+  }
+
+  /**
+   * 付款設定（閘道網址、API 金鑰）在這裡才驗證：不全時 `gateway` 是 null，付款 RPC 回 `payment_unavailable`，
+   * 其他 RPC 不受影響。log 只含變數名稱，不含值。
+   */
+  #payments() {
+    const config = readPaymentConfig(this.env);
+    if (!config.ok) console.error(JSON.stringify({ event: "payment_config_invalid", invalid: config.invalid }));
+    const authenticate = async (cookie: string) => {
+      const { customer } = await readCustomerSession(this.#auth(), cookie);
+      return customer?.customerId ?? null;
+    };
+    return createPaymentService(this.env.DB, systemClock, authenticate, config.ok ? config.config.gateway : null, config.ok ? config.config.webOrigin : "");
   }
 
   /**
@@ -95,6 +111,19 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   cancelOrder(cookie: string, input: unknown) {
     return this.#orders().cancelOrder(cookie, input);
+  }
+
+  startPayment(cookie: string, input: unknown) {
+    return this.#payments().startPayment(cookie, input);
+  }
+
+  confirmPayment(cookie: string, input: unknown) {
+    return this.#payments().confirmPayment(cookie, input);
+  }
+
+  /** 套用付款結果（冪等）。呼叫端（Web Worker）必須先驗過閘道 webhook 的簽章；這個方法本身不驗任何身分。 */
+  applyPaymentResult(input: unknown) {
+    return this.#payments().applyPaymentResult(input);
   }
 
   // 管理 RPC：第一個參數是 Cloudflare Access 的原始 JWT，由 App 自行驗簽，

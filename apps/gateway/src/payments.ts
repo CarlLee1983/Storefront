@@ -20,16 +20,19 @@ export interface NewPayment {
   amountTwd: number;
   returnUrl: string;
   webhookUrl: string;
+  /** 呼叫端要求的最晚失效時間（epoch 毫秒）；實際失效時間不會晚於它。 */
+  expiresAt?: number;
 }
 
 export async function insertPayment(db: Db, input: NewPayment, nowMs: number): Promise<PaymentRow> {
+  const { expiresAt: requestedExpiresAt, ...fields } = input;
   const row: PaymentRow = {
     id: `pay_${crypto.randomUUID().replaceAll("-", "")}`,
-    ...input,
+    ...fields,
     status: "pending",
     failNextRefund: false,
     createdAt: nowMs,
-    expiresAt: nowMs + PAYMENT_TTL_MS,
+    expiresAt: Math.min(nowMs + PAYMENT_TTL_MS, requestedExpiresAt ?? Number.POSITIVE_INFINITY),
   };
   await db.insert(payments).values(row);
   return row;

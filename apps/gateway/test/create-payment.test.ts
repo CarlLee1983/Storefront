@@ -24,6 +24,32 @@ describe("建立付款 POST /v1/payments", () => {
     });
   });
 
+  it("帶 expiresAt（epoch 毫秒）：實際失效時間是 min(建立時間 + 10 分鐘, expiresAt)", async () => {
+    setNow(NOW);
+    const early = NOW + 2 * 60_000;
+    const late = NOW + 60 * 60_000;
+
+    const capped = (await (await api("POST", "/v1/payments", { ...valid, expiresAt: early })).json()) as { data: { expiresAt: number } };
+    const notCapped = (await (await api("POST", "/v1/payments", { ...valid, expiresAt: late })).json()) as { data: { expiresAt: number } };
+
+    expect(capped.data.expiresAt).toBe(early);
+    expect(notCapped.data.expiresAt).toBe(NOW + 10 * 60_000);
+  });
+
+  it.each([
+    ["早於現在", NOW - 1],
+    ["等於現在", NOW],
+    ["不是整數", NOW + 1.5],
+    ["不是數字", "tomorrow"],
+  ])("expiresAt %s：400 invalid_input，欄位是 expiresAt", async (_label, expiresAt) => {
+    setNow(NOW);
+
+    const response = await api("POST", "/v1/payments", { ...valid, expiresAt });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: "invalid_input", fields: { expiresAt: expect.any(Array) } } });
+  });
+
   it("沒有金鑰、金鑰錯誤都回 401 unauthorized", async () => {
     const missing = await api("POST", "/v1/payments", valid, {});
     const wrong = await api("POST", "/v1/payments", valid, bearer("wrong-key"));

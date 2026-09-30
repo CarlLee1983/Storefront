@@ -62,6 +62,7 @@ describe("結帳成功", () => {
           { productId: mug, productName: "馬克杯", quantity: 2, unitPriceTwd: 320 },
           { productId: pen, productName: "原子筆", quantity: 3, unitPriceTwd: 45 },
         ],
+        payments: [],
       },
     });
   });
