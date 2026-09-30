@@ -2,12 +2,14 @@
   "name": "storefront",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "e2e"
   ],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
     "test:coverage": "bun run --filter '*' test:coverage",
+    "e2e": "bun run --filter @storefront/e2e e2e",
     "dev": "bun run --filter @storefront/web dev",
     "db:migrate": "bun run --filter @storefront/app db:migrate:local && bun run --filter @storefront/gateway db:migrate:local",
     "dev:gateway": "bun run --filter @storefront/gateway dev",

@@ -5,6 +5,8 @@
   "exports": {
     ".": "./src/entrypoint.ts",
     "./auth-paths": "./src/auth/paths.ts",
+    "./access": "./src/admin/access.ts",
+    "./dev-keys": "./scripts/dev-keys.ts",
     "./payments-shared": "./src/payments/shared.ts"
   },
   "scripts": {
