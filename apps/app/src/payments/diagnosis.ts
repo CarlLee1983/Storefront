@@ -1,7 +1,8 @@
 import type { OrderStatus } from "../orders/schema";
+import { PAYMENT_CUTOFF_BEFORE_DEADLINE_MS } from "../orders/payment-deadline";
 import { isPayableStatus } from "./payable";
 
-export type StartRefusal = "order_not_payable" | "payment_already_succeeded" | "payment_in_progress" | "payment_deadline_passed";
+export type StartRefusal = "order_not_payable" | "payment_already_succeeded" | "payment_in_progress" | "payment_deadline_passed" | "payment_window_closed";
 
 /**
  * 發起付款被拒的原因（唯讀診斷，不是判定）：真正的判定在 `insertPaymentIfPayable` 的單句條件寫入裡，
@@ -17,5 +18,7 @@ export function diagnoseStart(
   if (payments.hasSucceeded) return "payment_already_succeeded";
   if (payments.hasPending) return "payment_in_progress";
   if (now >= order.paymentDeadline) return "payment_deadline_passed";
+  // 付款期限前 2 分鐘內不再發起（ADR 0001）：付款有效期會比期限短，這段時間發起的付款幾乎立刻失效
+  if (now >= order.paymentDeadline - PAYMENT_CUTOFF_BEFORE_DEADLINE_MS) return "payment_window_closed";
   return null;
 }

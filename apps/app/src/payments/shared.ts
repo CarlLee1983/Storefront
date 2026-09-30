@@ -6,10 +6,20 @@ export const GATEWAY_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * 付款狀態，與金流閘道的狀態一一對應；存英文代碼，資料表的 CHECK 由這份清單產生。
- * 本票只會寫入 pending / succeeded / failed / expired，退款的兩個狀態留給 #11。
+ * 退款的結果也記在付款狀態上：成功的付款退款成功轉為 refunded，閘道退款失敗轉為 refund_failed。
  */
 export const PAYMENT_STATUSES = ["pending", "succeeded", "failed", "expired", "refunded", "refund_failed"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+/**
+ * 退款的觸發原因（CONTEXT.md「退款」的三種情況）：
+ * 遲到的付款成功保留不到庫存、付款成功落在已取消的訂單上、同一張訂單出現第二筆成功付款（安全網）。
+ */
+export const REFUND_REASONS = ["late_success_unreclaimable", "cancelled_order", "duplicate_success"] as const;
+export type RefundReason = (typeof REFUND_REASONS)[number];
+
+/** 讓訂單上進行中的付款失效（發起新付款、顧客取消訂單共用）被拒絕的原因。 */
+export type InvalidatePaymentsRefusal = "payment_unavailable" | "payment_gateway_unavailable" | "payment_in_progress" | "payment_already_succeeded";
 
 /** 付款結果事件的結果：只有終局的成功或失敗會被套用。 */
 export const PAYMENT_OUTCOMES = ["succeeded", "failed"] as const;

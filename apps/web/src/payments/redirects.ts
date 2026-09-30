@@ -28,6 +28,7 @@ export function startPaymentLocation(
 const ERROR_MESSAGES: Record<string, string> = {
   order_not_payable: "這張訂單目前不能付款。",
   payment_deadline_passed: "已超過付款期限，無法付款。",
+  payment_window_closed: "付款期限前 2 分鐘內不能再發起付款，請重新下單。",
   payment_in_progress: "這張訂單有一筆付款正在進行中，請先完成它，或稍後再試。",
   payment_already_succeeded: "這張訂單已經有一筆付款成功。",
   payment_gateway_unavailable: "金流暫時無法使用，請稍後再試。",
@@ -40,4 +41,23 @@ const GENERIC_ERROR = "無法發起付款，請稍後再試。";
 export function paymentErrorMessage(reason: string | null): string | null {
   if (reason === null) return null;
   return Object.hasOwn(ERROR_MESSAGES, reason) ? ERROR_MESSAGES[reason]! : GENERIC_ERROR;
+}
+
+/** 取消訂單之後：一律回訂單頁（取消成功、或訂單已不是待付款都讓顧客看到最新狀態）；付款處理不了時帶上原因（頁面用 `cancelErrorMessage` 顯示）。 */
+export function cancelOrderLocation(orderId: number, result: { ok: true } | { ok: false; reason: string }): string {
+  return result.ok || result.reason === "order_not_cancellable" ? `/orders/${orderId}` : `/orders/${orderId}?cancel_error=${encodeURIComponent(result.reason)}`;
+}
+
+const CANCEL_ERROR_MESSAGES: Record<string, string> = {
+  payment_gateway_unavailable: "金流暫時無法使用，進行中的付款尚未失效，訂單未取消，請稍後再試。",
+  payment_in_progress: "這張訂單有一筆付款正在進行中，暫時無法取消，請先完成付款或稍後再試。",
+  payment_unavailable: "付款功能尚未開放，訂單未取消，請稍後再試。",
+};
+
+const GENERIC_CANCEL_ERROR = "無法取消訂單，訂單未取消，請稍後再試。";
+
+/** 訂單頁網址上 `cancel_error` 對應的說明；沒有帶就是 null，不認得的原因用通用說明（不回顯網址上的字串）。 */
+export function cancelErrorMessage(reason: string | null): string | null {
+  if (reason === null) return null;
+  return Object.hasOwn(CANCEL_ERROR_MESSAGES, reason) ? CANCEL_ERROR_MESSAGES[reason]! : GENERIC_CANCEL_ERROR;
 }

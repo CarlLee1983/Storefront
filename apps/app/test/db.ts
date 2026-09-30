@@ -32,3 +32,8 @@ export async function seedPayment(orderId: number, status: string, gatewayPaymen
     .run();
   return gatewayPaymentId;
 }
+
+/** 直接改一筆付款的狀態（測試安排前置狀態用，例如「舊的成功付款、沒有退款紀錄」）。 */
+export async function forcePaymentStatus(gatewayPaymentId: string, status: string): Promise<void> {
+  await env.DB.prepare("UPDATE payments SET status = ? WHERE gateway_payment_id = ?").bind(status, gatewayPaymentId).run();
+}

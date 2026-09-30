@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel } from "./labels";
+import { formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
 
 describe("orderStatusNote", () => {
   it("已逾期說明保留已釋放；已取消說明是終點", () => {
@@ -42,6 +42,21 @@ describe("paymentStatusLabel", () => {
 
   it("不認得的狀態原樣顯示", () => {
     expect(paymentStatusLabel("mystery")).toBe("mystery");
+  });
+});
+
+describe("refundReasonLabel", () => {
+  it.each([
+    ["late_success_unreclaimable", "付款期限後才收到付款，商品已無庫存"],
+    ["cancelled_order", "訂單已取消"],
+    ["duplicate_success", "這張訂單重複付款"],
+  ])("%s → %s", (reason, label) => {
+    expect(refundReasonLabel(reason)).toBe(label);
+  });
+
+  it("沒有退款原因回 null；不認得的原因原樣顯示", () => {
+    expect(refundReasonLabel(null)).toBeNull();
+    expect(refundReasonLabel("mystery")).toBe("mystery");
   });
 });
 

@@ -40,6 +40,18 @@ export function paymentStatusLabel(status: string): string {
   return Object.hasOwn(PAYMENT_STATUS_LABELS, status) ? PAYMENT_STATUS_LABELS[status as PaymentStatus] : status;
 }
 
+/** 退款觸發原因（`RefundReason`）的顯示說明；沒有退款回 null，不認得的原樣顯示。 */
+const REFUND_REASON_LABELS: Record<string, string> = {
+  late_success_unreclaimable: "付款期限後才收到付款，商品已無庫存",
+  cancelled_order: "訂單已取消",
+  duplicate_success: "這張訂單重複付款",
+};
+
+export function refundReasonLabel(reason: string | null): string | null {
+  if (reason === null) return null;
+  return REFUND_REASON_LABELS[reason] ?? reason;
+}
+
 const dateTimeFormat = new Intl.DateTimeFormat("zh-TW", {
   timeZone: "Asia/Taipei",
   dateStyle: "medium",

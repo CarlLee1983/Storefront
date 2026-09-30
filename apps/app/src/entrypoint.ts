@@ -31,10 +31,16 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */
   #orders() {
-    return createOrderService(this.env.DB, systemClock, async (cookie) => {
-      const { customer } = await readCustomerSession(this.#auth(), cookie);
-      return customer?.customerId ?? null;
-    });
+    return createOrderService(
+      this.env.DB,
+      systemClock,
+      async (cookie) => {
+        const { customer } = await readCustomerSession(this.#auth(), cookie);
+        return customer?.customerId ?? null;
+      },
+      // 取消訂單才需要付款（閘道設定在那時才讀，Cron 與列表不受付款設定影響）
+      (orderId) => this.#payments().invalidatePendingPayments(orderId),
+    );
   }
 
   /**
