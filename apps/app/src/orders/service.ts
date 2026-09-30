@@ -4,7 +4,7 @@ import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
-import { cancelPendingOrder, expireOverdueOrders, placeOrderIfAvailable, selectOrders, selectProductStates, selectRequestHash } from "./queries";
+import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectProductStates, selectRequestHash } from "./queries";
 import { requestHash } from "./request-hash";
 import { CANCELLED } from "./schema";
 
@@ -59,7 +59,7 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
 
     /** Cron 入口：不需要顧客身分，只看付款期限；冪等，回傳這次轉為已逾期的筆數。 */
     async expireOverdueOrders() {
-      const count = await expireOverdueOrders(d1, clock.now());
+      const count = await markOverdueOrdersExpired(d1, clock.now());
       console.log(JSON.stringify({ event: "orders_expired", count }));
       return count;
     },
@@ -96,7 +96,7 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
         console.log(JSON.stringify({ event: "order_cancelled", orderId }));
         return ok({ orderId, status: CANCELLED });
       }
-      const [order] = await selectOrders(db, customerId, { orderId });
+      const order = await selectOrderStatus(db, customerId, orderId);
       return fail(order ? "order_not_cancellable" : "order_not_found");
     },
   };

@@ -16,7 +16,7 @@ export const EXPIRED = "expired" satisfies OrderStatus;
 /** 已取消：顧客在付款前主動終止，是終點。 */
 export const CANCELLED = "cancelled" satisfies OrderStatus;
 
-export const orders =sqliteTable(
+export const orders = sqliteTable(
   "orders",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),

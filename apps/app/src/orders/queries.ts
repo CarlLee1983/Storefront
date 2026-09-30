@@ -7,6 +7,7 @@ import type { ProductState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
 import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, type OrderStatus } from "./schema";
+import { canTransitionTo } from "./transitions";
 
 export interface CheckoutRequest extends CheckoutInput {
   customerId: string;
@@ -171,9 +172,22 @@ export async function cancelPendingOrder(db: DrizzleD1Database, customerId: stri
   const rows = await db
     .update(orders)
     .set({ status: CANCELLED })
-    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), eq(orders.status, PENDING_PAYMENT)))
+    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), canTransitionTo(CANCELLED)))
     .returning({ id: orders.id });
   return rows.length > 0;
+}
+
+/** 顧客自己的某張訂單的 `{ id, status }`（不讀明細）；別人的或不存在回 undefined。 */
+export async function selectOrderStatus(
+  db: DrizzleD1Database,
+  customerId: string,
+  orderId: number,
+): Promise<{ id: number; status: OrderStatus } | undefined> {
+  const [row] = await db
+    .select({ id: orders.id, status: orders.status })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId)));
+  return row;
 }
 
 /**
@@ -183,11 +197,11 @@ export async function cancelPendingOrder(db: DrizzleD1Database, customerId: stri
  * 保留隨狀態改變自然釋放（見 `catalog/stock.ts`），這裡不動訂單明細。
  * 時間用高水位的有效時間（Holdfast ADR 0011），`now` 只用來推進高水位。
  */
-export async function expireOverdueOrders(d1: D1Database, now: number): Promise<number> {
+export async function markOverdueOrdersExpired(d1: D1Database, now: number): Promise<number> {
   const [result] = await batchAtEffectiveNow(d1, now, [
     sql`
       UPDATE orders SET status = ${EXPIRED}
-      WHERE status = ${PENDING_PAYMENT} AND payment_deadline <= ${effectiveNow}
+      WHERE ${canTransitionTo(EXPIRED)} AND payment_deadline <= ${effectiveNow}
     `,
   ]);
   return result!.meta.changes;

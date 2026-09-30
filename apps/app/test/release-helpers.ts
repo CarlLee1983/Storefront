@@ -22,31 +22,10 @@ export async function stocked(onHand: number): Promise<number> {
   return createStockedProduct("馬克杯", PRICE, onHand);
 }
 
-/**
- * 讓 Cron 每個 D1 batch 完成之後先暫停、執行 `hook` 才繼續，用來確定性地重現「Cron 讀到資料之後、
- * 寫入之前，別的請求插進來」的時序；`Promise.all` 併發不保證交錯，單靠它抓不到先讀後寫的實作。
- */
-function envPausingAfterBatch(hook: () => Promise<void>): Env {
-  const db = new Proxy(env.DB, {
-    get(target, prop) {
-      if (prop === "batch") {
-        return async (...args: Parameters<D1Database["batch"]>) => {
-          const results = await target.batch(...args);
-          await hook();
-          return results;
-        };
-      }
-      const value = Reflect.get(target, prop, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-  return new Proxy(env, { get: (target, prop) => (prop === "DB" ? db : Reflect.get(target, prop, target)) });
-}
-
 /** 注入時間後直接呼叫 App Worker 的 scheduled 處理程式，與 Cloudflare 每分鐘觸發的路徑相同。 */
-export async function runCron(at: number, afterBatch?: () => Promise<void>): Promise<void> {
+export async function runCron(at: number): Promise<void> {
   setNow(at);
-  const worker = new AppEntrypoint(createExecutionContext(), afterBatch ? envPausingAfterBatch(afterBatch) : env);
+  const worker = new AppEntrypoint(createExecutionContext(), env);
   await worker.scheduled(createScheduledController({ cron: "* * * * *", scheduledTime: new Date(at) }));
 }
 

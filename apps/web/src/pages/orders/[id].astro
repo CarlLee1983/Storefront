@@ -46,7 +46,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
         {
           order.status === "pending_payment" && (
-            <form method="post">
+            <form method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
+              <p>取消後無法恢復。</p>
               <button type="submit">取消訂單</button>
             </form>
           )
