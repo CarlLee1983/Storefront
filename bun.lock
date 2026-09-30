@@ -23,6 +23,22 @@
         "wrangler": "^4.144.0",
       },
     },
+    "apps/gateway": {
+      "name": "@storefront/gateway",
+      "dependencies": {
+        "drizzle-orm": "^0.45.3",
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.22.0",
+        "@types/node": "^26.6.3",
+        "@vitest/coverage-istanbul": "^4.1.0",
+        "drizzle-kit": "^0.31.11",
+        "typescript": "^6",
+        "vitest": "^4.1.0",
+        "wrangler": "^4.144.0",
+      },
+    },
     "apps/web": {
       "name": "@storefront/web",
       "dependencies": {
@@ -395,6 +411,8 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "@storefront/app": ["@storefront/app@workspace:apps/app"],
+
+    "@storefront/gateway": ["@storefront/gateway@workspace:apps/gateway"],
 
     "@storefront/web": ["@storefront/web@workspace:apps/web"],
 

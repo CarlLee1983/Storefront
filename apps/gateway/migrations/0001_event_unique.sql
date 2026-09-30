@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `events_payment_type_unique` ON `events` (`payment_id`,`type`);
