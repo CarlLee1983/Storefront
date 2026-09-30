@@ -24,3 +24,6 @@ export const invalidInput = (fields: Record<string, string[]>): InvalidInput => 
 
 /** 管理 RPC 沒有有效 Access JWT 時的拒絕結果。 */
 export type Unauthorized = { ok: false; reason: "unauthorized" };
+
+/** 管理 RPC 指名的商品不存在。 */
+export type ProductNotFound = { ok: false; reason: "product_not_found" };

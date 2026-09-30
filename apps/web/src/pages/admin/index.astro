@@ -1,7 +1,13 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../admin/access-jwt";
-import { describeCreateFailure, formToRecord, productFormToInput, type Failure } from "../../admin/product-form";
+import {
+  describeFailure,
+  dispatchProductForm,
+  formToRecord,
+  productFormToInput,
+  type Failure,
+} from "../../admin/product-form";
 import Layout from "../../layouts/Layout.astro";
 
 export const prerender = false;
@@ -11,19 +17,42 @@ const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 let failure: Failure | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
+let listingError = "";
+const LISTING_FAILED = "操作失敗，請稍後再試";
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  submitted = formToRecord(form);
-  const result = await env.APP.createProduct(jwt, productFormToInput(form));
-  if (result.ok) return Astro.redirect("/admin?saved=created", 303);
-  if (result.reason === "unauthorized") unauthorized = true;
-  else failure = describeCreateFailure(result);
+  const dispatch = dispatchProductForm(form);
+  if (dispatch.kind === "invalid") {
+    // 被竄改或不認得的表單：不呼叫任何 RPC
+    Astro.response.status = 400;
+    listingError = LISTING_FAILED;
+  } else if (dispatch.kind === "listing") {
+    // 清單上的下架／重新上架按鈕
+    const { action, id } = dispatch;
+    const result =
+      action === "unlist" ? await env.APP.unlistProduct(jwt, { id }) : await env.APP.relistProduct(jwt, { id });
+    if (result.ok) return Astro.redirect(`/admin?saved=${action}`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else listingError = describeFailure(result, LISTING_FAILED).message;
+  } else {
+    submitted = formToRecord(form);
+    const result = await env.APP.createProduct(jwt, productFormToInput(form));
+    if (result.ok) return Astro.redirect("/admin?saved=created", 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeFailure(result, "新增商品失敗，請稍後再試");
+  }
 }
 
 const products = unauthorized ? null : await env.APP.listProductsForAdmin(jwt);
 if (unauthorized || (products && !products.ok)) Astro.response.status = 403;
-const saved = Astro.url.searchParams.get("saved") === "created";
+const SAVED_MESSAGES: Record<string, string> = {
+  created: "已新增商品。",
+  updated: "已儲存商品。",
+  unlist: "已下架商品。",
+  relist: "已重新上架商品。",
+};
+const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -33,13 +62,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
-        {saved && <p role="status">已新增商品。</p>}
+        {savedMessage && <p role="status">{savedMessage}</p>}
+        {listingError && <p class="error" role="alert">{listingError}</p>}
         {products?.ok && products.data.length === 0 && <p>目前沒有商品。</p>}
         {
           products?.ok && products.data.length > 0 && (
             <table>
               <thead>
-                <tr><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>狀態</th></tr>
+                <tr><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>狀態</th><th></th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
@@ -48,6 +78,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <td>{p.description}</td>
                     <td>{priceFormat.format(p.priceTwd)}</td>
                     <td>{p.listed ? "上架中" : "已下架"}</td>
+                    <td>
+                      <a href={`/admin/products/${p.id}`}>編輯</a>
+                      <form method="post" class="inline">
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="intent" value={p.listed ? "unlist" : "relist"} />
+                        <button type="submit">{p.listed ? "下架" : "重新上架"}</button>
+                      </form>
+                    </td>
                   </tr>
                 ))}
               </tbody>

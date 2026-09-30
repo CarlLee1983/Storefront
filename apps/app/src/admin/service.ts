@@ -1,12 +1,13 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
-import { selectProductsForAdmin } from "../catalog/queries";
+import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
-import { ok, type InvalidInput, type Unauthorized } from "../shared/result";
+import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { createProductInput } from "./input";
+import { createProductInput, productIdInput, updateProductInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig) {
   const db = drizzle(d1);
@@ -26,11 +27,28 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     return run(auth.data, parsed.data);
   }
 
+  /** 依 id 更新商品；沒有任何一列被更新（商品不存在）回 product_not_found。 */
+  async function updateById(
+    id: number,
+    values: Partial<typeof products.$inferInsert>,
+  ): Promise<{ ok: true; data: { id: number } } | ProductNotFound> {
+    const updated = await db.update(products).set(values).where(eq(products.id, id)).returning({ id: products.id });
+    return updated.length === 0 ? fail("product_not_found") : ok({ id });
+  }
+
   return {
     async listProductsForAdmin(jwt: unknown) {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
       return ok(await selectProductsForAdmin(db));
+    },
+
+    /** 單一商品（含下架），給編輯頁用。 */
+    getProductForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, productIdInput, input, async (_actor, { id }) => {
+        const product = await selectProductForAdmin(db, id);
+        return product ? ok(product) : fail("product_not_found");
+      });
     },
 
     /** 新增商品，預設上架。 */
@@ -39,6 +57,21 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
         const [row] = await db.insert(products).values({ ...data, listed: true }).returning({ id: products.id });
         return ok({ id: row!.id });
       });
+    },
+
+    /** 修改名稱、說明與單價；不動上架狀態。 */
+    updateProduct(jwt: unknown, input: unknown) {
+      return authorized(jwt, updateProductInput, input, (_actor, { id, ...values }) => updateById(id, values));
+    },
+
+    /** 下架：商品從前台消失，但保留在後台。已下架時也回成功（冪等）。 */
+    unlistProduct(jwt: unknown, input: unknown) {
+      return authorized(jwt, productIdInput, input, (_actor, { id }) => updateById(id, { listed: false }));
+    },
+
+    /** 重新上架：已上架時也回成功（冪等）。 */
+    relistProduct(jwt: unknown, input: unknown) {
+      return authorized(jwt, productIdInput, input, (_actor, { id }) => updateById(id, { listed: true }));
     },
   };
 }

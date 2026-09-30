@@ -1,0 +1,69 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import {
+  describeFailure,
+  formToRecord,
+  parseProductId,
+  productUpdateFormToInput,
+  type Failure,
+} from "../../../admin/product-form";
+import Layout from "../../../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const id = parseProductId(Astro.params.id);
+let failure: Failure | undefined;
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+if (id !== null && Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = formToRecord(form);
+  const result = await env.APP.updateProduct(jwt, productUpdateFormToInput(form, id));
+  if (result.ok) return Astro.redirect("/admin?saved=updated", 303);
+  if (result.reason === "unauthorized") unauthorized = true;
+  else failure = describeFailure(result, "儲存商品失敗，請稍後再試");
+}
+
+const found = id === null || unauthorized ? null : await env.APP.getProductForAdmin(jwt, { id });
+if (unauthorized || (found && !found.ok && found.reason === "unauthorized")) Astro.response.status = 403;
+const product = found?.ok ? found.data : undefined;
+if (Astro.response.status !== 403 && !product) Astro.response.status = 404;
+const values = { name: product?.name ?? "", description: product?.description ?? "", priceTwd: String(product?.priceTwd ?? ""), ...submitted };
+---
+
+<Layout title="編輯商品" admin>
+  {
+    Astro.response.status === 403 ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : Astro.response.status === 404 ? (
+      <p class="error" role="alert">找不到這個商品。</p>
+    ) : (
+      <>
+        {failure && <p class="error" role="alert">{failure.message}</p>}
+        <form method="post">
+          <label>
+            名稱
+            <input name="name" value={values.name} required />
+            {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            說明
+            <textarea name="description" rows="3">{values.description}</textarea>
+            {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            單價（新台幣整數元）
+            <input name="priceTwd" type="number" min="1" step="1" value={values.priceTwd} required />
+            {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <button type="submit">儲存</button>
+          <a href="/admin">取消</a>
+        </form>
+      </>
+    )
+  }
+</Layout>
