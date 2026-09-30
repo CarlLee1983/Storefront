@@ -43,6 +43,7 @@ const customer = admin ? null : Astro.locals.customer;
         !admin &&
           (customer ? (
             <>
+              <a href="/orders">我的訂單</a>
               <span class="customer-name">{customer.name}</span>
               <button type="button" id="sign-out">登出</button>
             </>

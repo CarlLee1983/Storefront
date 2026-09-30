@@ -5,6 +5,7 @@ import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readCustomerSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
+import { createOrderService } from "./orders/service";
 import { systemClock } from "./shared/clock";
 
 /**
@@ -23,6 +24,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       teamDomain: this.env.ACCESS_TEAM_DOMAIN,
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
+    });
+  }
+
+  /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */
+  #orders() {
+    return createOrderService(this.env.DB, systemClock, async (cookie) => {
+      const { customer } = await readCustomerSession(this.#auth(), cookie);
+      return customer?.customerId ?? null;
     });
   }
 
@@ -64,6 +73,19 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   listProducts() {
     return this.#catalog().listProducts();
+  }
+
+  // 顧客 RPC：第一個參數是瀏覽器的 cookie，由 App 自行驗 session，不信任呼叫端的任何身分聲明。
+  checkout(cookie: string, input: unknown) {
+    return this.#orders().checkout(cookie, input);
+  }
+
+  listMyOrders(cookie: string) {
+    return this.#orders().listMyOrders(cookie);
+  }
+
+  getMyOrder(cookie: string, input: unknown) {
+    return this.#orders().getMyOrder(cookie, input);
   }
 
   // 管理 RPC：第一個參數是 Cloudflare Access 的原始 JWT，由 App 自行驗簽，
