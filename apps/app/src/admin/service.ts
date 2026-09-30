@@ -1,0 +1,44 @@
+import { drizzle } from "drizzle-orm/d1";
+import type { z } from "zod";
+import { selectProductsForAdmin } from "../catalog/queries";
+import { products } from "../catalog/schema";
+import type { Clock } from "../shared/clock";
+import { parseInput } from "../shared/input";
+import { ok, type InvalidInput, type Unauthorized } from "../shared/result";
+import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
+import { createProductInput } from "./input";
+
+export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig) {
+  const db = drizzle(d1);
+  const verifier = createAccessVerifier(access, clock);
+
+  /** 管理 RPC 共同的前置：先驗 Access JWT，再驗輸入，通過才執行。 */
+  async function authorized<S extends z.ZodType, T>(
+    jwt: unknown,
+    schema: S,
+    input: unknown,
+    run: (actor: AccessIdentity, data: z.output<S>) => Promise<T>,
+  ): Promise<T | InvalidInput | Unauthorized> {
+    const auth = await verifier.verify(jwt);
+    if (!auth.ok) return auth;
+    const parsed = parseInput(schema, input);
+    if (!parsed.ok) return parsed;
+    return run(auth.data, parsed.data);
+  }
+
+  return {
+    async listProductsForAdmin(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectProductsForAdmin(db));
+    },
+
+    /** 新增商品，預設上架。 */
+    createProduct(jwt: unknown, input: unknown) {
+      return authorized(jwt, createProductInput, input, async (_actor, data) => {
+        const [row] = await db.insert(products).values({ ...data, listed: true }).returning({ id: products.id });
+        return ok({ id: row!.id });
+      });
+    },
+  };
+}

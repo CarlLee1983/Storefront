@@ -1,0 +1,58 @@
+# push 到 main 部署 production；手動觸發（任何分支）部署 preview。
+# 順序固定：檢查 secrets → typecheck / test → D1 migration → App → Web。
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_ENV: ${{ github.event_name == 'push' && 'production' || 'preview' }}
+    # 每個環境同時只跑一個部署；排隊等待，不取消進行中的部署
+    concurrency:
+      group: deploy-${{ github.event_name == 'push' && 'production' || 'preview' }}
+      cancel-in-progress: false
+    steps:
+      - name: 檢查必要的 secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::缺少 GitHub secret ${name}，請到 Settings > Secrets and variables > Actions 設定後重跑"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+
+      - run: bun run typecheck
+      - run: bun run test
+
+      - name: 套用 D1 migration（${{ env.DEPLOY_ENV }}）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun run "db:migrate:${DEPLOY_ENV}"
+      - name: 部署 App Worker（${{ env.DEPLOY_ENV }}）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun run "deploy:app:${DEPLOY_ENV}"
+      - name: 建置並部署 Web Worker（${{ env.DEPLOY_ENV }}）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun run "deploy:web:${DEPLOY_ENV}"

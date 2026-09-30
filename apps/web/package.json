@@ -1,0 +1,27 @@
+{
+  "name": "@storefront/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "wrangler types --strict-vars=false -c wrangler.jsonc -c ../app/wrangler.jsonc && astro check",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro build && wrangler dev -c dist/server/wrangler.json -c ../app/wrangler.jsonc --persist-to ../../.wrangler/state",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "deploy:preview": "CLOUDFLARE_ENV=preview astro build && wrangler deploy",
+    "deploy:production": "CLOUDFLARE_ENV=production astro build && wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.3",
+    "astro": "^7.3.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@storefront/app": "workspace:*",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "typescript": "^6",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.144.0"
+  }
+}

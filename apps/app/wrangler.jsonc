@@ -1,0 +1,62 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "storefront-app",
+  "main": "src/entrypoint.ts",
+  "compatibility_date": "2026-08-01",
+  // 只給 Web Worker 經 Service Binding 呼叫，不對外公開（無 workers.dev、無 routes）
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  // Cloudflare Access 驗簽設定，純文字變數、不是 secret。vars 不會被 env 繼承，各環境自己宣告。
+  // 空字串 = 尚未設定，管理 RPC 一律 fail closed（unauthorized）。
+  // 頂層只給本機開發與測試：本機值由 `bun run admin:dev-token` 寫進 .dev.vars，測試由 vitest.config.ts 注入。
+  // ACCESS_JWKS_JSON（內嵌 JWKS）只允許出現在本機 .dev.vars，preview / production 不得定義。
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "storefront",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // d1_databases 不會被 env 繼承，各環境必須自己宣告；Worker 名稱由 wrangler 加上 -<env> 後綴
+  // （storefront-app-preview / storefront-app-production）。頂層（無 env）維持本機開發與測試用。
+  // 標示 REPLACE_WITH_ 的值需要真實的 Cloudflare 帳號資源，部署前必須填入。
+  "env": {
+    "preview": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "vars": {
+        "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
+        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "storefront-preview",
+          "database_id": "REPLACE_WITH_PREVIEW_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    },
+    "production": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "vars": {
+        "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
+        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "storefront-production",
+          "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
+}

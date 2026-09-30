@@ -1,0 +1,22 @@
+{
+  "name": "storefront",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
+    "test:coverage": "bun run --filter '*' test:coverage",
+    "dev": "bun run --filter @storefront/web dev",
+    "db:migrate": "bun run --filter @storefront/app db:migrate:local",
+    "admin:dev-token": "bun run --filter @storefront/app admin:dev-token",
+    "preview": "bun run --filter @storefront/web preview",
+    "db:migrate:preview": "bun run --filter @storefront/app db:migrate:preview",
+    "deploy:app:preview": "bun run --filter @storefront/app deploy:preview",
+    "deploy:web:preview": "bun run --filter @storefront/web deploy:preview",
+    "db:migrate:production": "bun run --filter @storefront/app db:migrate:production",
+    "deploy:app:production": "bun run --filter @storefront/app deploy:production",
+    "deploy:web:production": "bun run --filter @storefront/web deploy:production"
+  }
+}

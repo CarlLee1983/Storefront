@@ -1,0 +1,2 @@
+# 複製成 .dev.vars（已 gitignore）。目前沒有需要手填的秘密。
+# 本機 /admin 所需的 Access 設定由 `bun run admin:dev-token` 自動寫入 apps/app/.dev.vars 與 apps/web/.dev.vars。

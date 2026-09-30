@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "storefront-web",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "assets": { "directory": "./dist", "binding": "ASSETS" },
+  // 只經 Service Binding RPC 呼叫 App Worker；這個 Worker 沒有 D1 binding
+  "services": [
+    { "binding": "APP", "service": "storefront-app", "entrypoint": "AppEntrypoint" }
+  ],
+  // services 不會被 env 繼承；各環境的 Web 只綁同環境的 App Worker（名稱含 -<env> 後綴）。
+  // 部署環境只從自訂網域對外，關閉 workers.dev：Access 只保護自訂網域上的 /admin，
+  // workers.dev 網址會繞過它。標示 REPLACE_WITH_ 的網域部署前必須填入。
+  "env": {
+    "preview": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "REPLACE_WITH_PREVIEW_DOMAIN", "custom_domain": true }],
+      "services": [
+        { "binding": "APP", "service": "storefront-app-preview", "entrypoint": "AppEntrypoint" }
+      ]
+    },
+    "production": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "REPLACE_WITH_PRODUCTION_DOMAIN", "custom_domain": true }],
+      "services": [
+        { "binding": "APP", "service": "storefront-app-production", "entrypoint": "AppEntrypoint" }
+      ]
+    }
+  }
+}

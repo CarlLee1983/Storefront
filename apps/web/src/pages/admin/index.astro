@@ -1,0 +1,80 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import { describeCreateFailure, formToRecord, productFormToInput, type Failure } from "../../admin/product-form";
+import Layout from "../../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let failure: Failure | undefined;
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = formToRecord(form);
+  const result = await env.APP.createProduct(jwt, productFormToInput(form));
+  if (result.ok) return Astro.redirect("/admin?saved=created", 303);
+  if (result.reason === "unauthorized") unauthorized = true;
+  else failure = describeCreateFailure(result);
+}
+
+const products = unauthorized ? null : await env.APP.listProductsForAdmin(jwt);
+if (unauthorized || (products && !products.ok)) Astro.response.status = 403;
+const saved = Astro.url.searchParams.get("saved") === "created";
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+
+<Layout title="商品管理" admin>
+  {
+    Astro.response.status === 403 ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        {saved && <p role="status">已新增商品。</p>}
+        {products?.ok && products.data.length === 0 && <p>目前沒有商品。</p>}
+        {
+          products?.ok && products.data.length > 0 && (
+            <table>
+              <thead>
+                <tr><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>狀態</th></tr>
+              </thead>
+              <tbody>
+                {products.data.map((p) => (
+                  <tr>
+                    <td>{p.name}</td>
+                    <td>{p.description}</td>
+                    <td>{priceFormat.format(p.priceTwd)}</td>
+                    <td>{p.listed ? "上架中" : "已下架"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        }
+        <h2>新增商品</h2>
+        {failure && <p class="error" role="alert">{failure.message}</p>}
+        <form method="post">
+          <label>
+            名稱
+            <input name="name" value={submitted.name ?? ""} required />
+            {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            說明
+            <textarea name="description" rows="3">{submitted.description ?? ""}</textarea>
+            {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            單價（新台幣整數元）
+            <input name="priceTwd" type="number" min="1" step="1" value={submitted.priceTwd ?? ""} required />
+            {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <button type="submit">新增商品</button>
+        </form>
+      </>
+    )
+  }
+</Layout>
