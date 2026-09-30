@@ -4,9 +4,9 @@ import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
-import { selectOrderCustomerEmail, selectOrdersForAdmin } from "../orders/admin-queries";
+import { selectOrdersForAdmin } from "../orders/admin-queries";
 import { orderIdInput } from "../orders/input";
-import { markOrderShipped, orderExists, selectOrderById } from "../orders/queries";
+import { markOrderShipped, orderExists, selectOrderForAdmin } from "../orders/queries";
 import { SHIPPED } from "../orders/schema";
 import { selectOrderPaymentSummaries } from "../payments/queries";
 import type { Clock } from "../shared/clock";
@@ -85,9 +85,9 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, adjustStockInput, input, (_actor, { id, delta }) => adjustOnHand(db, id, delta));
     },
 
-    /** 所有訂單，可依訂單狀態篩選；新的在前。`input` 可省略（不篩選）。 */
+    /** 所有訂單，可依訂單狀態篩選；新的在前，最多 200 筆。 */
     listOrdersForAdmin(jwt: unknown, input: unknown) {
-      return authorized(jwt, listOrdersInput, input ?? {}, async (_actor, { status }) => ok(await selectOrdersForAdmin(db, status)));
+      return authorized(jwt, listOrdersInput, input, async (_actor, { status }) => ok(await selectOrdersForAdmin(db, status)));
     },
 
     /**
@@ -107,11 +107,9 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */
     getOrderForAdmin(jwt: unknown, input: unknown) {
       return authorized(jwt, orderIdInput, input, async (_actor, { orderId }) => {
-        const order = await selectOrderById(db, orderId);
-        const customerEmail = await selectOrderCustomerEmail(db, orderId);
-        if (!order || customerEmail === undefined) return fail("order_not_found");
-        const payments = await selectOrderPaymentSummaries(db, clock.now(), orderId);
-        return ok({ ...order, customerEmail, payments });
+        const order = await selectOrderForAdmin(db, orderId);
+        if (!order) return fail("order_not_found");
+        return ok({ ...order, payments: await selectOrderPaymentSummaries(db, clock.now(), orderId) });
       });
     },
   };

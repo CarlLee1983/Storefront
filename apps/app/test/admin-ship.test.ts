@@ -53,6 +53,23 @@ describe("管理員出貨", () => {
     expect(await detailOf(orderId)).toMatchObject({ status: "paid", trackingNumber: null });
   });
 
+  it.each(["TW\n123", "TW\t123", "TW\u0000123", "單號123"])("物流單號含控制字元或非 ASCII（%j）回 invalid_input，訂單不動", async (trackingNumber) => {
+    const { orderId } = await paidOrder();
+
+    const result = await app.shipOrder(await mintAccessJwt(), { orderId, trackingNumber });
+
+    expect(result).toMatchObject({ ok: false, reason: "invalid_input", fields: { trackingNumber: [expect.any(String)] } });
+    expect(await detailOf(orderId)).toMatchObject({ status: "paid", trackingNumber: null });
+  });
+
+  it("物流單號可含空格與常見符號（可列印 ASCII）", async () => {
+    const { orderId } = await paidOrder();
+
+    await app.shipOrder(await mintAccessJwt(), { orderId, trackingNumber: "TW-123_456/AB 7" });
+
+    expect(await detailOf(orderId)).toMatchObject({ trackingNumber: "TW-123_456/AB 7" });
+  });
+
   it.each(["pending_payment", "expired", "cancelled"])("%s 的訂單不能出貨：order_not_shippable，狀態不變", async (status) => {
     const cookie = await signInCustomer("alice");
     const { orderId } = await placeMugOrder(cookie);

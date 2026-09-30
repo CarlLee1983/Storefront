@@ -32,7 +32,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               <td><a href={`/orders/${order.id}`}>#{order.id}</a></td>
               <td>{formatDateTime(order.createdAt)}</td>
               <td>{orderStatusLabel(order.status)}</td>
-              <td>{order.trackingNumber ?? ""}</td>
+              <td>{order.status === "shipped" ? (order.trackingNumber ?? "（未附）") : ""}</td>
               <td>NT$ {priceFormat.format(order.totalTwd)}</td>
             </tr>
           ))}

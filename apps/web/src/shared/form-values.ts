@@ -14,3 +14,8 @@ export function toNumber(value: unknown): number {
 export function toText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
+
+/** 表單目前的欄位值，驗證失敗時回填。 */
+export function formToRecord(form: FormData): Record<string, string> {
+  return Object.fromEntries([...form.entries()].map(([key, value]) => [key, toText(value)]));
+}

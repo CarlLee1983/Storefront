@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel } from "./labels";
+import { formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel } from "./labels";
 
 describe("orderStatusNote", () => {
   it("已逾期說明保留已釋放；已取消說明是終點", () => {
@@ -61,5 +61,21 @@ describe("parseOrderId", () => {
 
   it.each([[undefined], [""], ["0"], ["-1"], ["1.5"], ["abc"], ["01"]])("%s 不是訂單編號", (value) => {
     expect(parseOrderId(value)).toBeNull();
+  });
+});
+
+describe("shipmentSummary", () => {
+  const shippedAt = Date.UTC(2026, 9, 1, 6, 30, 0);
+
+  it("有物流單號：出貨時間加物流單號", () => {
+    expect(shipmentSummary(shippedAt, "TW123")).toBe(`出貨時間：${formatDateTime(shippedAt)}；物流單號：TW123`);
+  });
+
+  it("沒附物流單號：顯示（未附）", () => {
+    expect(shipmentSummary(shippedAt, null)).toBe(`出貨時間：${formatDateTime(shippedAt)}；物流單號：（未附）`);
+  });
+
+  it("沒有出貨時間（不應發生）：只顯示物流單號，不壞掉", () => {
+    expect(shipmentSummary(null, null)).toBe("物流單號：（未附）");
   });
 });

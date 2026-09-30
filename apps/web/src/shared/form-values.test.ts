@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toNumber, toText } from "./form-values";
+import { formToRecord, toNumber, toText } from "./form-values";
 
 describe("toNumber", () => {
   it("數字字串轉成數字", () => {
@@ -28,5 +28,15 @@ describe("toText", () => {
   it("非字串（欄位不存在、檔案）轉成空字串", () => {
     expect(toText(null)).toBe("");
     expect(toText(new File([], "a"))).toBe("");
+  });
+});
+
+describe("formToRecord", () => {
+  it("轉成欄位名稱到字串的對照，供驗證失敗時回填", () => {
+    const form = new FormData();
+    form.set("name", "馬克杯");
+    form.set("priceTwd", "0");
+
+    expect(formToRecord(form)).toEqual({ name: "馬克杯", priceTwd: "0" });
   });
 });

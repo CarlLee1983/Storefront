@@ -13,7 +13,13 @@ export interface AdminOrderSummary {
   createdAt: number;
 }
 
-/** 所有顧客的訂單，新的在前；`status` 給了就只列該狀態。 */
+/**
+ * 清單只取最新這麼多筆：不分頁的清單會隨訂單數無限長，超過這個量級（幾百張）就該做分頁或搜尋，
+ * 那不在 #12 的範圍；門檻先擋住單次回應與頁面失控。
+ */
+export const ADMIN_ORDER_LIST_LIMIT = 200;
+
+/** 所有顧客的訂單，新的在前，最多 `ADMIN_ORDER_LIST_LIMIT` 筆；`status` 給了就只列該狀態。 */
 export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: OrderStatus): Promise<AdminOrderSummary[]> {
   return db
     .select({
@@ -24,17 +30,9 @@ export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: Order
       createdAt: orders.createdAt,
     })
     .from(orders)
+    // 顧客不會被刪除（Better Auth 帳號不提供刪除），訂單一定對得到顧客，所以 innerJoin 不會漏掉訂單
     .innerJoin(user, eq(user.id, orders.customerId))
     .where(status === undefined ? undefined : eq(orders.status, status))
-    .orderBy(desc(orders.id));
-}
-
-/** 訂單所屬顧客的 email；訂單不存在回 undefined。 */
-export async function selectOrderCustomerEmail(db: DrizzleD1Database, orderId: number): Promise<string | undefined> {
-  const [row] = await db
-    .select({ email: user.email })
-    .from(orders)
-    .innerJoin(user, eq(user.id, orders.customerId))
-    .where(eq(orders.id, orderId));
-  return row?.email;
+    .orderBy(desc(orders.id))
+    .limit(ADMIN_ORDER_LIST_LIMIT);
 }

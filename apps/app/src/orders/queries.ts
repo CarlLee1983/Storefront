@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { user } from "../auth/schema";
 import { products } from "../catalog/schema";
 import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/stock";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
@@ -128,37 +129,43 @@ export async function selectRequestHash(db: DrizzleD1Database, customerId: strin
 
 /** 顧客自己的訂單（含訂單明細，名稱與單價都是下單當時的快照），新的在前；`scope` 再收窄到某一張。永遠限定顧客，看不到別人的。 */
 export async function selectOrders(db: DrizzleD1Database, customerId: string, scope?: OrderScope): Promise<OrderView[]> {
-  return selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)));
+  const views = await selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)));
+  // 顧客不需要（也不回傳）自己的 email
+  return views.map(({ customerEmail: _customerEmail, ...view }) => view);
 }
 
-/** 管理員讀單張訂單（不限顧客）；不存在回 undefined。 */
-export async function selectOrderById(db: DrizzleD1Database, orderId: number): Promise<OrderView | undefined> {
+/** 管理員讀單張訂單（不限顧客），連同顧客 email；不存在回 undefined。 */
+export async function selectOrderForAdmin(db: DrizzleD1Database, orderId: number): Promise<(OrderView & { customerEmail: string }) | undefined> {
   const [view] = await selectOrderViews(db, eq(orders.id, orderId));
   return view;
 }
 
 /** 訂單視圖的共同查詢：範圍（誰的、哪一張）由呼叫端的 `where` 決定。 */
-async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): Promise<OrderView[]> {
+async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): Promise<(OrderView & { customerEmail: string })[]> {
   const rows = await db
     .select({
       order: orders,
+      customerEmail: user.email,
       productId: orderLines.productId,
       productName: orderLines.productName,
       quantity: orderLines.quantity,
       unitPriceTwd: orderLines.unitPriceTwd,
     })
     .from(orders)
+    // 顧客不會被刪除（Better Auth 帳號不提供刪除），訂單一定對得到顧客，所以 innerJoin 不會漏掉訂單
+    .innerJoin(user, eq(user.id, orders.customerId))
     // 用 left join：正常情況每張訂單都有明細，但若有殘留的空訂單，要讓它在讀取時看得見，而不是被 join 悄悄藏起來
     .leftJoin(orderLines, eq(orderLines.orderId, orders.id))
     .where(where)
     .orderBy(desc(orders.id), asc(orderLines.id));
 
-  const views = new Map<number, OrderView>();
-  for (const { order, ...line } of rows) {
+  const views = new Map<number, OrderView & { customerEmail: string }>();
+  for (const { order, customerEmail, ...line } of rows) {
     let view = views.get(order.id);
     if (!view) {
       view = {
         id: order.id,
+        customerEmail,
         status: order.status,
         totalTwd: order.totalTwd,
         shippingInfo: { name: order.shippingName, phone: order.shippingPhone, address: order.shippingAddress },

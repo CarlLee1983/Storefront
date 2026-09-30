@@ -11,6 +11,10 @@ const app = exports.default;
 describe("管理員訂單清單", () => {
   beforeEach(resetDb);
 
+  it("沒有任何訂單時回空清單", async () => {
+    expect(await app.listOrdersForAdmin(await mintAccessJwt(), {})).toEqual({ ok: true, data: [] });
+  });
+
   it("列出所有顧客的訂單，新的在前，含顧客 email、總金額、狀態與成立時間", async () => {
     const alice = await signInCustomer("alice");
     const bob = await signInCustomer("bob");

@@ -4,10 +4,10 @@ import { readAccessJwt } from "../../admin/access-jwt";
 import {
   describeFailure,
   dispatchProductForm,
-  formToRecord,
   productFormToInput,
   type Failure,
 } from "../../admin/product-form";
+import { formToRecord } from "../../shared/form-values";
 import Layout from "../../layouts/Layout.astro";
 
 export const prerender = false;

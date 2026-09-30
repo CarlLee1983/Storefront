@@ -46,11 +46,6 @@ export function dispatchProductForm(form: FormData): ProductFormDispatch {
   return { kind: "listing", action: intent, id };
 }
 
-/** 表單目前的欄位值，驗證失敗時回填。 */
-export function formToRecord(form: FormData): Record<string, string> {
-  return Object.fromEntries([...form.entries()].map(([key, value]) => [key, toText(value)]));
-}
-
 export interface Failure {
   message: string;
   /** 欄位名稱 → 錯誤訊息（訊息由 App 的驗證產生，已是可顯示的文字）。 */

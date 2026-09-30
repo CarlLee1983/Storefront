@@ -48,6 +48,8 @@ const trackingNumber = z
   .string({ error: "物流單號必須是文字" })
   .trim()
   .max(MAX_TRACKING_NUMBER_LENGTH, `物流單號不可超過 ${MAX_TRACKING_NUMBER_LENGTH} 個字`)
+  // 只收可列印 ASCII（含空格）：擋掉換行與控制字元，物流單號本來就只有英數與符號
+  .regex(/^[\x20-\x7E]*$/, "物流單號只能包含英數字與一般符號")
   .transform((value) => (value === "" ? null : value))
   .optional()
   .transform((value) => value ?? null);

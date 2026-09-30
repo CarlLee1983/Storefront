@@ -33,6 +33,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           </label>
           <button type="submit">篩選</button>
         </form>
+        <p>只顯示最新 200 筆訂單。</p>
         {orders.data.length === 0 && <p>沒有符合的訂單。</p>}
         {
           orders.data.length > 0 && (

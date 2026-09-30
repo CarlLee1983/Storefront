@@ -2,9 +2,9 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
-import { formToRecord } from "../../../admin/product-form";
 import Layout from "../../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel, parseOrderId, paymentStatusLabel } from "../../../orders/labels";
+import { formToRecord } from "../../../shared/form-values";
+import { formatDateTime, orderStatusLabel, parseOrderId, paymentStatusLabel, shipmentSummary } from "../../../orders/labels";
 
 export const prerender = false;
 
@@ -28,16 +28,18 @@ if (orderId !== null && Astro.request.method === "POST") {
 const found = orderId === null || unauthorized ? null : await env.APP.getOrderForAdmin(jwt, { orderId });
 if (unauthorized || (found && !found.ok && found.reason === "unauthorized")) Astro.response.status = 403;
 const order = found?.ok ? found.data : undefined;
-if (Astro.response.status !== 403 && !order) Astro.response.status = 404;
+// 頁面的三種呈現，由這一處決定；狀態碼與下面的模板都看它
+const view: "forbidden" | "not_found" | "ok" = Astro.response.status === 403 ? "forbidden" : order ? "ok" : "not_found";
+if (view === "not_found") Astro.response.status = 404;
 const shipped = Astro.url.searchParams.get("saved") === "shipped";
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <Layout title={order ? `訂單 #${order.id}` : "訂單"} admin>
   {
-    Astro.response.status === 403 ? (
+    view === "forbidden" ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
-    ) : !order ? (
+    ) : view === "not_found" || !order ? (
       <p class="error" role="alert">找不到這張訂單。<a href="/admin/orders">回訂單管理</a></p>
     ) : (
       <>
@@ -46,12 +48,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         <p>顧客：{order.customerEmail}</p>
         <p>成立時間：{formatDateTime(order.createdAt)}</p>
         {
-          order.status === "shipped" && (
-            <p>
-              出貨時間：{order.shippedAt !== null && formatDateTime(order.shippedAt)}；
-              物流單號：{order.trackingNumber ?? "（未附）"}
-            </p>
-          )
+          order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
         }
         {
           order.status === "paid" && (

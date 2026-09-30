@@ -9,7 +9,7 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "已取消",
 };
 
-/** 五種訂單狀態的代碼（後台篩選用），順序即顯示順序。 */
+/** 五種訂單狀態的代碼（後台篩選用），順序即顯示順序。唯一來源是 App 端的 `ORDER_STATUSES`（apps/app/src/orders/schema.ts），新增狀態要兩邊一起改。 */
 export const ORDER_STATUS_CODES = Object.keys(STATUS_LABELS);
 
 export function orderStatusLabel(status: string): string {
@@ -50,6 +50,12 @@ const dateTimeFormat = new Intl.DateTimeFormat("zh-TW", {
 /** UTC epoch 毫秒 → 台北時間的日期時間文字。 */
 export function formatDateTime(epochMs: number): string {
   return dateTimeFormat.format(epochMs);
+}
+
+/** 已出貨訂單的出貨資訊一行文字（後台與顧客頁共用）；沒附物流單號顯示「（未附）」。 */
+export function shipmentSummary(shippedAt: number | null, trackingNumber: string | null): string {
+  const time = shippedAt === null ? "" : `出貨時間：${formatDateTime(shippedAt)}；`;
+  return `${time}物流單號：${trackingNumber ?? "（未附）"}`;
 }
 
 /** 網址上的訂單編號；不是正整數就回傳 null（頁面顯示找不到）。 */
