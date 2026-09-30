@@ -6,7 +6,8 @@ import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import type { ProductState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
-import { orderLines, orders, PENDING_PAYMENT, type OrderStatus } from "./schema";
+import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, type OrderStatus } from "./schema";
+import { canTransitionTo } from "./transitions";
 
 export interface CheckoutRequest extends CheckoutInput {
   customerId: string;
@@ -158,4 +159,50 @@ export async function selectOrders(db: DrizzleD1Database, customerId: string, sc
     }
   }
   return [...views.values()];
+}
+
+/**
+ * 顧客取消自己的待付款訂單：單一條件式 UPDATE，是否成功由受影響列數判斷（不先讀再寫）。
+ * 條件含顧客編號與待付款狀態；與 Cron 逾期並行時，先落地的一方贏，另一方影響 0 列。
+ * 回傳 false 時不知道原因（別人的、不存在、或已不是待付款），由呼叫端再讀一次區分。
+ *
+ * 注意：這裡不處理「進行中的付款要先失效」，那是 #11 的範圍。
+ */
+export async function cancelPendingOrder(db: DrizzleD1Database, customerId: string, orderId: number): Promise<boolean> {
+  const rows = await db
+    .update(orders)
+    .set({ status: CANCELLED })
+    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), canTransitionTo(CANCELLED)))
+    .returning({ id: orders.id });
+  return rows.length > 0;
+}
+
+/** 顧客自己的某張訂單的 `{ id, status }`（不讀明細）；別人的或不存在回 undefined。 */
+export async function selectOrderStatus(
+  db: DrizzleD1Database,
+  customerId: string,
+  orderId: number,
+): Promise<{ id: number; status: OrderStatus } | undefined> {
+  const [row] = await db
+    .select({ id: orders.id, status: orders.status })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId)));
+  return row;
+}
+
+/**
+ * 把「待付款且付款期限 ≤ 有效時間」的訂單轉為已逾期，回傳轉換筆數。
+ * 條件與轉換在同一句 UPDATE：是否逾期由語句在寫入當下判定，不先 SELECT 逾期清單再逐筆寫，
+ * 所以重跑、同時跑兩次、或與顧客取消並行，每張訂單都只會被一個動作轉換一次，保留也只釋放一次。
+ * 保留隨狀態改變自然釋放（見 `catalog/stock.ts`），這裡不動訂單明細。
+ * 時間用高水位的有效時間（Holdfast ADR 0011），`now` 只用來推進高水位。
+ */
+export async function markOverdueOrdersExpired(d1: D1Database, now: number): Promise<number> {
+  const [result] = await batchAtEffectiveNow(d1, now, [
+    sql`
+      UPDATE orders SET status = ${EXPIRED}
+      WHERE ${canTransitionTo(EXPIRED)} AND payment_deadline <= ${effectiveNow}
+    `,
+  ]);
+  return result!.meta.changes;
 }
