@@ -1,0 +1,79 @@
+---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../auth/customer";
+import { checkoutEntry } from "../../checkout/entry";
+import Layout from "../../layouts/Layout.astro";
+import { formatDateTime, orderStatusLabel, parseOrderId } from "../../orders/labels";
+
+export const prerender = false;
+
+// 訂單只給顧客本人：未登入導去登入；別人的訂單與不存在的訂單一樣顯示找不到
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+
+const orderId = parseOrderId(Astro.params.id);
+const found =
+  orderId === null ? null : await env.APP.getMyOrder(Astro.request.headers.get("cookie") ?? "", { orderId });
+if (found && !found.ok && found.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+const order = found?.ok ? found.data : undefined;
+if (!order) Astro.response.status = 404;
+// 剛結帳成功導來這一頁：顯示成立訊息（清購物車與冪等鍵在下面的 client script）
+const placed = Astro.url.searchParams.get("placed") === "1";
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+
+<Layout title={order ? `訂單 #${order.id}` : "找不到訂單"} noindex>
+  {
+    !order ? (
+      <p class="error" role="alert">找不到這張訂單。<a href="/orders">回我的訂單</a></p>
+    ) : (
+      <>
+        {placed && <p role="status">訂單已成立，商品已為你保留。</p>}
+        <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
+        {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
+        <p>成立時間：{formatDateTime(order.createdAt)}</p>
+        <table>
+          <thead>
+            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
+          </thead>
+          <tbody>
+            {order.lines.map((line) => (
+              <tr>
+                <td>{line.productName}</td>
+                <td>NT$ {priceFormat.format(line.unitPriceTwd)}</td>
+                <td>{line.quantity}</td>
+                <td>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+        <h2>收件資訊</h2>
+        <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
+        <p>{order.shippingInfo.address}</p>
+        <p><a href="/orders">回我的訂單</a></p>
+      </>
+    )
+  }
+</Layout>
+
+<script>
+  import { emptyCart } from "../../cart/cart";
+  import { storageOf } from "../../cart/storage";
+  import { updateCart } from "../../cart/store";
+  import { clearIdempotencyKey, sessionStorageOf } from "../../checkout/idempotency";
+  import { takePlacedOrder } from "../../checkout/placed";
+  import { parseOrderId } from "../../orders/labels";
+
+  // 剛結帳成功導來這一頁（?placed=1）：只有這張訂單就是結帳頁記下的那張才清空購物車與冪等鍵（清完移除記錄）。
+  // 只看網址參數不算數；結帳失敗或重送時兩者都要保留
+  if (new URLSearchParams(location.search).get("placed") === "1") {
+    const session = sessionStorageOf(window);
+    if (takePlacedOrder(session, parseOrderId(location.pathname.split("/").pop()))) {
+      updateCart(storageOf(window), window, () => emptyCart);
+      clearIdempotencyKey(session);
+    }
+  }
+</script>

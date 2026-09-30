@@ -1,6 +1,11 @@
 ---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../auth/customer";
+import { describeCheckoutFailure, type CheckoutFailure } from "../checkout/failure";
 import { checkoutEntry } from "../checkout/entry";
+import { checkoutFormToInput } from "../checkout/request";
 import Layout from "../layouts/Layout.astro";
+import { toText } from "../shared/form-values";
 
 export const prerender = false;
 
@@ -9,8 +14,199 @@ const entry = checkoutEntry(Astro.locals.customer, Astro.url);
 if (entry.kind === "redirect") {
   return Astro.redirect(entry.location, 303);
 }
+
+let failure: CheckoutFailure | undefined;
+let placedOrderId: number | undefined;
+let resetKey = false;
+let submitted = { name: "", phone: "", address: "" };
+
+// 購物車只存在瀏覽器：client script 在送出前把明細與冪等鍵放進表單，這裡只轉交給 App 的 checkout RPC
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = { name: toText(form.get("name")), phone: toText(form.get("phone")), address: toText(form.get("address")) };
+  const result = await env.APP.checkout(Astro.request.headers.get("cookie") ?? "", checkoutFormToInput(form));
+  // 成功時不直接 303：要讓瀏覽器先記下這次成立的訂單編號，訂單頁才知道可以清空購物車（見下面的 script）
+  if (result.ok) placedOrderId = result.data.orderId;
+  // session 在填表期間失效：導回登入，登入後回到結帳（購物車還在瀏覽器）
+  if (!result.ok && result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+  if (!result.ok) failure = describeCheckoutFailure(result);
+  resetKey = !result.ok && result.reason === "idempotency_key_reused";
+}
+
+// 給 client script 的資料：逐筆問題（它才有購物車內容與名稱）、是否要換掉冪等鍵、剛成立的訂單編號。
+// JSON 裡只有數字、布林與固定字串，仍跳脫 `<` 以防萬一
+const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, placedOrderId }).replace(/</g, "\\u003c");
 ---
 
-<Layout title="結帳">
-  <p>結帳功能將在後續工單完成。</p>
+<Layout title="結帳" noindex>
+  {
+    placedOrderId !== undefined && (
+      <p role="status">
+        訂單已成立，正在前往訂單頁…沒有自動前往請<a href={`/orders/${placedOrderId}?placed=1`}>按這裡</a>。
+      </p>
+    )
+  }
+  <p id="checkout-empty" hidden>購物車是空的。<a href="/">去逛逛商品</a></p>
+  <div id="checkout-content" hidden={placedOrderId !== undefined}>
+    <table>
+      <thead>
+        <tr><th>商品</th><th>單價</th><th>數量</th><th>小計</th></tr>
+      </thead>
+      <tbody id="checkout-lines"></tbody>
+    </table>
+    <p>總金額：<strong>NT$ <span id="checkout-total">0</span></strong>（新台幣、含稅、免運）</p>
+
+    {failure && <p class="error" role="alert">{failure.message}</p>}
+    <ul id="checkout-issues" class="error"></ul>
+    <p id="checkout-issues-actions" hidden>
+      <button type="button" id="apply-price-changes">更新購物車為新價格</button>
+    </p>
+    <p id="checkout-notice" role="status" hidden></p>
+    <p id="checkout-storage-error" class="error" role="alert" hidden></p>
+
+    <form id="checkout-form" method="post">
+      <h2>收件資訊</h2>
+      {failure?.fields.shippingInfo?.map((m) => <p class="error">{m}</p>)}
+      {failure?.fields.idempotencyKey?.map((m) => <p class="error">{m}</p>)}
+      <label>
+        收件人姓名
+        <input name="name" value={submitted.name} required />
+      </label>
+      <label>
+        收件人電話
+        <input name="phone" type="tel" value={submitted.phone} required />
+      </label>
+      <label>
+        收件地址
+        <input name="address" value={submitted.address} required />
+      </label>
+      <input type="hidden" name="lines" />
+      <input type="hidden" name="idempotencyKey" />
+      <button type="submit" id="checkout-submit">送出訂單</button>
+    </form>
+  </div>
+  <script type="application/json" id="checkout-data" set:html={pageData} />
 </Layout>
+
+<script>
+  import { lineSubtotal, cartTotal, type Cart } from "../cart/cart";
+  import { loadCart, storageOf } from "../cart/storage";
+  import { SAVE_FAILED_MESSAGE } from "../cart/feedback";
+  import { updateCart } from "../cart/store";
+  import { applyPriceChanges, describeIssue, removeLines, type CheckoutIssue } from "../checkout/failure";
+  import { clearIdempotencyKey, getOrCreateIdempotencyKey, sessionStorageOf } from "../checkout/idempotency";
+  import { rememberPlacedOrder } from "../checkout/placed";
+  import { cartToCheckoutLines, checkoutFingerprint } from "../checkout/request";
+
+  const priceFormat = new Intl.NumberFormat("zh-TW");
+  const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
+  const pageData: { issues: CheckoutIssue[]; resetKey: boolean; placedOrderId?: number } = JSON.parse(
+    $("#checkout-data").textContent ?? "{}",
+  );
+
+  if (pageData.placedOrderId !== undefined) {
+    // 結帳成功：記下這張訂單的編號再前往訂單頁，訂單頁比對編號相符才清空購物車與冪等鍵
+    rememberPlacedOrder(sessionStorageOf(window), pageData.placedOrderId);
+    location.replace(`/orders/${pageData.placedOrderId}?placed=1`);
+  } else {
+    init();
+  }
+
+  function init() {
+  const form = $<HTMLFormElement>("#checkout-form");
+  let issues: CheckoutIssue[] = pageData.issues ?? [];
+  // 舊的冪等鍵帶著不同內容被拒：丟掉它，下一次送出用新鍵
+  if (pageData.resetKey) clearIdempotencyKey(sessionStorageOf(window));
+
+  const cell = (text: string) => {
+    const td = document.createElement("td");
+    td.textContent = text;
+    return td;
+  };
+
+  // 商品名稱來自 localStorage，一律用 textContent，不當 HTML
+  function renderIssues(cart: Cart) {
+    const items = issues.map((issue) => {
+      const li = document.createElement("li");
+      li.textContent = `${describeIssue(issue, cart.lines.find((line) => line.productId === issue.productId))} `;
+      if (issue.kind !== "price_changed") {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "移除";
+        remove.addEventListener("click", () => {
+          issues = issues.filter((other) => other !== issue);
+          change((current) => removeLines(current, [issue.productId]));
+        });
+        li.appendChild(remove);
+      }
+      return li;
+    });
+    $("#checkout-issues").replaceChildren(...items);
+    $("#checkout-issues-actions").hidden = !issues.some((issue) => issue.kind === "price_changed");
+  }
+
+  function render(cart: Cart) {
+    const empty = cart.lines.length === 0;
+    $("#checkout-empty").hidden = !empty;
+    $("#checkout-content").hidden = empty;
+    $("#checkout-total").textContent = priceFormat.format(cartTotal(cart));
+    $("#checkout-lines").replaceChildren(
+      ...cart.lines.map((line) => {
+        const row = document.createElement("tr");
+        for (const text of [
+          line.name,
+          `NT$ ${priceFormat.format(line.unitPriceTwd)}`,
+          String(line.quantity),
+          `NT$ ${priceFormat.format(lineSubtotal(line))}`,
+        ]) {
+          row.appendChild(cell(text));
+        }
+        return row;
+      }),
+    );
+    renderIssues(cart);
+  }
+
+  function change(fn: (cart: Cart) => Cart) {
+    const { cart, saved } = updateCart(storageOf(window), window, fn);
+    const error = $("#checkout-storage-error");
+    error.textContent = saved ? "" : SAVE_FAILED_MESSAGE;
+    error.hidden = saved;
+    render(cart);
+  }
+
+  // 更新為新價格：購物車不清空，價格變動的問題消失，顧客確認新總額後再送出
+  $("#apply-price-changes").addEventListener("click", () => {
+    const applied = issues.filter((issue) => issue.kind === "price_changed");
+    issues = issues.filter((issue) => issue.kind !== "price_changed");
+    change((cart) => applyPriceChanges(cart, applied));
+    const notice = $("#checkout-notice");
+    notice.textContent = "已更新為新價格，請確認總金額後再送出。";
+    notice.hidden = false;
+  });
+
+  // 送出前把購物車明細與冪等鍵放進表單；同一次結帳重送沿用 sessionStorage 裡的同一個鍵
+  form.addEventListener("submit", (event) => {
+    const cart = loadCart(storageOf(window));
+    if (cart.lines.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const lines = cartToCheckoutLines(cart);
+    const value = (name: string) => form.querySelector<HTMLInputElement>(`input[name=${name}]`)!.value;
+    // 內容（購物車、收件資訊）沒變就沿用同一個鍵；變了換新鍵
+    const key = getOrCreateIdempotencyKey(
+      sessionStorageOf(window),
+      () => crypto.randomUUID(),
+      checkoutFingerprint(lines, { name: value("name"), phone: value("phone"), address: value("address") }),
+    );
+    form.querySelector<HTMLInputElement>("input[name=lines]")!.value = JSON.stringify(lines);
+    form.querySelector<HTMLInputElement>("input[name=idempotencyKey]")!.value = key;
+    $<HTMLButtonElement>("#checkout-submit").disabled = true;
+  });
+  // 從瀏覽器的上一頁回來時恢復按鈕
+  window.addEventListener("pageshow", () => ($<HTMLButtonElement>("#checkout-submit").disabled = false));
+
+  render(loadCart(storageOf(window)));
+  }
+</script>

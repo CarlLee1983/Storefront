@@ -1,0 +1,42 @@
+---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../auth/customer";
+import { checkoutEntry } from "../../checkout/entry";
+import Layout from "../../layouts/Layout.astro";
+import { formatDateTime, orderStatusLabel } from "../../orders/labels";
+
+export const prerender = false;
+
+// 我的訂單只給顧客，與結帳同一條入口規則：未登入導去登入，登入後回到這一頁
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+
+const orders = await env.APP.listMyOrders(Astro.request.headers.get("cookie") ?? "");
+if (!orders.ok) return Astro.redirect(loginUrl(Astro.url), 303);
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+
+<Layout title="我的訂單" noindex>
+  {orders.data.length === 0 && <p>目前沒有訂單。<a href="/">去逛逛商品</a></p>}
+  {
+    orders.data.length > 0 && (
+      <table>
+        <thead>
+          <tr><th>訂單</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th></tr>
+        </thead>
+        <tbody>
+          {orders.data.map((order) => (
+            <tr>
+              <td><a href={`/orders/${order.id}`}>#{order.id}</a></td>
+              <td>{formatDateTime(order.createdAt)}</td>
+              <td>{orderStatusLabel(order.status)}</td>
+              <td>NT$ {priceFormat.format(order.totalTwd)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+</Layout>

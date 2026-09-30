@@ -1,7 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { products } from "./schema";
-import { availableQuantity } from "./stock";
+import { availableQuantity, reservedQuantity } from "./stock";
 
 interface ProductBase {
   id: number;
@@ -20,7 +20,9 @@ export interface AdminProductSummary extends ProductBase {
   listed: boolean;
   /** 在庫數（On Hand）。 */
   onHand: number;
-  /** 可售數量（Available）。 */
+  /** 保留數：待付款訂單的訂單明細數量總和。 */
+  reserved: number;
+  /** 可售數量（Available）= 在庫數 − 保留數。 */
   available: number;
 }
 
@@ -30,6 +32,7 @@ const summaryColumns = {
   description: products.description,
   priceTwd: products.priceTwd,
   onHand: products.onHand,
+  reserved: reservedQuantity(sql`${products.id}`).as("reserved"),
 };
 
 const adminColumns = { ...summaryColumns, listed: products.listed };
@@ -37,13 +40,13 @@ const adminColumns = { ...summaryColumns, listed: products.listed };
 type AdminRow = Omit<AdminProductSummary, "available">;
 
 function toAdminSummary(row: AdminRow): AdminProductSummary {
-  return { ...row, available: availableQuantity(row.onHand) };
+  return { ...row, available: availableQuantity(row.onHand, row.reserved) };
 }
 
 /** 前台清單：只列上架中的商品，依新增順序。 */
 export async function selectListedProducts(db: DrizzleD1Database): Promise<ProductSummary[]> {
   const rows = await db.select(summaryColumns).from(products).where(eq(products.listed, true)).orderBy(asc(products.id));
-  return rows.map(({ onHand, ...row }) => ({ ...row, purchasable: availableQuantity(onHand) > 0 }));
+  return rows.map(({ onHand, reserved, ...row }) => ({ ...row, purchasable: availableQuantity(onHand, reserved) > 0 }));
 }
 
 /** 後台清單：所有商品（含下架），依新增順序。 */

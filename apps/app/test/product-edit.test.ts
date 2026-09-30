@@ -107,7 +107,7 @@ describe("讀取單一商品（編輯頁用）", () => {
     const id = await createMug(jwt);
     expect(await app.getProductForAdmin(jwt, { id })).toEqual({
       ok: true,
-      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, listed: true, onHand: 0, available: 0 },
+      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, listed: true, onHand: 0, reserved: 0, available: 0 },
     });
 
     await app.unlistProduct(jwt, { id });
