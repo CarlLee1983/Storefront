@@ -1,11 +1,17 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { createAuth, type Auth } from "./auth/auth";
+import { AuthConfigError, parseAuthConfig } from "./auth/config";
+import { AUTH_PATH_PREFIX } from "./auth/paths";
+import { readCustomerSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { systemClock } from "./shared/clock";
 
 /**
  * App Worker 對外的介面：Web Worker 經 Service Binding 呼叫這些 RPC 方法。
- * 業務方法回傳 `Result`，業務拒絕以具名 reason 表達。`fetch` 沒有任何 HTTP 入口。
+ * 業務方法回傳 `Result`，業務拒絕以具名 reason 表達；`getCustomerSession` 是例外：
+ * 「不是顧客」是常態而不是拒絕，且要一併帶回 Set-Cookie，所以回傳 `CustomerSessionLookup`。
+ * `fetch` 只處理 `/api/auth/`，回傳 Better Auth 的 Response。
  */
 export class AppEntrypoint extends WorkerEntrypoint<Env> {
   #catalog() {
@@ -20,8 +26,40 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     });
   }
 
-  fetch(_request: Request): Response {
-    return new Response("Not Found", { status: 404 });
+  /**
+   * 顧客登入的設定在這裡才驗證，不在模組載入時：設定缺漏只讓 auth 路徑失敗，catalog 與管理 RPC 照常運作
+   * （Holdfast ADR 0008，https://github.com/CarlLee1983/Holdfast/blob/main/docs/adr/0008-better-auth-in-app-worker.md）。
+   * 失敗時記一行只含變數名稱的 log 再丟出。
+   */
+  #auth() {
+    try {
+      return createAuth(parseAuthConfig(this.env), this.env.DB);
+    } catch (error) {
+      if (error instanceof AuthConfigError) {
+        console.error(JSON.stringify({ event: "auth_config_invalid", error: error.message }));
+      }
+      throw error;
+    }
+  }
+
+  /** Web Worker 把 `/api/auth/*` 原封轉來；App 沒有其他 HTTP 入口。 */
+  fetch(request: Request): Promise<Response> | Response {
+    if (!new URL(request.url).pathname.startsWith(AUTH_PATH_PREFIX)) {
+      return new Response("Not Found", { status: 404 });
+    }
+    let auth: Auth;
+    try {
+      auth = this.#auth();
+    } catch (error) {
+      if (error instanceof AuthConfigError) return new Response("Service Unavailable", { status: 503 });
+      throw error;
+    }
+    return auth.handler(request);
+  }
+
+  /** 以瀏覽器的 cookie 換顧客資訊；不是顧客時 `customer` 為 null。`setCookies` 要原樣附加到回給瀏覽器的回應。 */
+  async getCustomerSession(cookie: string) {
+    return readCustomerSession(this.#auth(), cookie);
   }
 
   listProducts() {

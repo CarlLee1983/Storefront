@@ -3,6 +3,8 @@
   "name": "storefront-app",
   "main": "src/entrypoint.ts",
   "compatibility_date": "2026-08-01",
+  // Better Auth 需要 AsyncLocalStorage 與 node:crypto（Holdfast ADR 0008）
+  "compatibility_flags": ["nodejs_compat"],
   // 只給 Web Worker 經 Service Binding 呼叫，不對外公開（無 workers.dev、無 routes）
   "workers_dev": false,
   "preview_urls": false,
@@ -11,9 +13,13 @@
   // 空字串 = 尚未設定，管理 RPC 一律 fail closed（unauthorized）。
   // 頂層只給本機開發與測試：本機值由 `bun run admin:dev-token` 寫進 .dev.vars，測試由 vitest.config.ts 注入。
   // ACCESS_JWKS_JSON（內嵌 JWKS）只允許出現在本機 .dev.vars，preview / production 不得定義。
+  //
+  // BETTER_AUTH_URL 是瀏覽器看到的 Web Worker 公開 origin（OAuth redirect_uri 由它組成），同樣純文字、各環境自己宣告。
+  // 顧客登入的 secrets（BETTER_AUTH_SECRET、GOOGLE_*、LINE_*）不寫在這裡，見 README「顧客登入」。
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
+    "ACCESS_AUD": "",
+    "BETTER_AUTH_URL": "http://localhost:4321"
   },
   "d1_databases": [
     {
@@ -29,9 +35,12 @@
     "preview": {
       "workers_dev": false,
       "preview_urls": false,
+      // BETTER_AUTH_URL 是該環境 Web 的公開 origin，必須等於 apps/web/wrangler.jsonc 該環境的 routes 網域
+      // （OAuth callback 由它組成，須在 Google 與 LINE 後台登記 /api/auth/callback/{google,line}）
       "vars": {
         "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
-        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG"
+        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
+        "BETTER_AUTH_URL": "https://REPLACE_WITH_PREVIEW_DOMAIN"
       },
       "d1_databases": [
         {
@@ -45,9 +54,11 @@
     "production": {
       "workers_dev": false,
       "preview_urls": false,
+      // BETTER_AUTH_URL 同 preview：等於 apps/web/wrangler.jsonc production routes 的網域
       "vars": {
         "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
-        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG"
+        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
+        "BETTER_AUTH_URL": "https://REPLACE_WITH_PRODUCTION_DOMAIN"
       },
       "d1_databases": [
         {

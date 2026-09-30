@@ -1,0 +1,16 @@
+---
+import { checkoutEntry } from "../checkout/entry";
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 結帳只給顧客：未登入導去登入，登入後回到這一頁
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+---
+
+<Layout title="結帳">
+  <p>結帳功能將在後續工單完成。</p>
+</Layout>

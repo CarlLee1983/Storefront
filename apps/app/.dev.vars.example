@@ -1,2 +1,11 @@
-# 複製成 .dev.vars（已 gitignore）。目前沒有需要手填的秘密。
-# 本機 /admin 所需的 Access 設定由 `bun run admin:dev-token` 自動寫入 apps/app/.dev.vars 與 apps/web/.dev.vars。
+# 複製成 .dev.vars（已 gitignore）。本機 /admin 所需的 Access 設定由 `bun run admin:dev-token` 自動寫入 apps/app/.dev.vars 與 apps/web/.dev.vars。
+#
+# 顧客登入（Better Auth）：只有要在本機實際走 LINE / Google 登入時才需要填；不填時只有登入不可用（/api/auth/* 回 503），其餘頁面照常。
+# BETTER_AUTH_URL 本機預設 http://localhost:4321（wrangler.jsonc 的 vars），不必在這裡設定。
+# OAuth callback 需登記 http://localhost:4321/api/auth/callback/google 與 http://localhost:4321/api/auth/callback/line。
+# 至少 32 字元的隨機字串，例如 `openssl rand -base64 32`
+BETTER_AUTH_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+LINE_CHANNEL_ID=
+LINE_CHANNEL_SECRET=
