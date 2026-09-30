@@ -114,6 +114,17 @@ describe("主控頁送出 webhook POST /console/events/:id/send", () => {
     expect(new Set(webhooks.map((w) => w.body)).size).toBe(1);
   });
 
+  it("投遞不跟隨導向：對方回 302 只記錄 HTTP 302", async () => {
+    const webhooks = captureWebhooks(
+      () => new Response(null, { status: 302, headers: { Location: "http://169.254.169.254/" } }),
+    );
+    const { paymentId } = await createPayment();
+    await submitPayPage(paymentId, { outcome: "success", timing: "immediate" });
+
+    expect(webhooks[0]!.redirect).toBe("manual");
+    expect(await (await openConsole()).text()).toContain("HTTP 302");
+  });
+
   it("沒有認證回 401 且不送出", async () => {
     const webhooks = captureWebhooks();
     const { paymentId } = await createPayment();

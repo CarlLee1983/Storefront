@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const payments = sqliteTable("payments", {
   id: text("id").primaryKey(),
@@ -15,20 +15,25 @@ export const payments = sqliteTable("payments", {
     .default("pending"),
   createdAt: integer("created_at").notNull(),
   expiresAt: integer("expires_at").notNull(),
-  /** 建立付款時的測試旗標：下一次退款失敗（失敗一次即消耗，重試可成功）。 */
+  /** 開發主控頁切換的測試旗標：下一次退款失敗（失敗一次即消耗，重試可成功）。 */
   failNextRefund: integer("fail_next_refund", { mode: "boolean" }).notNull().default(false),
 });
 
-export const events = sqliteTable("events", {
-  id: text("id").primaryKey(),
-  paymentId: text("payment_id")
-    .notNull()
-    .references(() => payments.id),
-  type: text("type", { enum: ["payment.succeeded", "payment.failed", "payment.refunded"] }).notNull(),
-  /** 事件本文（JSON 字串）在建立時固定，重送逐字相同。 */
-  body: text("body").notNull(),
-  createdAt: integer("created_at").notNull(),
-});
+export const events = sqliteTable(
+  "events",
+  {
+    id: text("id").primaryKey(),
+    paymentId: text("payment_id")
+      .notNull()
+      .references(() => payments.id),
+    type: text("type", { enum: ["payment.succeeded", "payment.failed", "payment.refunded"] }).notNull(),
+    /** 事件本文（JSON 字串）在建立時固定，重送逐字相同。 */
+    body: text("body").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  // 一筆付款每種終局事件最多一個：成功、失敗、退款各只會發生一次，結構上不可能重複發事件
+  (table) => [uniqueIndex("events_payment_type_unique").on(table.paymentId, table.type)],
+);
 
 export const deliveries = sqliteTable("deliveries", {
   id: integer("id").primaryKey({ autoIncrement: true }),

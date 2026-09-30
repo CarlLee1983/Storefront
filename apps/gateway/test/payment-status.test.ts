@@ -21,7 +21,7 @@ describe("查詢付款 GET /v1/payments/:id", () => {
       status: 200,
       body: {
         ok: true,
-        data: { paymentId, status: "pending", amountTwd: 990, merchantReference: "order-7", expiresAt },
+        data: { paymentId, status: "pending", amountTwd: 990, merchantReference: "order-7", expiresAt, eventId: null },
       },
     });
   });
@@ -56,6 +56,43 @@ describe("查詢付款 GET /v1/payments/:id", () => {
     await submitPayPage(paymentId, { outcome: "success", timing: "immediate" });
 
     expect((await getStatus(paymentId)).body.data.status).toBe("succeeded");
+  });
+});
+
+describe("付款結果事件的 eventId（與 webhook 相同的冪等鍵）", () => {
+  beforeEach(resetDb);
+
+  it("成功、失敗後 eventId 等於 webhook 的 eventId；退款後換成 payment.refunded 的 eventId", async () => {
+    const webhooks = captureWebhooks();
+    const paid = await createPayment();
+    await submitPayPage(paid.paymentId, { outcome: "success", timing: "immediate" });
+    const failed = await createPayment();
+    await submitPayPage(failed.paymentId, { outcome: "failure", timing: "immediate" });
+
+    expect((await getStatus(paid.paymentId)).body.data.eventId).toBe(webhooks[0]!.event.eventId);
+    expect((await getStatus(failed.paymentId)).body.data.eventId).toBe(webhooks[1]!.event.eventId);
+
+    await api("POST", `/v1/payments/${paid.paymentId}/refund`);
+
+    expect((await getStatus(paid.paymentId)).body.data.eventId).toBe(webhooks[2]!.event.eventId);
+  });
+
+  it("延遲回呼還沒送出時，eventId 已經可以查到（之後 webhook 用同一個）", async () => {
+    const webhooks = captureWebhooks();
+    const { paymentId } = await createPayment();
+    await submitPayPage(paymentId, { outcome: "success", timing: "delayed" });
+
+    const eventId = (await getStatus(paymentId)).body.data.eventId;
+
+    expect(eventId).toMatch(/^evt_[0-9a-f]{32}$/);
+    expect(webhooks).toHaveLength(0);
+  });
+
+  it("取消而失效的付款沒有事件，eventId 是 null", async () => {
+    const { paymentId } = await createPayment();
+    await api("POST", `/v1/payments/${paymentId}/cancel`);
+
+    expect((await getStatus(paymentId)).body.data.eventId).toBeNull();
   });
 });
 

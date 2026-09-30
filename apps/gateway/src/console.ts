@@ -2,7 +2,8 @@ import { desc, eq, inArray } from "drizzle-orm";
 import type { Clock } from "./clock";
 import { escapeHtml, htmlResponse } from "./html";
 import { failure, safeEqual } from "./http";
-import { effectiveStatus, findPayment, makeDb } from "./payments";
+import type { GatewayConfig } from "./config";
+import { effectiveStatus, findPayment, makeDb, toggleFailNextRefund } from "./payments";
 import { deliveries, events, payments } from "./schema";
 import { deliverEvent } from "./webhooks";
 
@@ -71,6 +72,7 @@ async function renderConsole(env: Env, clock: Clock): Promise<Response> {
     return `<section>
 <h2><code>${escapeHtml(payment.id)}</code> — ${escapeHtml(effectiveStatus(payment, now))}</h2>
 <p>訂單參考：${escapeHtml(payment.merchantReference)}，NT$ ${escapeHtml(payment.amountTwd)}，失效時間 ${formatTime(payment.expiresAt)}</p>
+<form method="post" action="/console/payments/${escapeHtml(payment.id)}/toggle-refund-failure">下一次退款失敗：${payment.failNextRefund ? "是" : "否"} <button type="submit">切換</button></form>
 <table><thead><tr><th>事件</th><th>投遞紀錄</th><th></th></tr></thead><tbody>${eventItems}</tbody></table>
 </section>`;
   });
@@ -78,17 +80,18 @@ async function renderConsole(env: Env, clock: Clock): Promise<Response> {
   return htmlResponse(`<h1>模擬金流閘道主控頁</h1>\n${sections.join("\n") || "<p>還沒有付款。</p>"}`, "主控頁");
 }
 
-/** GET /console 與 POST /console/events/:id/send。 */
+/** GET /console、POST /console/events/:id/send、POST /console/payments/:id/toggle-refund-failure。 */
 export async function handleConsole(
   request: Request,
   pathname: string,
   env: Env,
-  config: { apiKey: string; webhookSecret: string },
+  config: GatewayConfig,
   clock: Clock,
 ): Promise<Response | undefined> {
   const send = /^\/console\/events\/([A-Za-z0-9_]+)\/send$/.exec(pathname);
+  const toggle = /^\/console\/payments\/([A-Za-z0-9_]+)\/toggle-refund-failure$/.exec(pathname);
   const isList = request.method === "GET" && pathname === "/console";
-  if (!isList && !(send && request.method === "POST")) return undefined;
+  if (!isList && !((send || toggle) && request.method === "POST")) return undefined;
 
   if (!(await hasBasicKey(request, config.apiKey))) return challenge();
   if (isList) return renderConsole(env, clock);
@@ -100,6 +103,12 @@ export async function handleConsole(
   }
 
   const db = makeDb(env);
+  if (toggle) {
+    const flag = await toggleFailNextRefund(db, toggle[1]!);
+    if (flag === undefined) return failure(404, "payment_not_found", "找不到這筆付款");
+    return new Response(null, { status: 303, headers: { Location: "/console" } });
+  }
+
   const event = (await db.select().from(events).where(eq(events.id, send![1]!)).limit(1))[0];
   const payment = event && (await findPayment(db, event.paymentId));
   if (!event || !payment) return failure(404, "event_not_found", "找不到這個事件");

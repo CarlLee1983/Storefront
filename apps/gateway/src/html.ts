@@ -27,6 +27,8 @@ ${body}
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "X-Frame-Options": "DENY",
+      // 只允許內嵌樣式；表單只能送回本站，或導向 returnUrl（任意 http(s) 網址，由呼叫端指定）
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' http: https:",
       "Cache-Control": "no-store",
     },
   });

@@ -1,7 +1,8 @@
 import type { Clock } from "./clock";
 import { escapeHtml, htmlResponse } from "./html";
-import { effectiveStatus, findPayment, makeDb, settlePending } from "./payments";
-import { deliverEvent, recordEvent } from "./webhooks";
+import { effectiveStatus, findPayment, makeDb } from "./payments";
+import { transitionWithEvent } from "./transitions";
+import { deliverEvent } from "./webhooks";
 
 const TITLE = "模擬金流閘道";
 
@@ -31,7 +32,8 @@ export async function showPayPage(paymentId: string, env: Env, clock: Clock): Pr
 <label><input type="radio" name="timing" value="immediate" checked> 立即回呼</label><br>
 <label><input type="radio" name="timing" value="delayed"> 延遲回呼（先不送，到 /console 手動送出）</label>
 </fieldset>
-<label><input type="checkbox" name="duplicate" value="on"> 重複回呼（立即回呼時，同一事件送兩次）</label>
+<label><input type="checkbox" name="duplicate" value="on"> 重複回呼（立即回呼時，同一事件送兩次）</label><br>
+<label><input type="checkbox" name="noRedirect" value="on"> 不導回（模擬顧客關閉視窗）</label>
 <p><button type="submit">送出</button></p>
 </form>`,
     TITLE,
@@ -50,7 +52,12 @@ export async function submitPayPage(
   const payment = await findPayment(db, paymentId);
   if (!payment) return PAYMENT_NOT_FOUND();
 
-  const form = await request.formData();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return notice("請從付款頁送出表單。", 400);
+  }
   const outcome = form.get("outcome");
   const timing = form.get("timing");
   if ((outcome !== "success" && outcome !== "failure") || (timing !== "immediate" && timing !== "delayed")) {
@@ -58,15 +65,34 @@ export async function submitPayPage(
   }
 
   const now = clock.now();
-  const settled = await settlePending(db, payment.id, outcome === "success" ? "succeeded" : "failed", now);
-  if (!settled) return PAYMENT_CLOSED(effectiveStatus(payment, now));
+  const succeeded = outcome === "success";
+  const event = await transitionWithEvent(
+    db,
+    payment,
+    {
+      from: ["pending"],
+      to: succeeded ? "succeeded" : "failed",
+      event: succeeded ? "payment.succeeded" : "payment.failed",
+      requireUnexpired: true,
+    },
+    now,
+  );
+  if (!event) {
+    // 讀取與轉換之間狀態可能被取消或逾時改掉，訊息以最新狀態為準
+    const latest = (await findPayment(db, payment.id)) ?? payment;
+    return PAYMENT_CLOSED(effectiveStatus(latest, now));
+  }
 
-  const event = await recordEvent(db, payment, outcome === "success" ? "payment.succeeded" : "payment.failed", now);
   if (timing === "immediate") {
+    // 刻意同步投遞（決定論，見 deliverEvent），不要改成 waitUntil
     const deliveries = form.get("duplicate") === "on" ? 2 : 1;
     for (let i = 0; i < deliveries; i++) {
       await deliverEvent(db, webhookSecret, clock, event, payment.webhookUrl);
     }
+  }
+
+  if (form.get("noRedirect") === "on") {
+    return htmlResponse(`<h1>${TITLE}</h1><p>付款已完成，您可以關閉此頁。</p>`, TITLE);
   }
 
   const returnUrl = new URL(payment.returnUrl);

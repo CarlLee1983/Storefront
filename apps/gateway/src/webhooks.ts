@@ -1,6 +1,5 @@
-import { desc, eq } from "drizzle-orm";
 import type { Clock } from "./clock";
-import type { Db, PaymentRow } from "./payments";
+import type { Db } from "./payments";
 import { deliveries, events } from "./schema";
 import { SIGNATURE_HEADER, signWebhook } from "./webhook-signature";
 
@@ -9,23 +8,15 @@ export type EventType = EventRow["type"];
 
 const DELIVERY_TIMEOUT_MS = 5_000;
 
-/** 建立事件並固定本文；重送時逐字重用同一份本文與 eventId。 */
-export async function recordEvent(db: Db, payment: PaymentRow, type: EventType, nowMs: number): Promise<EventRow> {
-  const id = `evt_${crypto.randomUUID().replaceAll("-", "")}`;
-  const body = JSON.stringify({
-    eventId: id,
-    type,
-    paymentId: payment.id,
-    merchantReference: payment.merchantReference,
-    amountTwd: payment.amountTwd,
-    occurredAt: nowMs,
-  });
-  const row: EventRow = { id, paymentId: payment.id, type, body, createdAt: nowMs };
-  await db.insert(events).values(row);
-  return row;
-}
-
-/** 投遞一次並記錄結果；對方回 2xx 才算送達，連線失敗或逾時不丟例外。 */
+/**
+ * 投遞一次並記錄結果；對方回 2xx 才算送達，連線失敗或逾時不丟例外。
+ *
+ * 呼叫端刻意在請求內同步 await 投遞，不用 ctx.waitUntil：這個閘道是測試用的模擬，
+ * 同步投遞讓「付款頁送出 → webhook 已送到」的順序是決定論的，測試與手動重現遲到／重複回呼才不會有競態。
+ * 不要把它「優化」成背景投遞。
+ *
+ * 不跟隨導向（redirect: "manual"）：webhookUrl 由呼叫端指定，跟隨 3xx 會讓閘道被導去內部網址。
+ */
 export async function deliverEvent(
   db: Db,
   webhookSecret: string,
@@ -44,6 +35,7 @@ export async function deliverEvent(
         [SIGNATURE_HEADER]: await signWebhook({ secret: webhookSecret, body: event.body, nowMs: attemptedAt }),
       },
       body: event.body,
+      redirect: "manual",
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
     statusCode = response.status;
@@ -53,8 +45,4 @@ export async function deliverEvent(
   const delivered = statusCode !== null && statusCode >= 200 && statusCode < 300;
   await db.insert(deliveries).values({ eventId: event.id, attemptedAt, statusCode, delivered, error });
   return { delivered };
-}
-
-export async function listDeliveries(db: Db, eventId: string) {
-  return db.select().from(deliveries).where(eq(deliveries.eventId, eventId)).orderBy(desc(deliveries.id));
 }

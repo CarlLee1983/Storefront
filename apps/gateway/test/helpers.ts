@@ -62,6 +62,7 @@ export interface CapturedWebhook {
   url: string;
   body: string;
   signature: string | null;
+  redirect: string;
   event: { eventId: string; type: string; paymentId: string; merchantReference: string; amountTwd: number; occurredAt: number };
 }
 
@@ -80,6 +81,7 @@ export function captureWebhooks(respond: () => Response | Promise<Response> = ()
       url: request.url,
       body,
       signature: request.headers.get("Gateway-Signature"),
+      redirect: init?.redirect ?? request.redirect,
       event: JSON.parse(body),
     });
     return respond();

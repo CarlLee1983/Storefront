@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { env } from "cloudflare:workers";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { verifyWebhookSignature } from "../src/webhook-signature";
 import { setNow } from "./clock";
 import { TEST_WEBHOOK_SECRET } from "./constants";
@@ -24,6 +25,15 @@ describe("付款頁 GET /pay/:id", () => {
     expect(html).toContain("NT$ 1280");
     for (const value of ["success", "failure", "immediate", "delayed"]) expect(html).toContain(`value="${value}"`);
     expect(html).toContain('name="duplicate"');
+    expect(html).toContain('name="noRedirect"');
+  });
+
+  it("所有頁面帶 CSP，允許表單送出與導回", async () => {
+    const { paymentId } = await createPayment();
+
+    const csp = (await send(`/pay/${paymentId}`)).headers.get("Content-Security-Policy");
+
+    expect(csp).toBe("default-src 'none'; style-src 'unsafe-inline'; form-action 'self' http: https:");
   });
 
   it("merchantReference 會被跳脫，不能注入 HTML", async () => {
@@ -120,6 +130,42 @@ describe("付款頁送出結果 POST /pay/:id", () => {
     expect(response.status).toBe(303);
     expect(await statusOf(paymentId)).toBe("succeeded");
     expect(webhooks).toHaveLength(0);
+  });
+
+  it("勾選「不導回」（模擬顧客關閉視窗）：不 303，只顯示可以關閉此頁；付款與 webhook 照常", async () => {
+    const webhooks = captureWebhooks();
+    const { paymentId } = await createPayment();
+
+    const response = await submitPayPage(paymentId, { outcome: "success", timing: "delayed", noRedirect: "on" });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(await response.text()).toContain("付款已完成，您可以關閉此頁");
+    expect(await statusOf(paymentId)).toBe("succeeded");
+    expect(webhooks).toHaveLength(0);
+  });
+
+  it("body 不是表單（例如 JSON）回 400，付款仍是 pending", async () => {
+    const { paymentId } = await createPayment();
+
+    const response = await send(`/pay/${paymentId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome: "success", timing: "immediate" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await statusOf(paymentId)).toBe("pending");
+  });
+
+  it("狀態轉換與事件在同一個 batch：寫入失敗時付款維持 pending，沒有半套狀態", async () => {
+    const { paymentId } = await createPayment();
+    vi.spyOn(env.DB, "batch").mockRejectedValue(new Error("D1 unavailable"));
+
+    await expect(submitPayPage(paymentId, { outcome: "success", timing: "immediate" })).rejects.toThrow();
+    vi.restoreAllMocks();
+
+    expect(await statusOf(paymentId)).toBe("pending");
   });
 
   it("每次付款的事件 ID 都不同", async () => {
