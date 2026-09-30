@@ -11,6 +11,16 @@ export function orderStatusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+const STATUS_NOTES: Record<string, string> = {
+  expired: "已超過付款期限，保留的商品已釋放。",
+  cancelled: "你已取消這張訂單，保留的商品已釋放，訂單不會再變更。",
+};
+
+/** 已逾期、已取消的補充說明（依 CONTEXT.md）；其他狀態沒有，回傳 null。 */
+export function orderStatusNote(status: string): string | null {
+  return STATUS_NOTES[status] ?? null;
+}
+
 const dateTimeFormat = new Intl.DateTimeFormat("zh-TW", {
   timeZone: "Asia/Taipei",
   dateStyle: "medium",

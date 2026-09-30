@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel, parseOrderId } from "../../orders/labels";
+import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId } from "../../orders/labels";
 
 export const prerender = false;
 
@@ -14,13 +14,23 @@ if (entry.kind === "redirect") {
 }
 
 const orderId = parseOrderId(Astro.params.id);
+const cookie = Astro.request.headers.get("cookie") ?? "";
+
+// 取消訂單（POST）：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期）也回本頁，讓顧客看到最新狀態
+if (orderId !== null && Astro.request.method === "POST") {
+  const cancelled = await env.APP.cancelOrder(cookie, { orderId });
+  if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+  if (cancelled.ok || cancelled.reason === "order_not_cancellable") return Astro.redirect(Astro.url.pathname, 303);
+}
+
 const found =
-  orderId === null ? null : await env.APP.getMyOrder(Astro.request.headers.get("cookie") ?? "", { orderId });
+  orderId === null ? null : await env.APP.getMyOrder(cookie, { orderId });
 if (found && !found.ok && found.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
 const order = found?.ok ? found.data : undefined;
 if (!order) Astro.response.status = 404;
 // 剛結帳成功導來這一頁：顯示成立訊息（清購物車與冪等鍵在下面的 client script）
 const placed = Astro.url.searchParams.get("placed") === "1";
+const statusNote = order ? orderStatusNote(order.status) : null;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -32,7 +42,15 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <>
         {placed && <p role="status">訂單已成立，商品已為你保留。</p>}
         <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
+        {statusNote && <p>{statusNote}</p>}
         {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
+        {
+          order.status === "pending_payment" && (
+            <form method="post">
+              <button type="submit">取消訂單</button>
+            </form>
+          )
+        }
         <p>成立時間：{formatDateTime(order.createdAt)}</p>
         <table>
           <thead>

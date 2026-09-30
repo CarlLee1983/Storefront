@@ -4,8 +4,9 @@ import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
-import { placeOrderIfAvailable, selectOrders, selectProductStates, selectRequestHash } from "./queries";
+import { cancelPendingOrder, expireOverdueOrders, placeOrderIfAvailable, selectOrders, selectProductStates, selectRequestHash } from "./queries";
 import { requestHash } from "./request-hash";
+import { CANCELLED } from "./schema";
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
 export type AuthenticateCustomer = (cookie: string) => Promise<string | null>;
@@ -56,6 +57,13 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       return fail("checkout_unavailable");
     },
 
+    /** Cron 入口：不需要顧客身分，只看付款期限；冪等，回傳這次轉為已逾期的筆數。 */
+    async expireOverdueOrders() {
+      const count = await expireOverdueOrders(d1, clock.now());
+      console.log(JSON.stringify({ event: "orders_expired", count }));
+      return count;
+    },
+
     async listMyOrders(cookie: unknown) {
       const customerId = await customerOf(cookie);
       if (!customerId) return unauthorized;
@@ -70,6 +78,26 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
 
       const [order] = await selectOrders(db, customerId, { orderId: parsed.data.orderId });
       return order ? ok(order) : fail("order_not_found");
+    },
+
+    /**
+     * 取消自己的待付款訂單（已取消是終點）。別人的或不存在的訂單一律 `order_not_found`，不洩漏存在與否；
+     * 自己的但不是待付款（已逾期、已取消、已付款、已出貨）回 `order_not_cancellable`。
+     * 尚未處理「進行中的付款要先失效」，那是 #11。
+     */
+    async cancelOrder(cookie: unknown, input: unknown) {
+      const customerId = await customerOf(cookie);
+      if (!customerId) return unauthorized;
+      const parsed = parseInput(orderIdInput, input);
+      if (!parsed.ok) return parsed;
+
+      const { orderId } = parsed.data;
+      if (await cancelPendingOrder(db, customerId, orderId)) {
+        console.log(JSON.stringify({ event: "order_cancelled", orderId }));
+        return ok({ orderId, status: CANCELLED });
+      }
+      const [order] = await selectOrders(db, customerId, { orderId });
+      return fail(order ? "order_not_cancellable" : "order_not_found");
     },
   };
 }

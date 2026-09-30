@@ -10,7 +10,13 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 /** 待付款：訂單的訂單明細在此狀態時，其數量就是「保留」（見 `catalog/stock.ts`）。 */
 export const PENDING_PAYMENT = "pending_payment" satisfies OrderStatus;
 
-export const orders = sqliteTable(
+/** 已逾期：付款期限過了仍未付款，由 Cron 轉入；遲到的付款成功仍可轉為已付款（ADR 0001）。 */
+export const EXPIRED = "expired" satisfies OrderStatus;
+
+/** 已取消：顧客在付款前主動終止，是終點。 */
+export const CANCELLED = "cancelled" satisfies OrderStatus;
+
+export const orders =sqliteTable(
   "orders",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),

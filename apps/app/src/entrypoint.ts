@@ -71,6 +71,11 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return readCustomerSession(this.#auth(), cookie);
   }
 
+  /** 每分鐘的 Cron（wrangler.jsonc 的 triggers）：把超過付款期限的待付款訂單轉為已逾期，釋放保留。冪等。 */
+  async scheduled(_controller: ScheduledController): Promise<void> {
+    await this.#orders().expireOverdueOrders();
+  }
+
   listProducts() {
     return this.#catalog().listProducts();
   }
@@ -86,6 +91,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   getMyOrder(cookie: string, input: unknown) {
     return this.#orders().getMyOrder(cookie, input);
+  }
+
+  cancelOrder(cookie: string, input: unknown) {
+    return this.#orders().cancelOrder(cookie, input);
   }
 
   // 管理 RPC：第一個參數是 Cloudflare Access 的原始 JWT，由 App 自行驗簽，
