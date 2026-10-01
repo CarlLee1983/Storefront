@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
+import { featureProduct } from "../harness/admin-featured";
 import { BASE_URL } from "../harness/constants";
 
 async function createProduct(admin: Page, name: string, stock: number) {
@@ -33,6 +34,8 @@ async function createProduct(admin: Page, name: string, stock: number) {
   row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByRole("button", { name: "重新上架" }).click();
   await expect(row).toContainText("上架中");
+  // 首頁只放 4 件精選：標為精選才保證商品出現在首頁（與 homepage.spec.ts 合計只標 4 件，見該檔說明）
+  await featureProduct(admin, name);
 }
 
 test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效果", async ({ browser, page }, testInfo) => {

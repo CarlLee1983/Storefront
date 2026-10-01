@@ -20,7 +20,7 @@ import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, createProductInput, listOrdersInput, productIdInput, shipOrderInput, updateProductInput } from "./input";
+import { adjustStockInput, createProductInput, listOrdersInput, productIdInput, setProductFeaturedInput, shipOrderInput, updateProductInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
   const db = drizzle(d1);
@@ -184,6 +184,19 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
         }).from(products).where(eq(products.id, id));
         if (!product) return fail("product_not_found");
         return product.hasImages ? fail("no_category") : fail("no_images");
+      });
+    },
+
+    /**
+     * 切換精選：標為精選時記下現在的時間，取消時清空；已是精選再標一次不更新時間（冪等）。
+     * 下架商品也可以切換，只是不會出現在首頁。
+     */
+    setProductFeatured(jwt: unknown, input: unknown) {
+      return authorized(jwt, setProductFeaturedInput, input, async (_actor, { id, featured }) => {
+        const updated = await db.update(products)
+          .set({ featuredAt: featured ? sql`coalesce(${products.featuredAt}, ${clock.now()})` : null })
+          .where(eq(products.id, id)).returning({ id: products.id });
+        return updated.length === 0 ? fail("product_not_found") : ok({ id });
       });
     },
 

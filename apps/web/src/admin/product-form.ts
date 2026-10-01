@@ -44,12 +44,13 @@ export type ListingAction = "unlist" | "relist";
 export type ProductFormDispatch =
   | { kind: "create" }
   | { kind: "listing"; action: ListingAction; id: number }
+  | { kind: "featured"; featured: boolean; id: number }
   | { kind: "stock"; input: ReturnType<typeof stockAdjustFormToInput> }
   | { kind: "create-category"; input: ReturnType<typeof categoryFormToInput> }
   | { kind: "invalid" };
 
 /**
- * 後台清單頁 POST 的分派：沒有 `intent` 欄位才是新增；有 `intent` 就必須是合法的下架／重新上架／庫存調整／建立分類，
+ * 後台清單頁 POST 的分派：沒有 `intent` 欄位才是新增；有 `intent` 就必須是合法的下架／重新上架／精選切換／庫存調整／建立分類，
  * 否則是 invalid（頁面不呼叫任何 RPC），避免被竄改的表單落到新增。
  */
 export function dispatchProductForm(form: FormData): ProductFormDispatch {
@@ -59,6 +60,7 @@ export function dispatchProductForm(form: FormData): ProductFormDispatch {
   const id = parseProductId(toText(form.get("id")));
   if (id === null) return { kind: "invalid" };
   if (intent === "adjust-stock") return { kind: "stock", input: stockAdjustFormToInput(form, id) };
+  if (intent === "feature" || intent === "unfeature") return { kind: "featured", featured: intent === "feature", id };
   if (intent !== "unlist" && intent !== "relist") return { kind: "invalid" };
   return { kind: "listing", action: intent, id };
 }

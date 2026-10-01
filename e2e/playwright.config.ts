@@ -9,12 +9,15 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL: BASE_URL, trace: "retain-on-failure" },
   projects: [
-    { name: "chromium", testIgnore: ["listing.spec.ts", "sale.spec.ts"], use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", testIgnore: ["listing.spec.ts", "sale.spec.ts", "homepage*.spec.ts"], use: { ...devices["Desktop Chrome"] } },
     // 列表 spec 會上架 31 件商品，擠掉首頁第一頁（24 件）：等其他 spec 全跑完才執行，不與它們並行
     { name: "listing", testMatch: "listing.spec.ts", dependencies: ["chromium"], use: { ...devices["Desktop Chrome"] } },
+    // 首頁 spec 會標精選、上架商品，擠掉 /products 第一頁：同樣等其他 spec 跑完才執行。
+    // listing 與 home 都只依賴 chromium，兩者之間會並行：home 只靠自己標的精選（見 harness/admin-featured.ts 的名額上限），不受 listing 的 31 件商品影響
+    { name: "home", testMatch: "homepage*.spec.ts", dependencies: ["chromium"], use: { ...devices["Desktop Chrome"] } },
     // 特價 spec 斷言「有沒有特價商品」這個全域狀態（導覽列入口、/sale 空狀態）：等其他 spec 全跑完才執行，不與它們並行；
-    // 也排在 listing 之後，因為 listing 的「全部商品」頁斷言會被新增的商品影響
-    { name: "sale", testMatch: "sale.spec.ts", dependencies: ["chromium", "listing"], use: { ...devices["Desktop Chrome"] } },
+    // 也排在 listing 與 home 之後，因為它們新增的商品會影響列表類斷言
+    { name: "sale", testMatch: "sale.spec.ts", dependencies: ["chromium", "listing", "home"], use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
     // 每次重建 E2E 專用的狀態後，以建置產物跑 Web 與 App、另以一個行程跑模擬閘道（見 harness/serve.ts）

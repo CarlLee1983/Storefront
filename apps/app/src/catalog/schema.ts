@@ -18,6 +18,8 @@ export const products = sqliteTable("products", {
   categoryId: integer("category_id").references(() => categories.id),
   /** 最近一次上架或重新上架的時間，UTC epoch 毫秒；從未上架為空。 */
   listedAt: integer("listed_at"),
+  /** 標為精選的時間，UTC epoch 毫秒；不是精選為空。下架商品可以保有精選標記。 */
+  featuredAt: integer("featured_at"),
 }, (table) => [
   index("products_category_listed_idx").on(table.categoryId, table.listed),
   // 特價商品只佔少數：部分索引讓「有沒有特價商品」與只看特價的查詢不必掃全表

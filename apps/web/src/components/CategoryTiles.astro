@@ -1,0 +1,58 @@
+---
+import type { ProductImage } from "@storefront/app/product-images";
+
+// 首頁的分類方塊：名稱、說明、分類圖片（沒有圖片時是樣式化的佔位區塊）與箭頭，整塊連到分類頁。
+interface Props {
+  categories: Array<{ slug: string; name: string; description: string; image: ProductImage | null }>;
+}
+const { categories } = Astro.props;
+---
+
+<ul class="category-tiles">
+  {categories.map((category) => (
+    <li>
+      <a class="tile" href={`/categories/${category.slug}`}>
+        <div class="tile-media">
+          {category.image
+            ? <img
+                src={`/images/${category.image.variants[0]!.key}`}
+                srcset={category.image.variants.map((v) => `/images/${v.key} ${v.width}w`).join(", ")}
+                sizes="(min-width: 56.25rem) 18rem, 50vw"
+                width={category.image.variants.at(-1)!.width}
+                height={category.image.variants.at(-1)!.height}
+                alt=""
+                loading="lazy"
+              />
+            : <span class="tile-placeholder" aria-hidden="true">{[...category.name][0]}</span>}
+        </div>
+        <div class="tile-body">
+          <div class="tile-text">
+            <h3>{category.name}</h3>
+            <span class="tile-description">{category.description}</span>
+          </div>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+        </div>
+      </a>
+    </li>
+  ))}
+</ul>
+
+<style>
+  /* 與商品卡相同的 1px 格線拼貼 */
+  .category-tiles { list-style: none; margin: 0; padding: 0 1px 1px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (min-width: 56.25rem) { .category-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .category-tiles li { min-width: 0; margin: 0 -1px -1px 0; }
+  .tile { position: relative; height: 100%; display: flex; flex-direction: column; color: var(--color-text); text-decoration: none; background: var(--color-surface); border: 1px solid var(--color-border); }
+  .tile:hover { color: var(--color-text); }
+  .tile:focus-visible { z-index: 1; }
+  .tile-media { display: block; aspect-ratio: 4 / 3; background: var(--color-panel); }
+  .tile-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .tile-placeholder { display: grid; place-items: center; width: 100%; height: 100%; font-size: 4rem; font-weight: 800; letter-spacing: -.03em; color: var(--color-muted); }
+  .tile-body { flex: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-3); }
+  .tile-text { min-width: 0; }
+  .tile h3 { margin: 0; font-size: var(--text-base); font-weight: 800; line-height: 1.4; }
+  .tile-description { display: block; margin-top: var(--space-1); font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted); }
+  .tile svg { flex: none; margin-top: var(--space-1); transition: transform var(--duration-fast); }
+  .tile:hover svg { transform: translateX(.25rem); color: var(--color-primary); }
+  .tile:hover h3 { text-decoration: underline; text-underline-offset: .2em; }
+</style>

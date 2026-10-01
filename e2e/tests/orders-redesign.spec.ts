@@ -39,7 +39,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await expect(row).toContainText("上架中");
 
     await page.context().addCookies([memberSessionCookie()]);
-    await page.goto("/");
+    await page.goto("/products");
     await page.getByRole("listitem").filter({ hasText: name }).getByRole("button", { name: "加入購物車" }).click();
     await expect(page.locator("#cart-count")).toHaveText("1");
     await page.goto("/checkout");

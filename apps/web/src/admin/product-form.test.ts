@@ -74,6 +74,12 @@ describe("dispatchProductForm", () => {
     expect(dispatchProductForm(form({ intent: "relist", id: "3" }))).toEqual({ kind: "listing", action: "relist", id: 3 });
   });
 
+  it("精選切換的表單解析出商品編號與目標狀態", () => {
+    expect(dispatchProductForm(form({ intent: "feature", id: "3" }))).toEqual({ kind: "featured", featured: true, id: 3 });
+    expect(dispatchProductForm(form({ intent: "unfeature", id: "3" }))).toEqual({ kind: "featured", featured: false, id: 3 });
+    expect(dispatchProductForm(form({ intent: "feature" }))).toEqual({ kind: "invalid" });
+  });
+
   it("庫存調整的表單解析出商品編號與增減量", () => {
     expect(dispatchProductForm(form({ intent: "adjust-stock", id: "3", delta: "-3" }))).toEqual({
       kind: "stock",

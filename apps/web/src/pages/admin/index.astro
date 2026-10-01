@@ -36,6 +36,12 @@ if (Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/admin?saved=${action}`, 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else listingError = describeFailure(result, LISTING_FAILED).message;
+  } else if (dispatch.kind === "featured") {
+    // 清單上的精選切換
+    const result = await env.APP.setProductFeatured(jwt, { id: dispatch.id, featured: dispatch.featured });
+    if (result.ok) return Astro.redirect(`/admin?saved=${dispatch.featured ? "feature" : "unfeature"}`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else listingError = describeFailure(result, LISTING_FAILED).message;
   } else if (dispatch.kind === "create-category") {
     categorySubmitted = formToRecord(form);
     const result = await env.APP.createCategory(jwt, dispatch.input);
@@ -70,6 +76,8 @@ const SAVED_MESSAGES: Record<string, string> = {
   updated: "已儲存商品。",
   unlist: "已下架商品。",
   relist: "已重新上架商品。",
+  feature: "已標為精選商品。",
+  unfeature: "已取消精選。",
   stock: "已調整庫存。",
   category: "已建立分類。",
 };
@@ -90,7 +98,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           products?.ok && products.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>特價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
+                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>特價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th>精選</th><th></th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
@@ -105,6 +113,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <td>{p.reserved}</td>
                     <td>{p.available}</td>
                     <td>{p.listed ? "上架中" : "已下架"}</td>
+                    <td>
+                      {p.featured ? "精選" : "—"}
+                      <form method="post" class="inline">
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="intent" value={p.featured ? "unfeature" : "feature"} />
+                        <button type="submit" aria-label={`${p.featured ? "取消精選" : "標為精選"}：${p.name}`}>{p.featured ? "取消精選" : "標為精選"}</button>
+                      </form>
+                    </td>
                     <td>
                       <a href={`/admin/products/${p.id}`}>編輯</a>
                       <form method="post" class="inline">

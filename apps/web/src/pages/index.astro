@@ -1,17 +1,42 @@
 ---
 import { env } from "cloudflare:workers";
+import CategoryTiles from "../components/CategoryTiles.astro";
+import EditorialBanner from "../components/EditorialBanner.astro";
+import HomeHero from "../components/HomeHero.astro";
 import ProductList from "../components/ProductList.astro";
 import Layout from "../layouts/Layout.astro";
 
 export const prerender = false;
 
-// 前台不需登入；只列上架中的商品
-const products = await env.APP.listProducts();
-const items = products.ok ? products.data.items : [];
+// 前台不需登入；分類只含有上架商品的，精選商品由 App 決定（含不足時的補位）
+const [categoriesResult, featuredResult] = await Promise.all([env.APP.listCategories(), env.APP.getFeaturedProducts()]);
+const categories = categoriesResult.ok ? categoriesResult.data : [];
+const featured = featuredResult.ok ? featuredResult.data : [];
 ---
 
-<Layout title="商品">
-  {products.ok && items.length === 0 && <p>目前沒有上架的商品。</p>}
-  {items.length > 0 && <ProductList products={items} />}
-  {items.length > 0 && <p><a href="/products">看全部商品</a></p>}
+<Layout title="首頁" hideTitle>
+  <h1 class="visually-hidden">Storefront 家居選物</h1>
+  <HomeHero />
+  {categories.length > 0 && (
+    <section class="home-section" aria-labelledby="categories-title">
+      <div class="section-head"><h2 id="categories-title">選購分類</h2></div>
+      <CategoryTiles categories={categories} />
+    </section>
+  )}
+  {featured.length > 0 && (
+    <section class="home-section" aria-labelledby="featured-title">
+      <div class="section-head">
+        <h2 id="featured-title">精選商品</h2>
+        <a href="/products">看全部商品</a>
+      </div>
+      <ProductList products={featured} />
+    </section>
+  )}
+  <EditorialBanner />
 </Layout>
+
+<style>
+  .home-section { margin-top: var(--space-8); }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+  .section-head h2 { margin: 0; font-size: var(--text-xl); font-weight: 800; letter-spacing: -.02em; }
+</style>

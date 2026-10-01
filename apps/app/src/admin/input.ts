@@ -42,6 +42,7 @@ export const createProductInput = z.object({ name, description, priceTwd });
  */
 export const updateProductInput = z.object({ id: productId, name, description, priceTwd, compareAtPriceTwd: compareAtPriceTwd.nullable().optional(), categoryId: categoryId.nullable().optional() });
 export const productIdInput = z.object({ id: productId });
+export const setProductFeaturedInput = z.object({ id: productId, featured: z.boolean({ error: "精選必須是布林值" }) });
 
 /** 庫存調整的增減量：非零整數（+20 補貨、-3 盤損）；沒有「設成某個數字」的輸入。 */
 const stockDelta = wholeNumber("增減量")
