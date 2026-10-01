@@ -22,12 +22,12 @@
     "preview": {
       "workers_dev": false,
       "preview_urls": false,
-      "routes": [{ "pattern": "REPLACE_WITH_PREVIEW_GATEWAY_DOMAIN", "custom_domain": true }],
+      "routes": [{ "pattern": "storefront-pay-preview.gravito.dev", "custom_domain": true }],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "storefront-gateway-preview",
-          "database_id": "REPLACE_WITH_PREVIEW_GATEWAY_D1_DATABASE_ID",
+          "database_id": "b5ddc559-e5f8-4a42-a1a1-6f519e40e27b",
           "migrations_dir": "migrations"
         }
       ]
@@ -35,12 +35,12 @@
     "production": {
       "workers_dev": false,
       "preview_urls": false,
-      "routes": [{ "pattern": "REPLACE_WITH_PRODUCTION_GATEWAY_DOMAIN", "custom_domain": true }],
+      "routes": [{ "pattern": "storefront-pay.gravito.dev", "custom_domain": true }],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "storefront-gateway-production",
-          "database_id": "REPLACE_WITH_PRODUCTION_GATEWAY_D1_DATABASE_ID",
+          "database_id": "f3d67236-ea14-4e6b-bd5c-912cc3cd58ab",
           "migrations_dir": "migrations"
         }
       ]
