@@ -2,7 +2,7 @@
 //   - BETTER_AUTH_URL 讀 apps/app/wrangler.jsonc 該環境的 vars，並確認等於 apps/web/wrangler.jsonc 該環境 routes 的自訂網域
 //   - secrets 讀 `wrangler secret list --env <env>`（值是 write-only，只能檢查名稱存在；需要 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID）
 //   - 付款：GATEWAY_BASE_URL 讀 apps/app/wrangler.jsonc 該環境的 vars（不能是佔位值）；App 的 GATEWAY_API_KEY 與 Web 的 GATEWAY_WEBHOOK_SECRET 兩個 secret 名稱要存在
-//   - 管理後台：ACCESS_TEAM_DOMAIN 不得是 `.invalid`（本機專用），ACCESS_JWKS_JSON 不得出現在該環境的 vars 或 secret 名稱
+//   - 管理後台：ACCESS_TEAM_DOMAIN 不得是 `.invalid`（本機專用），ACCESS_AUD 必須是 64 碼 hex，ACCESS_JWKS_JSON 不得出現在該環境的 vars 或 secret 名稱
 // 用法：bun scripts/check-auth-deploy.ts <preview|production>
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -30,6 +30,7 @@ const appVars = readWranglerConfig(path.join(appDir, "wrangler.jsonc")).env?.[de
 const authUrl: unknown = appVars?.BETTER_AUTH_URL;
 const gatewayBaseUrl: unknown = appVars?.GATEWAY_BASE_URL;
 const teamDomain: unknown = appVars?.ACCESS_TEAM_DOMAIN;
+const aud: unknown = appVars?.ACCESS_AUD;
 const webRoutes: unknown = readWranglerConfig(path.join(appDir, "../web/wrangler.jsonc")).env?.[deployEnv]?.routes;
 
 /** 列出某個 Worker（以它的目錄為 cwd）在該環境已設定的 secret 名稱；失敗就中止部署。 */
@@ -69,6 +70,7 @@ const paymentProblems = checkPaymentDeploy({
 const accessProblems = checkAccessDeploy({
   deployEnv,
   teamDomain: typeof teamDomain === "string" ? teamDomain : undefined,
+  aud: typeof aud === "string" ? aud : undefined,
   appVarNames: Object.keys(appVars ?? {}),
   secretNames,
 });

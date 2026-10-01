@@ -48,7 +48,7 @@
       // （OAuth callback 由它組成，須在 Google 與 LINE 後台登記 /api/auth/callback/{google,line}）
       "vars": {
         "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
-        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
+        "ACCESS_AUD": "b334dd76bf2fbf0fd037edfe921bb0262f71f19dfe63b47186e72bf6d0bf9530",
         "BETTER_AUTH_URL": "https://storefront-preview.gravito.dev",
         "GATEWAY_BASE_URL": "https://storefront-pay-preview.gravito.dev"
       },
@@ -68,7 +68,7 @@
       // BETTER_AUTH_URL 同 preview：等於 apps/web/wrangler.jsonc production routes 的網域
       "vars": {
         "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
-        "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
+        "ACCESS_AUD": "b334dd76bf2fbf0fd037edfe921bb0262f71f19dfe63b47186e72bf6d0bf9530",
         "BETTER_AUTH_URL": "https://storefront.gravito.dev",
         "GATEWAY_BASE_URL": "https://storefront-pay.gravito.dev"
       },
