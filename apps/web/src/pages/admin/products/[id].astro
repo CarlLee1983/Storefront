@@ -63,7 +63,77 @@ const values = { name: product?.name ?? "", description: product?.description ??
           <button type="submit">儲存</button>
           <a href="/admin">取消</a>
         </form>
+        <section aria-labelledby="image-heading">
+          <h2 id="image-heading">商品圖片</h2>
+          <p>先上傳商品圖片才能上架。每件商品最多 8 張，第一張是封面。</p>
+          <ul id="product-images">
+            {product?.images.map(image => <li><img src={`/images/${image.variants[0]!.key}`} width={image.variants[0]!.width} height={image.variants[0]!.height} alt={`${product.name}的商品圖片`} loading="lazy" /></li>)}
+          </ul>
+          <form id="image-upload" action={`/admin/products/${id}/images`} data-product-name={product?.name}>
+            <label>商品圖片（JPEG、PNG 或 WebP，20 MB 以內）<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required /></label>
+            <p>圖片會在瀏覽器縮放成 WebP，不保存原圖。</p>
+            <button type="submit">上傳商品圖片</button>
+            <p id="image-status" role="status"></p>
+            <p id="image-error" class="error" role="alert" hidden></p>
+          </form>
+          <p><a href="/admin">回商品管理</a></p>
+        </section>
       </>
     )
   }
 </Layout>
+
+<script>
+  import { resizeProductImage } from "../../../images/resize";
+  import { describeFailure } from "../../../admin/product-form";
+  import type { ProductImage } from "@storefront/app/product-images";
+  const form = document.querySelector<HTMLFormElement>("#image-upload");
+  if (form) {
+    const input = form.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const button = form.querySelector<HTMLButtonElement>("button")!;
+    const status = document.querySelector<HTMLElement>("#image-status")!;
+    const error = document.querySelector<HTMLElement>("#image-error")!;
+    let busy = false;
+    let selectedFile: File | undefined;
+    let uploadId: string;
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (busy) return;
+      const file = input.files?.[0];
+      if (!file) return;
+      if (file !== selectedFile) { selectedFile = file; uploadId = crypto.randomUUID(); }
+      busy = true;
+      button.disabled = input.disabled = true;
+      error.hidden = true;
+      status.textContent = "正在縮放並上傳商品圖片…";
+      try {
+        const body = await resizeProductImage(file);
+        body.set("uploadId", uploadId);
+        const response = await fetch(form.action, { method: "POST", body });
+        const result = await response.json() as { ok: boolean; reason?: string; data?: { image: ProductImage } };
+        if (!response.ok || !result.ok || !result.data) {
+          throw new Error(result.reason === "unauthorized" ? "沒有權限，請重新通過 Cloudflare Access 登入後再試。" : describeFailure({ reason: result.reason ?? "" }, "商品圖片上傳失敗，請稍後再試").message);
+        }
+        const variant = result.data.image.variants[0]!;
+        const image = document.createElement("img");
+        image.src = `/images/${variant.key}`;
+        image.width = variant.width;
+        image.height = variant.height;
+        image.alt = `${form.dataset.productName}的商品圖片`;
+        const item = document.createElement("li");
+        item.appendChild(image);
+        document.querySelector("#product-images")!.appendChild(item);
+        input.value = "";
+        selectedFile = undefined;
+        status.textContent = "已上傳商品圖片。可以回商品管理上架。";
+      } catch (cause) {
+        status.textContent = "";
+        error.textContent = cause instanceof Error && /^[\u4e00-\u9fff]/.test(cause.message) ? cause.message : "商品圖片上傳失敗，請稍後再試。";
+        error.hidden = false;
+      } finally {
+        busy = false;
+        button.disabled = input.disabled = false;
+      }
+    });
+  }
+</script>

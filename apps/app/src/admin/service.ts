@@ -1,9 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
+import { addProductImageInput } from "../images/input";
+import { uploadProductImage, type ProductImageBucket } from "../images/upload";
 import { selectOrdersForAdmin } from "../orders/admin-queries";
 import { orderIdInput } from "../orders/input";
 import { markOrderShipped, orderExists, selectOrderForAdmin } from "../orders/queries";
@@ -15,7 +17,7 @@ import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } 
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { adjustStockInput, createProductInput, listOrdersInput, productIdInput, shipOrderInput, updateProductInput } from "./input";
 
-export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig) {
+export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
   const db = drizzle(d1);
   const verifier = createAccessVerifier(access, clock);
 
@@ -57,12 +59,17 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       });
     },
 
-    /** 新增商品，預設上架。 */
+    /** 新增商品，預設下架。 */
     createProduct(jwt: unknown, input: unknown) {
       return authorized(jwt, createProductInput, input, async (_actor, data) => {
-        const [row] = await db.insert(products).values({ ...data, listed: true }).returning({ id: products.id });
+        const [row] = await db.insert(products).values({ ...data, listed: false }).returning({ id: products.id });
         return ok({ id: row!.id });
       });
+    },
+
+    /** 商品圖片：先驗 JWT 與輸入，再寫 R2 與 D1。 */
+    addProductImage(jwt: unknown, input: unknown) {
+      return authorized(jwt, addProductImageInput, input, (_actor, data) => uploadProductImage(d1, images, data));
     },
 
     /** 修改名稱、說明與單價；不動上架狀態。 */
@@ -77,7 +84,15 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
 
     /** 重新上架：已上架時也回成功（冪等）。 */
     relistProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, productIdInput, input, (_actor, { id }) => updateById(id, { listed: true }));
+      return authorized(jwt, productIdInput, input, async (_actor, { id }) => {
+        const updated = await db.update(products).set({ listed: true }).where(and(
+          eq(products.id, id),
+          sql`exists (select 1 from product_images where product_id = ${products.id})`,
+        )).returning({ id: products.id });
+        if (updated.length) return ok({ id });
+        const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
+        return product ? fail("no_images") : fail("product_not_found");
+      });
     },
 
     /** 庫存調整：只接受增減量，不能覆寫成某個數字。 */

@@ -63,6 +63,9 @@ export function describeFailure(
   const messages: Record<string, string> = {
     invalid_input: "輸入有誤，請修正後再送出",
     product_not_found: "找不到這個商品",
+    no_images: "請先上傳商品圖片，再上架商品",
+    image_limit: "每件商品最多 8 張商品圖片",
+    image_upload_failed: "商品圖片上傳失敗，請稍後再試",
     insufficient_stock: "庫存不足：調整後的可售數量不可為負",
   };
   return { message: messages[result.reason] ?? fallback, fields: result.fields ?? {} };

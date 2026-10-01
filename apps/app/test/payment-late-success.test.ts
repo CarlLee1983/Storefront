@@ -13,6 +13,7 @@ import { forceOrderStatus, forcePaymentStatus, resetDb, seedPayment } from "./db
 import { installFakeGateway } from "./fake-gateway";
 import { orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
 import { app, PAYMENT_WINDOW_MS, placeOrderAt, PRICE, runCron, stocked, stockOf } from "./release-helpers";
+import { seedImageAndList } from "./images";
 
 const T0 = Date.now() + 60_000;
 
@@ -304,13 +305,14 @@ describe("遲到的付款成功與結帳搶最後一件並行", () => {
       createHttpGateway({ baseUrl: TEST_GATEWAY_BASE_URL, apiKey: TEST_GATEWAY_API_KEY }),
       "http://localhost:4321",
     );
-    const jwt = await mintAccessJwt();
     // 每個商品在庫 1，各有一張已逾期、付款成功事件還沒套用的訂單（不占保留，可售數量 1）
     for (let i = 0; i < rounds; i += 1) {
-      const created = await app.createProduct(jwt, { name: "馬克杯", description: "說明", priceTwd: PRICE });
-      if (!created.ok) throw new Error("新增商品失敗");
-      const productId = created.data.id;
-      await app.adjustStock(jwt, { id: productId, delta: 1 });
+      // 商品/圖片上架由專屬測試涵蓋；此處只建 fixture，讓 60 秒預算用在 100 組真實付款/結帳 RPC 競爭。
+      const created = await env.DB.prepare("INSERT INTO products (name, description, price_twd, on_hand) VALUES ('馬克杯', '說明', ?, 1) RETURNING id")
+        .bind(PRICE).first<{ id: number }>();
+      if (!created) throw new Error("建立商品 fixture 失敗");
+      const productId = created.id;
+      await seedImageAndList(productId);
       setNow(T0 + i);
       const placed = await orderService.checkout("alice", checkoutInput([{ productId, quantity: 1, seenUnitPriceTwd: PRICE }]));
       if (!placed.ok) throw new Error("結帳失敗");

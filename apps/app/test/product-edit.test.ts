@@ -2,6 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { resetDb } from "./db";
+import { uploadAndList } from "./images";
 
 const app = exports.default;
 
@@ -9,6 +10,7 @@ const app = exports.default;
 async function createMug(jwt: string) {
   const created = await app.createProduct(jwt, { name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320 });
   if (!created.ok) throw new Error("新增商品失敗");
+  await uploadAndList(jwt, created.data.id);
   return created.data.id;
 }
 
@@ -24,7 +26,7 @@ describe("修改商品", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450, purchasable: false }],
+      data: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
     });
   });
 
@@ -65,7 +67,7 @@ describe("下架與重新上架", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false }],
+      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
     });
   });
 
@@ -107,7 +109,7 @@ describe("讀取單一商品（編輯頁用）", () => {
     const id = await createMug(jwt);
     expect(await app.getProductForAdmin(jwt, { id })).toEqual({
       ok: true,
-      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, listed: true, onHand: 0, reserved: 0, available: 0 },
+      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, listed: true, onHand: 0, reserved: 0, available: 0, images: [expect.objectContaining({ id: expect.any(String) })] },
     });
 
     await app.unlistProduct(jwt, { id });
@@ -170,7 +172,7 @@ describe("修改、下架、上架的守門", () => {
     });
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false }],
+      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
     });
   });
 

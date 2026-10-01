@@ -1,5 +1,6 @@
 import { exports } from "cloudflare:workers";
 import { mintAccessJwt } from "./access";
+import { uploadAndList } from "./images";
 
 const app = exports.default;
 
@@ -9,6 +10,7 @@ export async function createStockedProduct(name: string, priceTwd: number, onHan
   const created = await app.createProduct(jwt, { name, description: `${name}的說明`, priceTwd });
   if (!created.ok) throw new Error("新增商品失敗");
   if (onHand > 0) await app.adjustStock(jwt, { id: created.data.id, delta: onHand });
+  await uploadAndList(jwt, created.data.id);
   return created.data.id;
 }
 
