@@ -4,7 +4,8 @@ import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
-import { addProductImageInput } from "../images/input";
+import { addProductImageInput, reorderProductImagesInput, deleteProductImageInput } from "../images/input";
+import { reorderProductImages, deleteProductImage } from "../images/manage";
 import { uploadProductImage, type ProductImageBucket } from "../images/upload";
 import { selectOrdersForAdmin } from "../orders/admin-queries";
 import { orderIdInput } from "../orders/input";
@@ -70,6 +71,14 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 商品圖片：先驗 JWT 與輸入，再寫 R2 與 D1。 */
     addProductImage(jwt: unknown, input: unknown) {
       return authorized(jwt, addProductImageInput, input, (_actor, data) => uploadProductImage(d1, images, data));
+    },
+
+    reorderProductImages(jwt: unknown, input: unknown) {
+      return authorized(jwt, reorderProductImagesInput, input, (_actor, data) => reorderProductImages(d1, data));
+    },
+
+    deleteProductImage(jwt: unknown, input: unknown) {
+      return authorized(jwt, deleteProductImageInput, input, (_actor, data) => deleteProductImage(d1, images, data));
     },
 
     /** 修改名稱、說明與單價；不動上架狀態。 */

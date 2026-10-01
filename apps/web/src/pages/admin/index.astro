@@ -82,11 +82,12 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           products?.ok && products.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
+                <tr><th>封面</th><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
                   <tr>
+                    <td>{p.cover ? <img src={`/images/${p.cover.variants[0]!.key}`} width="64" height="64" style="object-fit: cover; border-radius: 0.25rem" alt={`${p.name}的封面`} loading="lazy" /> : <span>尚無圖片</span>}</td>
                     <td>{p.name}</td>
                     <td>{p.description}</td>
                     <td>{priceFormat.format(p.priceTwd)}</td>

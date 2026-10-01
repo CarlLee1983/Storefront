@@ -65,6 +65,10 @@ export function describeFailure(
     product_not_found: "找不到這個商品",
     no_images: "請先上傳商品圖片，再上架商品",
     image_limit: "每件商品最多 8 張商品圖片",
+    image_set_changed: "商品圖片清單已變更，請重新載入後再排序",
+    last_product_image: "上架中的商品至少需要一張商品圖片，請先下架再刪除",
+    image_delete_failed: "商品圖片刪除尚未完成，請重試；系統也會重試清理圖片",
+    image_management_failed: "商品圖片操作失敗，請稍後再試",
     image_upload_failed: "商品圖片上傳失敗，請稍後再試",
     insufficient_stock: "庫存不足：調整後的可售數量不可為負",
   };

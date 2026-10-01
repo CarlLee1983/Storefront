@@ -68,3 +68,8 @@ export const addProductImageInput = productIdInput.extend({
 });
 
 export type AddProductImageInput = z.output<typeof addProductImageInput>;
+
+export const reorderProductImagesInput = productIdInput.extend({
+  imageIds: z.array(z.uuid()).max(8).refine(ids => new Set(ids).size === ids.length, "商品圖片不可重複"),
+});
+export const deleteProductImageInput = productIdInput.extend({ imageId: z.uuid() });
