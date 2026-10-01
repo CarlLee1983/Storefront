@@ -71,6 +71,7 @@ describe("依代稱取得前台分類", () => {
         name: "客廳",
         description: "沙發與燈",
         listedProductCount: 1,
+        image: null,
       },
     });
     expect(await app.listProducts({ category: "living" })).toEqual({

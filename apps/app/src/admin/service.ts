@@ -7,7 +7,7 @@ import { adjustOnHand } from "../catalog/stock";
 import { categoryIdInput, createCategoryInput, updateCategoryInput } from "../categories/input";
 import { deleteCategory, setCategoryImage } from "../categories/manage";
 import { isValidSlug } from "../categories/slug";
-import { categoryExists, insertCategory, selectCategoriesForAdmin, updateCategoryById } from "../categories/queries";
+import { categoryExists, insertCategory, selectCategoriesForAdmin, selectCategoryForAdmin, updateCategoryById } from "../categories/queries";
 import { addProductImageInput, reorderProductImagesInput, deleteProductImageInput, setCategoryImageInput } from "../images/input";
 import { reorderProductImages, deleteProductImage } from "../images/manage";
 import { uploadProductImage, type ProductImageBucket } from "../images/upload";
@@ -126,6 +126,14 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 刪除沒有任何商品（不分上架與否）的分類，圖片一併刪除；有商品回 `category_not_empty`。 */
     deleteCategory(jwt: unknown, input: unknown) {
       return authorized(jwt, categoryIdInput, input, (_actor, data) => deleteCategory(d1, images, data));
+    },
+
+    /** 單一分類（含圖片與商品數）；不存在回 `category_not_found`。 */
+    getCategoryForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, categoryIdInput, input, async (_actor, { id }) => {
+        const category = await selectCategoryForAdmin(db, id);
+        return category ? ok(category) : fail("category_not_found");
+      });
     },
 
     /** 所有分類（含沒有上架商品的），依建立順序，帶圖片、商品數與上架商品數。 */

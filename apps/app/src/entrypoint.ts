@@ -172,6 +172,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().deleteCategory(jwt, input);
   }
 
+  getCategoryForAdmin(jwt: string, input: unknown) {
+    return this.#admin().getCategoryForAdmin(jwt, input);
+  }
+
   listCategoriesForAdmin(jwt: string) {
     return this.#admin().listCategoriesForAdmin(jwt);
   }

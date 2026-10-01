@@ -36,14 +36,22 @@ const image = sql<ProductImage | null>`(
     from category_images category_image where category_image.category_id = ${categories}.id
   )`.mapWith((value: string | null) => value === null ? null : JSON.parse(value) as ProductImage);
 
-/** 後台清單：所有分類依建立順序，帶商品數。 */
+const adminColumns = {
+  ...publicColumns,
+  image,
+  productCount: sql<number>`(select count(*) from products where products.category_id = ${categories}.id)`.mapWith(Number),
+  listedProductCount: sql<number>`(select count(*) from products where products.category_id = ${categories}.id and products.listed = 1)`.mapWith(Number),
+};
+
+/** 後台清單：所有分類依建立順序，帶圖片與商品數。 */
 export async function selectCategoriesForAdmin(db: DrizzleD1Database): Promise<AdminCategory[]> {
-  return db.select({
-    ...publicColumns,
-    image,
-    productCount: sql<number>`(select count(*) from products where products.category_id = ${categories}.id)`.mapWith(Number),
-    listedProductCount: sql<number>`(select count(*) from products where products.category_id = ${categories}.id and products.listed = 1)`.mapWith(Number),
-  }).from(categories).orderBy(asc(categories.id));
+  return db.select(adminColumns).from(categories).orderBy(asc(categories.id));
+}
+
+/** 後台單一分類；不存在回 null。 */
+export async function selectCategoryForAdmin(db: DrizzleD1Database, id: number): Promise<AdminCategory | null> {
+  const [row] = await db.select(adminColumns).from(categories).where(eq(categories.id, id));
+  return row ?? null;
 }
 
 /** 前台清單：至少有一件上架商品的分類，依建立順序。 */

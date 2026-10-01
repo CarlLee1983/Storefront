@@ -124,13 +124,37 @@ describe("分類圖片", () => {
     const good = createAdminService(env.DB, systemClock, access(), serviceBucket);
     const first = await good.setCategoryImage(jwt, upload(id));
     if (!first.ok) throw new Error("上傳失敗");
-    const failing = { prepare: vi.fn((sql: string) => sql.includes("INSERT INTO category_images")
-      ? { bind: () => ({ first: async () => { throw new Error("D1 write failed"); } }) }
-      : env.DB.prepare(sql)) } as unknown as D1Database;
+    const failing = { prepare: (sql: string) => env.DB.prepare(sql), batch: vi.fn(async () => { throw new Error("D1 write failed"); }) } as unknown as D1Database;
     const service = createAdminService(failing, systemClock, access(), serviceBucket);
     expect(await service.setCategoryImage(jwt, upload(id))).toEqual({ ok: false, reason: "image_upload_failed" });
     expect([...objects.keys()].sort()).toEqual(first.data.image.variants.map((variant) => variant.key).sort());
     expect(await app.listCategoriesForAdmin(jwt)).toMatchObject({ ok: true, data: [{ image: first.data.image }] });
+  });
+
+  it("兩個不同 uploadId 並行換圖：被取代的那一張的 R2 物件最後也會被刪除", async () => {
+    const jwt = await mintAccessJwt();
+    const id = await createCategory(jwt);
+    const { objects, serviceBucket } = fakeBucket();
+    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const results = await Promise.all([service.setCategoryImage(jwt, upload(id)), service.setCategoryImage(jwt, upload(id))]);
+    if (!results.every((result) => result.ok)) throw new Error("上傳失敗");
+    const listed = await app.listCategoriesForAdmin(jwt);
+    if (!listed.ok) throw new Error("讀取失敗");
+    const keys = listed.data[0]!.image!.variants.map((variant) => variant.key);
+    expect([...objects.keys()].sort()).toEqual(keys.sort());
+  });
+
+  it("D1 已提交但回應遺失：確認提交成功後，被取代的舊圖也會被刪除", async () => {
+    const jwt = await mintAccessJwt();
+    const id = await createCategory(jwt);
+    const { objects, serviceBucket } = fakeBucket();
+    const good = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    await good.setCategoryImage(jwt, upload(id));
+    const lost = { prepare: (sql: string) => env.DB.prepare(sql), batch: async (statements: D1PreparedStatement[]) => { await env.DB.batch(statements); throw new Error("response lost"); } } as unknown as D1Database;
+    const service = createAdminService(lost, systemClock, access(), serviceBucket);
+    const replaced = await service.setCategoryImage(jwt, upload(id));
+    if (!replaced.ok) throw new Error(`更換失敗：${replaced.reason}`);
+    expect([...objects.keys()].sort()).toEqual(replaced.data.image.variants.map((variant) => variant.key).sort());
   });
 
   it("回應遺失後重試相同 uploadId 回原圖片，不再寫 R2", async () => {
@@ -168,6 +192,22 @@ describe("分類圖片", () => {
     expect(await service.setCategoryImage(jwt, { id, uploadId: crypto.randomUUID(), variants: bad })).toMatchObject({ ok: false, reason: "invalid_input" });
     expect(await service.setCategoryImage(jwt, { id, uploadId: "invalid", variants: imageVariants() })).toMatchObject({ ok: false, reason: "invalid_input" });
     expect(bucket.put).not.toHaveBeenCalled();
+  });
+});
+
+describe("單一分類（後台）", () => {
+  it("回傳分類、圖片與商品數；不存在回 category_not_found；未授權被拒", async () => {
+    const jwt = await mintAccessJwt();
+    const id = await createCategory(jwt, "living", "客廳", "沙發");
+    await createCategory(jwt, "dining", "餐廳");
+    const image = await setImage(jwt, id);
+    expect(await app.getCategoryForAdmin(jwt, { id })).toEqual({
+      ok: true,
+      data: { id, slug: "living", name: "客廳", description: "沙發", image, productCount: 0, listedProductCount: 0 },
+    });
+    expect(await app.getCategoryForAdmin(jwt, { id: 999999 })).toEqual({ ok: false, reason: "category_not_found" });
+    expect(await app.getCategoryForAdmin(jwt, { id: "x" })).toMatchObject({ ok: false, reason: "invalid_input" });
+    expect(await app.getCategoryForAdmin("", { id })).toEqual({ ok: false, reason: "unauthorized" });
   });
 });
 
@@ -223,6 +263,22 @@ describe("刪除分類", () => {
     const jwt = await mintAccessJwt();
     expect(await app.deleteCategory(jwt, { id: "x" })).toMatchObject({ ok: false, reason: "invalid_input" });
     expect(await app.deleteCategory(jwt, null)).toMatchObject({ ok: false, reason: "invalid_input" });
+  });
+});
+
+describe("前台依代稱取分類", () => {
+  it("帶出分類圖片，形狀與 listCategories 相同；沒有圖片為 null", async () => {
+    const jwt = await mintAccessJwt();
+    const living = await createCategory(jwt, "living", "客廳");
+    const dining = await createCategory(jwt, "dining", "餐廳");
+    const image = await setImage(jwt, living);
+    for (const [categoryId, name] of [[living, "沙發"], [dining, "餐盤"]] as const) {
+      const product = await createProduct(jwt, name);
+      await assignCategory(jwt, product, categoryId);
+      await uploadAndList(jwt, product);
+    }
+    expect(await app.getCategory({ slug: "living" })).toMatchObject({ ok: true, data: { id: living, image } });
+    expect(await app.getCategory({ slug: "dining" })).toMatchObject({ ok: true, data: { id: dining, image: null } });
   });
 });
 

@@ -24,30 +24,36 @@ export async function setCategoryImage(d1: D1Database, bucket: ProductImageBucke
   let image: ProductImage | undefined;
   let variants: HashedVariant[] = [];
   let commitUncertain = false;
+  let current: Awaited<ReturnType<typeof findCurrent>> = null;
   try {
-    const current = await findCurrent(d1, input.id);
+    current = await findCurrent(d1, input.id);
     if (!current) return fail("category_not_found");
     variants = await hashVariants(input.variants);
     if (current.image && current.uploadId === input.uploadId) return replay(current.image, variants);
     if (!bucket) return fail("image_upload_failed");
     image = { id: crypto.randomUUID(), variants: [] };
     image.variants = await writeVariants(bucket, `categories/${input.id}/${image.id}`, variants, keys);
-    // 單句 upsert：同一 uploadId 的並行重試至多換一次圖
+    // 讀舊圖與 upsert 同一個 D1 batch（單一交易）：拿到的是「實際被這次取代的那一張」，
+    // 並行換圖時，後到者會負責清掉先到者的物件。同一 uploadId 的並行重試至多換一次圖。
     commitUncertain = true;
-    const written = await d1.prepare(`
-      INSERT INTO category_images (category_id, id, upload_id, variants)
-      SELECT id, ?, ?, ? FROM categories WHERE id = ?
-      ON CONFLICT (category_id) DO UPDATE SET id = excluded.id, upload_id = excluded.upload_id, variants = excluded.variants
-        WHERE category_images.upload_id <> excluded.upload_id
-      RETURNING id
-    `).bind(image.id, input.uploadId, JSON.stringify(image.variants), input.id).first<{ id: string }>();
+    const [previous, written] = await d1.batch([
+      d1.prepare("SELECT variants FROM category_images WHERE category_id = ?").bind(input.id),
+      d1.prepare(`
+        INSERT INTO category_images (category_id, id, upload_id, variants)
+        SELECT id, ?, ?, ? FROM categories WHERE id = ?
+        ON CONFLICT (category_id) DO UPDATE SET id = excluded.id, upload_id = excluded.upload_id, variants = excluded.variants
+          WHERE category_images.upload_id <> excluded.upload_id
+        RETURNING id
+      `).bind(image.id, input.uploadId, JSON.stringify(image.variants), input.id),
+    ]);
     commitUncertain = false;
-    if (!written) {
+    if (written!.results.length === 0) {
       await cleanup(bucket, keys);
       const winner = await findCurrent(d1, input.id);
       return winner?.image && winner.uploadId === input.uploadId ? replay(winner.image, variants) : fail("category_not_found");
     }
-    if (current.image) await cleanup(bucket, current.image.variants.map((variant) => variant.key));
+    const replaced = previous!.results[0] as { variants: string } | undefined;
+    if (replaced) await cleanup(bucket, (JSON.parse(replaced.variants) as ProductImage["variants"]).map((variant) => variant.key));
     return ok({ image });
   } catch {
     if (commitUncertain) {
@@ -56,6 +62,8 @@ export async function setCategoryImage(d1: D1Database, bucket: ProductImageBucke
         const saved = await findCurrent(d1, input.id);
         if (saved?.image && saved.uploadId === input.uploadId) {
           if (saved.image.id !== image?.id && bucket) await cleanup(bucket, keys);
+          // 提交成功但拿不到 batch 結果：以先前讀到的舊圖盡力清理（並行換圖時可能漏掉，只會留下孤兒物件）
+          else if (bucket && current?.image && current.image.id !== saved.image.id) await cleanup(bucket, current.image.variants.map((variant) => variant.key));
           return replay(saved.image, variants);
         }
       } catch {

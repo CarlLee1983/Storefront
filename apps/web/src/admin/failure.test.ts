@@ -1,0 +1,48 @@
+import { describe, expect, it } from "vitest";
+import { describeFailure } from "./failure";
+
+describe("describeFailure", () => {
+  it("invalid_input 帶出 App 回報的欄位錯誤", () => {
+    expect(describeFailure({ reason: "invalid_input", fields: { name: ["名稱不可為空"] } }, "新增商品失敗")).toEqual({
+      message: "輸入有誤，請修正後再送出",
+      fields: { name: ["名稱不可為空"] },
+    });
+  });
+
+  it("product_not_found 說找不到商品", () => {
+    expect(describeFailure({ reason: "product_not_found" }, "操作失敗")).toEqual({
+      message: "找不到這個商品",
+      fields: {},
+    });
+  });
+
+  it("insufficient_stock 說庫存不足", () => {
+    expect(describeFailure({ reason: "insufficient_stock" }, "操作失敗")).toEqual({
+      message: "庫存不足：調整後的可售數量不可為負",
+      fields: {},
+    });
+  });
+
+  it("category_not_empty 說明分類底下還有商品，要先移走", () => {
+    expect(describeFailure({ reason: "category_not_empty" }, "操作失敗")).toEqual({
+      message: "這個分類底下還有商品（不分上架與否），請先把商品移到其他分類再刪除",
+      fields: {},
+    });
+  });
+
+  it("圖片上傳失敗的訊息依對象不同：預設是商品圖片，分類用分類圖片", () => {
+    expect(describeFailure({ reason: "image_upload_failed" }, "操作失敗").message).toBe("商品圖片上傳失敗，請稍後再試");
+    expect(describeFailure({ reason: "image_upload_failed" }, "操作失敗", "分類圖片").message).toBe("分類圖片上傳失敗，請稍後再試");
+  });
+
+  it("其他原因使用呼叫端給的預設訊息，欄位為空", () => {
+    expect(describeFailure({ reason: "boom" }, "新增商品失敗，請稍後再試")).toEqual({
+      message: "新增商品失敗，請稍後再試",
+      fields: {},
+    });
+  });
+});
+
+it("explains why a product without images cannot be listed", () => {
+  expect(describeFailure({ reason: "no_images" }, "fallback").message).toBe("請先上傳商品圖片，再上架商品");
+});

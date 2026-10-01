@@ -2,12 +2,8 @@
 import { env } from "cloudflare:workers";
 import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "@storefront/app/category-slug";
 import { readAccessJwt } from "../../admin/access-jwt";
-import {
-  describeFailure,
-  dispatchProductForm,
-  productFormToInput,
-  type Failure,
-} from "../../admin/product-form";
+import { describeFailure, type Failure } from "../../admin/failure";
+import { dispatchProductForm, productFormToInput } from "../../admin/product-form";
 import { formToRecord } from "../../shared/form-values";
 import Layout from "../../layouts/Layout.astro";
 
@@ -135,11 +131,11 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           categories?.ok && categories.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="分類資料表"><table>
               <thead>
-                <tr><th>名稱</th><th>代稱</th><th>商品數</th></tr>
+                <tr><th>名稱</th><th>代稱</th><th>商品數</th><th>上架商品數</th></tr>
               </thead>
               <tbody>
                 {categories.data.map((c) => (
-                  <tr><td>{c.name}</td><td>{c.slug}</td><td>{c.productCount}</td></tr>
+                  <tr><td>{c.name}</td><td>{c.slug}</td><td>{c.productCount}</td><td>{c.listedProductCount}</td></tr>
                 ))}
               </tbody>
             </table></div>

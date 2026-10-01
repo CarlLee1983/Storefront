@@ -2,7 +2,7 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { parseCategoryId } from "../../../admin/category-form";
-import { describeFailure } from "../../../admin/product-form";
+import { describeFailure, logFailure } from "../../../admin/failure";
 import { toText } from "../../../shared/form-values";
 import Layout from "../../../layouts/Layout.astro";
 
@@ -13,25 +13,42 @@ const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 let unauthorized = false;
 let deleteError = "";
 
+const UNAVAILABLE = "操作失敗，請稍後再試";
+
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const id = parseCategoryId(toText(form.get("id")));
   if (form.get("intent") !== "delete" || id === null) {
     // 被竄改或不認得的表單：不呼叫任何 RPC
     Astro.response.status = 400;
-    deleteError = "操作失敗，請稍後再試";
+    deleteError = UNAVAILABLE;
   } else {
-    const result = await env.APP.deleteCategory(jwt, { id });
-    if (result.ok) return Astro.redirect("/admin/categories?saved=deleted", 303);
-    if (result.reason === "unauthorized") unauthorized = true;
-    else {
-      const name = toText(form.get("name"));
-      deleteError = `無法刪除「${name}」：${describeFailure(result, "刪除分類失敗，請稍後再試").message}`;
+    try {
+      const result = await env.APP.deleteCategory(jwt, { id });
+      if (result.ok) return Astro.redirect("/admin/categories?saved=deleted", 303);
+      if (result.reason === "unauthorized") unauthorized = true;
+      else {
+        const name = toText(form.get("name"));
+        deleteError = `無法刪除「${name}」：${describeFailure(result, "刪除分類失敗，請稍後再試").message}`;
+      }
+    } catch (cause) {
+      logFailure("admin_category_delete_failed", cause);
+      Astro.response.status = 503;
+      deleteError = "刪除分類失敗，請稍後再試";
     }
   }
 }
 
-const categories = unauthorized ? null : await env.APP.listCategoriesForAdmin(jwt);
+let categories: Awaited<ReturnType<typeof env.APP.listCategoriesForAdmin>> | null = null;
+if (!unauthorized) {
+  try {
+    categories = await env.APP.listCategoriesForAdmin(jwt);
+  } catch (cause) {
+    logFailure("admin_category_list_failed", cause);
+    Astro.response.status = 503;
+    deleteError ||= "無法載入分類，請稍後再試";
+  }
+}
 if (unauthorized || (categories && !categories.ok)) Astro.response.status = 403;
 const SAVED_MESSAGES: Record<string, string> = {
   updated: "已儲存分類。",
@@ -59,7 +76,7 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
               <tbody>
                 {categories.data.map((c) => (
                   <tr>
-                    <td>{c.image ? <img src={`/images/${c.image.variants[0]!.key}`} width="64" height="48" style="object-fit: cover; border-radius: 0.25rem" alt={`${c.name}的分類圖片`} loading="lazy" /> : <span>尚無圖片</span>}</td>
+                    <td>{c.image ? <img src={`/images/${c.image.variants[0]!.key}`} class="admin-thumb" width="64" height="48" alt={`${c.name}的分類圖片`} loading="lazy" /> : <span>尚無圖片</span>}</td>
                     <td>{c.name}</td>
                     <td>{c.slug}</td>
                     <td>{c.description}</td>

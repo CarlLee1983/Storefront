@@ -17,6 +17,7 @@ const RPC_METHODS = [
   "deleteProductImage",
   "fetch",
   "getCategory",
+  "getCategoryForAdmin",
   "getCustomerSession",
   "getMyOrder",
   "getOrderForAdmin",

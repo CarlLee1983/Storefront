@@ -2,7 +2,7 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { categoryUpdateFormToInput, parseCategoryId } from "../../../admin/category-form";
-import { describeFailure, type Failure } from "../../../admin/product-form";
+import { describeFailure, logFailure, type Failure } from "../../../admin/failure";
 import { formToRecord } from "../../../shared/form-values";
 import Layout from "../../../layouts/Layout.astro";
 
@@ -14,39 +14,56 @@ const id = parseCategoryId(Astro.params.id);
 let failure: Failure | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
+let unavailable = false;
 
 if (id !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   submitted = formToRecord(form);
-  const result = await env.APP.updateCategory(jwt, categoryUpdateFormToInput(form, id));
-  if (result.ok) return Astro.redirect("/admin/categories?saved=updated", 303);
-  if (result.reason === "unauthorized") unauthorized = true;
-  else failure = describeFailure(result, "儲存分類失敗，請稍後再試");
+  try {
+    const result = await env.APP.updateCategory(jwt, categoryUpdateFormToInput(form, id));
+    if (result.ok) return Astro.redirect("/admin/categories?saved=updated", 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeFailure(result, "儲存分類失敗，請稍後再試");
+  } catch (cause) {
+    logFailure("admin_category_update_failed", cause);
+    failure = { message: "儲存分類失敗，請稍後再試", fields: {} };
+  }
 }
 
-const categories = id === null || unauthorized ? null : await env.APP.listCategoriesForAdmin(jwt);
-if (unauthorized || (categories && !categories.ok)) Astro.response.status = 403;
-const category = categories?.ok ? categories.data.find((c) => c.id === id) : undefined;
-if (Astro.response.status !== 403 && !category) Astro.response.status = 404;
+let category: Awaited<ReturnType<typeof env.APP.getCategoryForAdmin>> | null = null;
+if (id !== null && !unauthorized) {
+  try {
+    category = await env.APP.getCategoryForAdmin(jwt, { id });
+  } catch (cause) {
+    logFailure("admin_category_load_failed", cause);
+    unavailable = true;
+  }
+}
+if (unavailable) Astro.response.status = 503;
+else if (unauthorized || (category && !category.ok && category.reason === "unauthorized")) Astro.response.status = 403;
+else if (!category?.ok) Astro.response.status = 404;
+const current = category?.ok ? category.data : undefined;
 const values = {
-  categoryName: category?.name ?? "",
-  categoryDescription: category?.description ?? "",
+  categoryName: current?.name ?? "",
+  categoryDescription: current?.description ?? "",
   ...submitted,
 };
-const cover = category?.image?.variants[0];
+const cover = current?.image?.variants[0];
 ---
 
 <Layout title="修改分類" admin>
   {
     Astro.response.status === 403 ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : Astro.response.status === 503 ? (
+      <p class="error" role="alert">暫時無法載入分類，請稍後再試。</p>
     ) : Astro.response.status === 404 ? (
       <p class="error" role="alert">找不到這個分類。</p>
     ) : (
       <>
         {failure && <p class="error" role="alert">{failure.message}</p>}
         <form method="post">
-          <p>網址代稱：<code>{category?.slug}</code>（建立後不能修改）</p>
+          <p>網址代稱：<code>{current?.slug}</code>（建立後不能修改）</p>
           <label>
             分類名稱
             <input name="categoryName" value={values.categoryName} required />
@@ -63,10 +80,10 @@ const cover = category?.image?.variants[0];
         <section aria-labelledby="category-image-heading">
           <h2 id="category-image-heading">分類圖片</h2>
           <p>每個分類最多一張圖片，可以不上傳。上傳新圖片會取代目前的圖片。</p>
-          <img id="category-image" src={cover ? `/images/${cover.key}` : undefined} width={cover?.width} height={cover?.height} alt={`${category?.name}的分類圖片`} hidden={!cover} style="max-width: 100%; height: auto; max-height: 12rem; object-fit: contain" />
+          <img id="category-image" src={cover ? `/images/${cover.key}` : undefined} width={cover?.width} height={cover?.height} alt={`${current?.name}的分類圖片`} hidden={!cover} class="category-preview" />
           <p id="category-image-empty" hidden={!!cover}>目前沒有分類圖片。</p>
           <noscript><p>上傳分類圖片需要啟用 JavaScript。</p></noscript>
-          <form id="category-image-upload" action={`/admin/categories/${id}/image`} data-category-name={category?.name}>
+          <form id="category-image-upload" action={`/admin/categories/${id}/image`}>
             <label>分類圖片（JPEG、PNG 或 WebP，20 MB 以內）<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required disabled /></label>
             <p>圖片會在瀏覽器縮放成 WebP，不保存原圖。</p>
             <button type="submit" disabled>上傳分類圖片</button>
@@ -80,9 +97,9 @@ const cover = category?.image?.variants[0];
 </Layout>
 
 <script>
-  import { resizeProductImage } from "../../../images/resize";
-  import { describeFailure } from "../../../admin/product-form";
-  import type { ProductImage } from "@storefront/app/product-images";
+  import { UserFacingError } from "../../../admin/failure";
+  import { errorMessage, uploadImage } from "../../../images/client";
+  const LABEL = "分類圖片";
   const form = document.querySelector<HTMLFormElement>("#category-image-upload");
   if (form) {
     const input = form.querySelector<HTMLInputElement>('input[type="file"]')!;
@@ -94,10 +111,6 @@ const cover = category?.image?.variants[0];
     // 同一次選檔共用一個上傳識別碼：回應遺失後重試，App 回原圖片而不是再換一次
     let uploadId = crypto.randomUUID();
     input.addEventListener("change", () => { uploadId = crypto.randomUUID(); });
-    const message = (result: { reason: string; fields?: Record<string, string[]> }) => result.reason === "unauthorized"
-      ? "沒有權限，請重新通過 Cloudflare Access 登入後再試。"
-      : result.reason === "image_upload_failed" ? "分類圖片上傳失敗，請稍後再試"
-      : describeFailure(result, "分類圖片上傳失敗，請稍後再試").message;
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const file = input.files?.[0];
@@ -106,12 +119,8 @@ const cover = category?.image?.variants[0];
       error.hidden = true;
       status.textContent = "正在縮放並上傳分類圖片…";
       try {
-        const body = await resizeProductImage(file);
-        body.set("uploadId", uploadId);
-        const response = await fetch(form.action, { method: "POST", body });
-        const result = await response.json() as { ok: true; data: { image: ProductImage } } | { ok: false; reason: string; fields?: Record<string, string[]> };
-        if (!response.ok || !result.ok) throw new Error(message(result as { reason: string }));
-        const variant = result.data.image.variants[0]!;
+        const image = await uploadImage(form.action, file, uploadId, LABEL);
+        const variant = image.variants[0]!;
         photo.src = `/images/${variant.key}`;
         photo.width = variant.width;
         photo.height = variant.height;
@@ -121,8 +130,9 @@ const cover = category?.image?.variants[0];
         uploadId = crypto.randomUUID();
         status.textContent = "已儲存分類圖片。";
       } catch (cause) {
+        if (!(cause instanceof UserFacingError)) console.error(cause);
         status.textContent = "";
-        error.textContent = cause instanceof Error && /^[一-鿿]/.test(cause.message) ? cause.message : "分類圖片上傳失敗，請稍後再試";
+        error.textContent = errorMessage(cause, `${LABEL}上傳失敗，請稍後再試`);
         error.hidden = false;
       } finally {
         uploadButton.disabled = input.disabled = false;
