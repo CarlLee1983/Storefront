@@ -1,8 +1,8 @@
 ---
 import SearchForm from "./SearchForm.astro";
 
-// 桌機 header 的搜尋入口：圖示按鈕打開原生 dialog，裡面是搜尋表單。
-// showModal() 負責焦點陷阱與 Esc；開啟時焦點在輸入框（autofocus），關閉後明確還給圖示按鈕。
+// header 的搜尋入口（桌機與手機共用）：圖示按鈕打開原生 dialog，裡面是搜尋表單。
+// showModal() 負責焦點陷阱與 Esc；開啟時焦點在輸入框（autofocus），關閉後瀏覽器把焦點還給原本的按鈕。
 ---
 
 <button type="button" class="icon-button" id="search-button" aria-label="搜尋" aria-haspopup="dialog">
@@ -23,7 +23,6 @@ import SearchForm from "./SearchForm.astro";
   const searchDialog = document.querySelector<HTMLDialogElement>("#search-dialog");
   searchButton?.addEventListener("click", () => searchDialog?.showModal());
   document.querySelector("#search-close")?.addEventListener("click", () => searchDialog?.close());
-  searchDialog?.addEventListener("close", () => searchButton?.focus());
 </script>
 
 <style>

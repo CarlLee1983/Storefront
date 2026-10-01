@@ -91,6 +91,16 @@ test.describe("桌機搜尋", () => {
     await expect(page).toHaveURL(/\/products$/);
   });
 
+  test("搜尋有命中但開了只看有貨而沒有結果：說明原因並可清除篩選", async ({ page }) => {
+    const q = `${SEED_PREFIX} 邊桌`;
+    await page.goto(`/search?q=${encodeURIComponent(q)}&instock=1`);
+    await expect(page.getByText(`沒有符合「${q}」且有貨的商品`)).toBeVisible();
+    await page.getByRole("link", { name: "清除篩選" }).click();
+    await expect(page).not.toHaveURL(/instock/);
+    await expect(page).toHaveURL(/\/search\?q=/);
+    await expect(cards(page)).toHaveCount(1);
+  });
+
   test("空白關鍵字導向全部商品；超過長度上限顯示錯誤而不是 500", async ({ page }) => {
     await page.goto("/search?q=%20%20");
     await expect(page).toHaveURL(/\/products$/);
@@ -118,9 +128,35 @@ test.describe("桌機搜尋", () => {
 test.describe("手機搜尋", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("選單抽屜頂端的搜尋框搜尋並進入結果中的商品", async ({ page }) => {
+  test("header 的搜尋按鈕在手機也有，開同一個搜尋 dialog 並搜尋", async ({ page }) => {
     await page.goto("/");
-    await expect(headerSearchButton(page)).toBeHidden();
+    await headerSearchButton(page).click();
+    const dialog = page.getByRole("dialog", { name: "搜尋" });
+    await expect(dialog.getByRole("searchbox", { name: "搜尋商品" })).toBeFocused();
+    await page.keyboard.type("aurora");
+    await page.keyboard.press("Enter");
+
+    await expect(page).toHaveURL(/\/search\?q=aurora$/);
+    await expect(cards(page)).toHaveCount(1);
+  });
+
+  test("搜尋 dialog 開著時視窗縮到手機寬度，dialog 仍然可見、可以關閉", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    const button = headerSearchButton(page);
+    const dialog = page.getByRole("dialog", { name: "搜尋" });
+    await button.click();
+    await expect(dialog).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(dialog).toBeVisible();
+    await page.getByRole("button", { name: "關閉搜尋" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(button).toBeFocused();
+  });
+
+  test("選單抽屜頂端的搜尋框搜尋並進入結果中的商品；重新整理保留結果", async ({ page }) => {
+    await page.goto("/");
     await page.getByRole("button", { name: "開啟選單" }).click();
     const drawer = page.getByRole("dialog", { name: "選單" });
     await drawer.getByRole("searchbox", { name: "搜尋商品" }).fill("aurora");
@@ -128,6 +164,11 @@ test.describe("手機搜尋", () => {
 
     await expect(page).toHaveURL(/\/search\?q=aurora$/);
     await expect(cards(page)).toHaveCount(1);
+    await page.reload();
+    await expect(page).toHaveURL(/\/search\?q=aurora$/);
+    await expect(cards(page)).toHaveCount(1);
+    await expect(cards(page).first().getByRole("heading", { level: 2 })).toHaveText(AURORA);
+
     await cards(page).first().getByRole("link").first().click();
     await expect(page.getByRole("heading", { level: 1, name: AURORA })).toBeVisible();
   });

@@ -1,6 +1,6 @@
-import { DEFAULT_SORT, MAX_PAGE, MAX_QUERY_LENGTH, PRODUCT_SORTS, type ProductSort } from "@storefront/app/catalog-listing";
+import { DEFAULT_SORT, MAX_PAGE, PRODUCT_SORTS, type ProductSort } from "@storefront/app/catalog-listing";
 
-export { MAX_PAGE, MAX_QUERY_LENGTH };
+export { MAX_PAGE };
 /** 列表網址上的排序、篩選與頁數；合法值與 App 的 `listProducts` 共用 `catalog-listing`，是否合法最終由 App 驗證。 */
 export type ListingSort = ProductSort;
 

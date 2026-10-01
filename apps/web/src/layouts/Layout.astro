@@ -49,9 +49,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
               <CategoryLinks categories={categories} current={currentCategory} />
             </nav>
             <div class="tools">
-              <div class="desktop-only">
-                <SearchDialog />
-              </div>
+              <SearchDialog />
               <div class="desktop-only account">
                 <AccountLinks customer={customer} url={Astro.url} />
               </div>
