@@ -42,9 +42,14 @@ export async function seedListedProducts(
   category: { slug: string; name: string; description: string },
   products: SeedProduct[],
 ): Promise<number[]> {
+  await post(adminContext.request, "/admin", { intent: "create-category", categoryName: category.name, categoryDescription: category.description, categorySlug: category.slug });
+  return seedListedProductsInCategory(adminContext, category.name, products);
+}
+
+/** 同 seedListedProducts，但分類已經存在（例如測試自己在後台建立）：商品直接放進名稱為 `categoryName` 的分類。 */
+export async function seedListedProductsInCategory(adminContext: BrowserContext, categoryName: string, products: SeedProduct[]): Promise<number[]> {
   const admin = adminContext.request;
   const covers = await renderCovers(adminContext);
-  await post(admin, "/admin", { intent: "create-category", categoryName: category.name, categoryDescription: category.description, categorySlug: category.slug });
   // 依序新增，編號才會跟著名稱順序遞增
   for (const { name, priceTwd } of products) await post(admin, "/admin", { name, description: `${name}的說明`, priceTwd: String(priceTwd) });
 
@@ -57,8 +62,8 @@ export async function seedListedProducts(
 
   // 分類編號只出現在商品編輯頁的下拉選單裡
   const editPage = await (await admin.get(`/admin/products/${ids[0]}`)).text();
-  const categoryId = new RegExp(`<option value="(\\d+)"[^>]*>${category.name}</option>`).exec(editPage)?.[1];
-  if (!categoryId) throw new Error(`商品編輯頁找不到剛建立的分類：${category.name}`);
+  const categoryId = new RegExp(`<option value="(\\d+)"[^>]*>${categoryName}</option>`).exec(editPage)?.[1];
+  if (!categoryId) throw new Error(`商品編輯頁找不到分類：${categoryName}`);
 
   await Promise.all(ids.map(async (id, index) => {
     const { name, priceTwd, stock } = products[index]!;
