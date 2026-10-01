@@ -100,6 +100,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     await cleanupDeletedProductImages(this.env.DB, this.env.PRODUCT_IMAGES);
   }
 
+  getProduct(input: unknown) {
+    return this.#catalog().getProduct(input);
+  }
+
   listProducts() {
     return this.#catalog().listProducts();
   }

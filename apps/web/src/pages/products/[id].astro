@@ -1,0 +1,59 @@
+---
+import { env } from "cloudflare:workers";
+import { MAX_QUANTITY } from "../../cart/cart";
+import CartToast from "../../components/CartToast.astro";
+import ProductGallery from "../../components/ProductGallery.astro";
+import Layout from "../../layouts/Layout.astro";
+
+export const prerender = false;
+const id = /^\d+$/.test(Astro.params.id ?? "") ? Number(Astro.params.id) : NaN;
+const result = await env.APP.getProduct({ id });
+const product = result.ok ? result.data : null;
+if (!product) Astro.response.status = 404;
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+<Layout title={product?.name ?? "找不到頁面"} noindex={!product}>
+  {product ? <>
+    <p><a href="/">回商品列表</a></p>
+    <div class="product-detail">
+      <ProductGallery name={product.name} images={product.images} />
+      <section class="product-information" aria-label="商品資訊">
+        <p class="description">{product.description}</p>
+        <p class="price">NT$ {priceFormat.format(product.priceTwd)}</p>
+        <p class="availability">{product.purchasable ? "可購買" : "已售完"}</p>
+        {product.purchasable && <form class="add-to-cart" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
+          <label>數量<input type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" required /></label>
+          <button type="submit">加入購物車</button>
+          <CartToast />
+        </form>}
+      </section>
+    </div>
+  </> : <><p>這個商品不存在，或已經下架。</p><p><a href="/">回首頁</a></p></>}
+</Layout>
+<script>
+  import { parseCartCover } from "../../cart/cover";
+  import { showCartToast } from "../../cart/toast";
+  import { addToCart } from "../../cart/cart";
+  import { addFeedback } from "../../cart/feedback";
+  import { storageOf } from "../../cart/storage";
+  import { updateCart } from "../../cart/store";
+  const form = document.querySelector<HTMLFormElement>("form.add-to-cart");
+  form?.addEventListener("submit", event => {
+    event.preventDefault();
+    const item = { productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
+    const quantity = Number(new FormData(form).get("quantity"));
+    showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
+      updateCart(storageOf(window), window, current => addToCart(current, item, quantity))));
+  });
+</script>
+<style>
+  .product-detail { display: grid; gap: var(--space-6); }
+  .product-information { min-width: 0; }
+  .description { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .price { font-size: var(--text-xl); font-weight: 700; }
+  .availability { color: var(--color-muted); }
+  .add-to-cart { display: grid; grid-template-columns: minmax(4rem, 1fr) auto; gap: var(--space-3); align-items: end; }
+  .add-to-cart label { margin: 0; }
+  .add-to-cart button { min-height: 44px; }
+  @media (min-width: 64rem) { .product-detail { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-8); } }
+</style>
