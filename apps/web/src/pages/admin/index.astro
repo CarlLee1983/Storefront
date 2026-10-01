@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "@storefront/app/category-slug";
 import { readAccessJwt } from "../../admin/access-jwt";
 import {
   describeFailure,
@@ -19,6 +20,8 @@ let submitted: Record<string, string> = {};
 let unauthorized = false;
 let listingError = "";
 let stockFailure: (Failure & { id: number }) | undefined;
+let categoryFailure: Failure | undefined;
+let categorySubmitted: Record<string, string> = {};
 const LISTING_FAILED = "操作失敗，請稍後再試";
 
 if (Astro.request.method === "POST") {
@@ -36,6 +39,12 @@ if (Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/admin?saved=${action}`, 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else listingError = describeFailure(result, LISTING_FAILED).message;
+  } else if (dispatch.kind === "create-category") {
+    categorySubmitted = formToRecord(form);
+    const result = await env.APP.createCategory(jwt, dispatch.input);
+    if (result.ok) return Astro.redirect("/admin?saved=category", 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else categoryFailure = describeFailure(result, "建立分類失敗，請稍後再試");
   } else if (dispatch.kind === "stock") {
     // 清單上的庫存調整（增減量）
     const result = await env.APP.adjustStock(jwt, dispatch.input);
@@ -57,6 +66,7 @@ if (Astro.request.method === "POST") {
 }
 
 const products = unauthorized ? null : await env.APP.listProductsForAdmin(jwt);
+const categories = unauthorized ? null : await env.APP.listCategoriesForAdmin(jwt);
 if (unauthorized || (products && !products.ok)) Astro.response.status = 403;
 const SAVED_MESSAGES: Record<string, string> = {
   created: "已新增商品。",
@@ -64,6 +74,7 @@ const SAVED_MESSAGES: Record<string, string> = {
   unlist: "已下架商品。",
   relist: "已重新上架商品。",
   stock: "已調整庫存。",
+  category: "已建立分類。",
 };
 const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
 const priceFormat = new Intl.NumberFormat("zh-TW");
@@ -82,7 +93,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           products?.ok && products.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>封面</th><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
+                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
@@ -90,6 +101,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <td>{p.cover ? <img src={`/images/${p.cover.variants[0]!.key}`} width="64" height="64" style="object-fit: cover; border-radius: 0.25rem" alt={`${p.name}的封面`} loading="lazy" /> : <span>尚無圖片</span>}</td>
                     <td>{p.name}</td>
                     <td>{p.description}</td>
+                    <td>{p.category?.name ?? "未分類"}</td>
                     <td>{priceFormat.format(p.priceTwd)}</td>
                     <td>{p.onHand}</td>
                     <td>{p.reserved}</td>
@@ -116,6 +128,43 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </table></div>
           )
         }
+        <h2>分類</h2>
+        {categories?.ok && categories.data.length === 0 && <p>目前沒有分類。商品需要先有分類才能上架。</p>}
+        {
+          categories?.ok && categories.data.length > 0 && (
+            <div class="table-scroll" tabindex="0" role="region" aria-label="分類資料表"><table>
+              <thead>
+                <tr><th>名稱</th><th>代稱</th><th>商品數</th></tr>
+              </thead>
+              <tbody>
+                {categories.data.map((c) => (
+                  <tr><td>{c.name}</td><td>{c.slug}</td><td>{c.productCount}</td></tr>
+                ))}
+              </tbody>
+            </table></div>
+          )
+        }
+        <h3>新增分類</h3>
+        {categoryFailure && <p class="error" role="alert">{categoryFailure.message}</p>}
+        <form method="post">
+          <input type="hidden" name="intent" value="create-category" />
+          <label>
+            分類名稱
+            <input name="categoryName" value={categorySubmitted.categoryName ?? ""} required />
+            {categoryFailure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            分類說明（一行）
+            <input name="categoryDescription" value={categorySubmitted.categoryDescription ?? ""} required />
+            {categoryFailure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            網址代稱（小寫英文、數字與連字號，建立後不能修改）
+            <input name="categorySlug" value={categorySubmitted.categorySlug ?? ""} required pattern={SLUG_PATTERN.source} maxlength={MAX_SLUG_LENGTH} />
+            {categoryFailure?.fields.slug?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <button type="submit">建立分類</button>
+        </form>
         <h2>新增商品</h2>
         {failure && <p class="error" role="alert">{failure.message}</p>}
         <form method="post">

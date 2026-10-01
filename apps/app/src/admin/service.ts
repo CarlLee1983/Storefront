@@ -1,9 +1,12 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
+import { createCategoryInput } from "../categories/input";
+import { isValidSlug } from "../categories/slug";
+import { categoryExists, insertCategory, selectCategoriesForAdmin } from "../categories/queries";
 import { addProductImageInput, reorderProductImagesInput, deleteProductImageInput } from "../images/input";
 import { reorderProductImages, deleteProductImage } from "../images/manage";
 import { uploadProductImage, type ProductImageBucket } from "../images/upload";
@@ -81,9 +84,38 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, deleteProductImageInput, input, (_actor, data) => deleteProductImage(d1, images, data));
     },
 
-    /** 修改名稱、說明與單價；不動上架狀態。 */
+    /**
+     * 修改名稱、說明、單價與分類；不動上架狀態。
+     * 指定的分類不存在回 `category_not_found`；上架中的商品不能把分類清成空，回 `no_category`（下架中的可以）。
+     */
     updateProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, updateProductInput, input, (_actor, { id, ...values }) => updateById(id, values));
+      return authorized(jwt, updateProductInput, input, async (_actor, { id, ...values }) => {
+        if (typeof values.categoryId === "number" && !(await categoryExists(db, values.categoryId))) return fail("category_not_found");
+        const clearsCategory = values.categoryId === null;
+        // 「上架中不能清空分類」寫進同一句 UPDATE 的條件，不會和同時發生的上架互相穿插
+        const updated = await db.update(products).set(values)
+          .where(and(eq(products.id, id), clearsCategory ? eq(products.listed, false) : undefined))
+          .returning({ id: products.id });
+        if (updated.length) return ok({ id });
+        const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
+        return product ? fail("no_category") : fail("product_not_found");
+      });
+    },
+
+    /** 建立分類：代稱格式錯回 `invalid_slug`、已被使用回 `slug_taken`。代稱建立後沒有任何修改途徑。 */
+    createCategory(jwt: unknown, input: unknown) {
+      return authorized(jwt, createCategoryInput, input, async (_actor, data) => {
+        if (!isValidSlug(data.slug)) return fail("invalid_slug");
+        const created = await insertCategory(db, data);
+        return created ? ok(created) : fail("slug_taken");
+      });
+    },
+
+    /** 所有分類（含沒有上架商品的），依建立順序，帶商品數。 */
+    async listCategoriesForAdmin(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectCategoriesForAdmin(db));
     },
 
     /** 下架：商品從前台消失，但保留在後台。已下架時也回成功（冪等）。 */
@@ -91,16 +123,28 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, productIdInput, input, (_actor, { id }) => updateById(id, { listed: false }));
     },
 
-    /** 重新上架：已上架時也回成功（冪等）。 */
+    /**
+     * 重新上架：已上架時也回成功（冪等，不重設上架時間）。
+     * 沒有圖片回 `no_images`、沒有分類回 `no_category`；兩者都缺時先回 `no_images`。
+     * 從下架變上架時，上架時間設為現在。
+     */
     relistProduct(jwt: unknown, input: unknown) {
       return authorized(jwt, productIdInput, input, async (_actor, { id }) => {
-        const updated = await db.update(products).set({ listed: true }).where(and(
+        const updated = await db.update(products).set({
+          listed: true,
+          listedAt: sql`case when ${products.listed} and ${products.listedAt} is not null then ${products.listedAt} else ${clock.now()} end`,
+        }).where(and(
           eq(products.id, id),
+          isNotNull(products.categoryId),
           sql`exists (select 1 from product_images where product_id = ${products.id})`,
         )).returning({ id: products.id });
         if (updated.length) return ok({ id });
-        const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
-        return product ? fail("no_images") : fail("product_not_found");
+        const [product] = await db.select({
+          // 單表 select 會把 sql 片段裡的欄位去掉資料表前綴，子查詢裡就會誤指向 product_images.id，所以寫成 ${products}.id
+          hasImages: sql<number>`exists (select 1 from product_images where product_id = ${products}.id)`.mapWith(Boolean),
+        }).from(products).where(eq(products.id, id));
+        if (!product) return fail("product_not_found");
+        return product.hasImages ? fail("no_category") : fail("no_images");
       });
     },
 

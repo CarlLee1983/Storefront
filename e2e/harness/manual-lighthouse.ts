@@ -1,6 +1,7 @@
 /** Optional, interactive local acceptance only; never imported by CI. Run serve.ts first. */
 import { chromium, expect } from "@playwright/test";
 import { adminAccessHeaders } from "./admin-access";
+import { assignSharedCategory } from "./admin-categories";
 import { BASE_URL } from "./constants";
 
 // The fixed harness origin deliberately cannot be changed to preview/production.
@@ -15,6 +16,7 @@ try {
   await admin.getByLabel("說明", { exact: true }).fill("日常選物，三張商品圖片的本機驗收資料。");
   await admin.getByLabel("單價（新台幣整數元）").fill("680");
   await admin.getByRole("button", { name: "新增商品", exact: true }).click();
+  await assignSharedCategory(admin, name);
   const row = admin.getByRole("row").filter({ hasText: name });
   await row.getByLabel(`${name}的庫存增減量`).fill("10");
   await row.getByRole("button", { name: "調整庫存" }).click();

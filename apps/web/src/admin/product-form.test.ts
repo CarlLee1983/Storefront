@@ -130,3 +130,32 @@ describe("describeFailure", () => {
 it("explains why a product without images cannot be listed", () => {
   expect(describeFailure({ reason: "no_images" }, "fallback").message).toBe("請先上傳商品圖片，再上架商品");
 });
+
+describe("分類相關", () => {
+  it("商品修改表單帶出分類：選了分類是數字，選未分類是 null，沒有欄位就不動分類", () => {
+    const base = { name: "馬克杯", description: "", priceTwd: "320" };
+    expect(productUpdateFormToInput(form({ ...base, categoryId: "4" }), 7)).toMatchObject({ id: 7, categoryId: 4 });
+    expect(productUpdateFormToInput(form({ ...base, categoryId: "" }), 7)).toMatchObject({ categoryId: null });
+    expect(productUpdateFormToInput(form(base), 7).categoryId).toBeUndefined();
+  });
+
+  it("新增商品表單不帶分類（分類在編輯頁設定）", () => {
+    expect(productFormToInput(form({ name: "馬克杯", description: "", priceTwd: "320", categoryId: "4" }))).not.toHaveProperty("categoryId");
+  });
+
+  it("建立分類的表單以 intent 分派", () => {
+    expect(dispatchProductForm(form({ intent: "create-category", categoryName: "客廳", categoryDescription: "沙發", categorySlug: "living" }))).toEqual({
+      kind: "create-category",
+      input: { name: "客廳", description: "沙發", slug: "living" },
+    });
+  });
+
+  it.each([
+    ["no_category", "請先選擇商品分類"],
+    ["category_not_found", "找不到這個分類"],
+    ["invalid_slug", "代稱只能使用小寫英文"],
+    ["slug_taken", "這個代稱已被使用"],
+  ])("%s 有專屬的說明", (reason, text) => {
+    expect(describeFailure({ reason }, "fallback").message).toContain(text);
+  });
+});

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { categoryId } from "../categories/input";
 import { orderIdInput } from "../orders/input";
 import { ORDER_STATUSES } from "../orders/schema";
 import { wholeNumber } from "../shared/input";
@@ -30,7 +31,11 @@ const priceTwd = wholeNumber("單價")
 
 export const createProductInput = z.object({ name, description, priceTwd });
 
-export const updateProductInput = z.object({ id: productId, name, description, priceTwd });
+/**
+ * 修改商品；`categoryId` 不帶表示不動分類，帶 `null` 表示清成沒有分類
+ *（上架中的商品不允許，由 service 檢查）。
+ */
+export const updateProductInput = z.object({ id: productId, name, description, priceTwd, categoryId: categoryId.nullable().optional() });
 export const productIdInput = z.object({ id: productId });
 
 /** 庫存調整的增減量：非零整數（+20 補貨、-3 盤損）；沒有「設成某個數字」的輸入。 */

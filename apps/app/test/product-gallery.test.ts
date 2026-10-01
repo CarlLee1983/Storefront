@@ -5,6 +5,7 @@ import { cleanupDeletedProductImages } from "../src/images/manage";
 import type { ProductImageBucket } from "../src/images/upload";
 import { systemClock } from "../src/shared/clock";
 import { mintAccessJwt } from "./access";
+import { assignDefaultCategory } from "./categories";
 import { resetDb } from "./db";
 import { imageVariants } from "./images";
 const app = exports.default;
@@ -29,6 +30,7 @@ async function imageIds(jwt: string, id: number) {
 }
 it("reorders a full eight-image set and changes customer/admin covers", async () => {
   const { jwt, id, images } = await fixture(8);
+  await assignDefaultCategory(jwt, id);
   await app.relistProduct(jwt, { id });
   const reversed = [...images].reverse();
   expect(await app.reorderProductImages(jwt, { id, imageIds: reversed.map(image => image.id) })).toEqual({ ok: true, data: { id } });
@@ -72,6 +74,7 @@ it("deletes all R2 variants, compacts positions, and appends a replacement after
 });
 it("concurrent deletions retain the final listed image; unlisted products can have zero", async () => {
   const { jwt, id, images } = await fixture();
+  await assignDefaultCategory(jwt, id);
   await app.relistProduct(jwt, { id });
   const results = await Promise.all(images.map(image => app.deleteProductImage(jwt, { id, imageId: image.id })));
   expect(results.filter(result => result.ok)).toHaveLength(2);
@@ -100,6 +103,7 @@ it("deletion retries and wrong-product image IDs never delete another product's 
 });
 it("R2 cleanup failures are durable and retryable, never leaving a broken referenced cover", async () => {
   const { jwt, id, images } = await fixture(2);
+  await assignDefaultCategory(jwt, id);
   await app.relistProduct(jwt, { id });
   const bucket = { put: vi.fn(), delete: vi.fn().mockRejectedValue(new Error("R2 unavailable")) };
   const service = createAdminService(env.DB, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, bucket as unknown as ProductImageBucket);
@@ -131,6 +135,7 @@ it("concurrent reorder, delete and append preserve an exact ordered gallery", as
 });
 it("concurrent relist and final deletion cannot leave a listed product without a cover", async () => {
   const { jwt, id, images } = await fixture(1);
+  await assignDefaultCategory(jwt, id);
   await Promise.all([
     app.relistProduct(jwt, { id }),
     app.deleteProductImage(jwt, { id, imageId: images[0]!.id }),
@@ -142,6 +147,7 @@ it("concurrent relist and final deletion cannot leave a listed product without a
 });
 it("a committed D1 deletion with a lost response is recoverable without touching the new cover", async () => {
   const { jwt, id, images } = await fixture(2);
+  await assignDefaultCategory(jwt, id);
   await app.relistProduct(jwt, { id });
   const d1 = { prepare: (sql: string) => env.DB.prepare(sql), batch: async (statements: D1PreparedStatement[]) => { await env.DB.batch(statements); throw new Error("response lost"); } } as unknown as D1Database;
   const service = createAdminService(d1, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, env.PRODUCT_IMAGES);

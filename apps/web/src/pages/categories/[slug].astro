@@ -1,0 +1,34 @@
+---
+import { env } from "cloudflare:workers";
+import ProductList from "../../components/ProductList.astro";
+import Layout from "../../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 代稱不合法、分類不存在、分類沒有上架商品，App 一律回 not_found
+const result = await env.APP.getCategory({ slug: Astro.params.slug });
+const category = result.ok ? result.data : null;
+if (!category) Astro.response.status = 404;
+---
+
+<Layout title={category?.name ?? "找不到頁面"} noindex={!category}>
+  {
+    category ? (
+      <>
+        <p class="category-description">{category.description}</p>
+        <p class="category-count">共 {category.products.length} 件商品</p>
+        <ProductList products={category.products} />
+      </>
+    ) : (
+      <>
+        <p>這個分類不存在，或目前沒有上架的商品。</p>
+        <p><a href="/">回首頁</a></p>
+      </>
+    )
+  }
+</Layout>
+
+<style>
+  .category-description { font-size: var(--text-lg); }
+  .category-count { color: var(--color-muted); }
+</style>

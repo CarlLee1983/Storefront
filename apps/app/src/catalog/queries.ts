@@ -1,5 +1,6 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
 import type { ProductImage } from "../product-images";
 import { products } from "./schema";
@@ -22,6 +23,8 @@ export interface ProductSummary extends ProductBase {
 
 export interface AdminProductSummary extends ProductBase {
   cover: ProductImage | null;
+  /** 所屬分類；上架中的商品一定有。 */
+  category: { id: number; slug: string; name: string } | null;
   listed: boolean;
   /** 在庫數（On Hand）。 */
   onHand: number;
@@ -50,12 +53,30 @@ const cover = sql<ProductImage | null>`(
     order by cover_image.position, cover_image.id limit 1
   )`.mapWith((value: string | null) => value === null ? null : JSON.parse(value) as ProductImage);
 
-const adminColumns = { ...summaryColumns, listed: products.listed, cover };
+const adminColumns = {
+  ...summaryColumns,
+  listed: products.listed,
+  cover,
+  categoryId: categories.id,
+  categorySlug: categories.slug,
+  categoryName: categories.name,
+};
 
-type AdminRow = Omit<AdminProductSummary, "available">;
+type AdminRow = Omit<AdminProductSummary, "available" | "category"> & {
+  categoryId: number | null;
+  categorySlug: string | null;
+  categoryName: string | null;
+};
 
-function toAdminSummary(row: AdminRow): AdminProductSummary {
-  return { ...row, available: availableQuantity(row.onHand, row.reserved) };
+function toAdminSummary({ categoryId, categorySlug, categoryName, ...row }: AdminRow): AdminProductSummary {
+  // left join 的分類欄位在 categoryId 非空時一定有值：category_id 是指向 categories 的外鍵，所以非空斷言成立
+  const category = categoryId === null ? null : { id: categoryId, slug: categorySlug!, name: categoryName! };
+  return { ...row, category, available: availableQuantity(row.onHand, row.reserved) };
+}
+
+/** 前台商品項目：只含上架中的商品，帶封面與是否可購買。 */
+function toSummary({ onHand, reserved, ...row }: Omit<ProductSummary, "purchasable"> & { onHand: number; reserved: number }): ProductSummary {
+  return { ...row, purchasable: availableQuantity(onHand, reserved) > 0 };
 }
 
 /** 前台清單：只列上架中的商品，依新增順序。 */
@@ -63,18 +84,26 @@ export async function selectListedProducts(db: DrizzleD1Database): Promise<Produ
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
 
   const rows = await db.select({ ...summaryColumns, cover }).from(products).where(eq(products.listed, true)).orderBy(asc(products.id));
-  return rows.map(({ onHand, reserved, ...row }) => ({ ...row, purchasable: availableQuantity(onHand, reserved) > 0 }));
+  return rows.map(toSummary);
+}
+
+/** 分類頁：分類內上架中的商品，依上架時間由新到舊（同一毫秒以 id 較大者在前）。 */
+export async function selectListedProductsInCategory(db: DrizzleD1Database, categoryId: number): Promise<ProductSummary[]> {
+  const rows = await db.select({ ...summaryColumns, cover }).from(products)
+    .where(and(eq(products.listed, true), eq(products.categoryId, categoryId)))
+    .orderBy(desc(products.listedAt), desc(products.id));
+  return rows.map(toSummary);
 }
 
 /** 後台清單：所有商品（含下架），依新增順序。 */
 export async function selectProductsForAdmin(db: DrizzleD1Database): Promise<AdminProductSummary[]> {
-  const rows = await db.select(adminColumns).from(products).orderBy(asc(products.id));
+  const rows = await db.select(adminColumns).from(products).leftJoin(categories, eq(products.categoryId, categories.id)).orderBy(asc(products.id));
   return rows.map(toAdminSummary);
 }
 
 /** 單一商品（含下架）；不存在回 null。 */
 export async function selectProductForAdmin(db: DrizzleD1Database, id: number): Promise<AdminProductDetail | null> {
-  const [row] = await db.select(adminColumns).from(products).where(eq(products.id, id));
+  const [row] = await db.select(adminColumns).from(products).leftJoin(categories, eq(products.categoryId, categories.id)).where(eq(products.id, id));
   if (!row) return null;
   const images = await db.select({ id: productImages.id, variants: productImages.variants }).from(productImages)
     .where(eq(productImages.productId, id)).orderBy(asc(productImages.position), asc(productImages.id));
@@ -84,6 +113,8 @@ export async function selectProductForAdmin(db: DrizzleD1Database, id: number): 
 export interface ProductDetail extends ProductBase {
   purchasable: boolean;
   images: ProductImage[];
+  /** 所屬分類的代稱與名稱；上架中的商品一定有。 */
+  category: { slug: string; name: string } | null;
 }
 
 /** One snapshot: an unlisted product never exposes its details through this public query. */
@@ -95,9 +126,14 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
       order by image.position, image.id
     ) ordered
   )`.mapWith((value: string) => JSON.parse(value) as ProductImage[]);
-  const [row] = await db.select({ ...summaryColumns, images }).from(products)
+  const [row] = await db.select({ ...summaryColumns, images, categorySlug: categories.slug, categoryName: categories.name }).from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
     .where(and(eq(products.id, id), eq(products.listed, true)));
   if (!row) return null;
-  const { onHand, reserved, ...product } = row;
-  return { ...product, purchasable: availableQuantity(onHand, reserved) > 0 };
+  const { onHand, reserved, categorySlug, categoryName, ...product } = row;
+  return {
+    ...product,
+    purchasable: availableQuantity(onHand, reserved) > 0,
+    category: categorySlug === null ? null : { slug: categorySlug, name: categoryName! },
+  };
 }

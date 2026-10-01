@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL, GATEWAY_API_KEY, GATEWAY_URL, MEMBER } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
@@ -53,6 +54,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await admin.getByLabel("單價（新台幣整數元）").fill(PRODUCT.priceTwd);
   await admin.getByRole("button", { name: "新增商品" }).click();
   await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await assignSharedCategory(admin, PRODUCT.name);
 
   const productRow = admin.getByRole("row", { name: new RegExp(PRODUCT.name) });
   await productRow.getByLabel(`${PRODUCT.name}的庫存增減量`).fill("+5");

@@ -1,4 +1,6 @@
+import { MAX_SLUG_LENGTH } from "@storefront/app/category-slug";
 import { toNumber, toText } from "../shared/form-values";
+import { categoryFormToInput, categoryIdFromSelect } from "./category-form";
 
 /** 新增商品表單 → RPC 輸入；不判斷內容是否合法，由 App 驗證。 */
 export function productFormToInput(form: FormData) {
@@ -9,9 +11,9 @@ export function productFormToInput(form: FormData) {
   };
 }
 
-/** 修改商品表單 → RPC 輸入。 */
+/** 修改商品表單 → RPC 輸入，含分類下拉選單的值。 */
 export function productUpdateFormToInput(form: FormData, id: number) {
-  return { id, ...productFormToInput(form) };
+  return { id, ...productFormToInput(form), categoryId: categoryIdFromSelect(form.get("categoryId")) };
 }
 
 /** 庫存調整表單 → RPC 輸入；增減量（+20、-3）轉成數字，是否合法由 App 驗證。 */
@@ -30,15 +32,17 @@ export type ProductFormDispatch =
   | { kind: "create" }
   | { kind: "listing"; action: ListingAction; id: number }
   | { kind: "stock"; input: ReturnType<typeof stockAdjustFormToInput> }
+  | { kind: "create-category"; input: ReturnType<typeof categoryFormToInput> }
   | { kind: "invalid" };
 
 /**
- * 後台清單頁 POST 的分派：沒有 `intent` 欄位才是新增；有 `intent` 就必須是合法的下架／重新上架／庫存調整，
+ * 後台清單頁 POST 的分派：沒有 `intent` 欄位才是新增；有 `intent` 就必須是合法的下架／重新上架／庫存調整／建立分類，
  * 否則是 invalid（頁面不呼叫任何 RPC），避免被竄改的表單落到新增。
  */
 export function dispatchProductForm(form: FormData): ProductFormDispatch {
   const intent = form.get("intent");
   if (intent === null) return { kind: "create" };
+  if (intent === "create-category") return { kind: "create-category", input: categoryFormToInput(form) };
   const id = parseProductId(toText(form.get("id")));
   if (id === null) return { kind: "invalid" };
   if (intent === "adjust-stock") return { kind: "stock", input: stockAdjustFormToInput(form, id) };
@@ -70,6 +74,10 @@ export function describeFailure(
     image_delete_failed: "商品圖片刪除尚未完成，請重試；系統也會重試清理圖片",
     image_management_failed: "商品圖片操作失敗，請稍後再試",
     image_upload_failed: "商品圖片上傳失敗，請稍後再試",
+    no_category: "請先選擇商品分類：上架與重新上架都需要分類，上架中的商品也不能改成未分類",
+    category_not_found: "找不到這個分類",
+    invalid_slug: `代稱只能使用小寫英文、數字與連字號（不可以連字號開頭或結尾），且不可超過 ${MAX_SLUG_LENGTH} 個字元`,
+    slug_taken: "這個代稱已被使用，請換一個",
     insufficient_stock: "庫存不足：調整後的可售數量不可為負",
   };
   return { message: messages[result.reason] ?? fallback, fields: result.fields ?? {} };

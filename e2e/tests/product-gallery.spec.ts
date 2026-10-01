@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 
 async function createProduct(page: Page, name: string) {
@@ -8,6 +9,7 @@ async function createProduct(page: Page, name: string) {
   await page.getByLabel("名稱", { exact: true }).fill(name);
   await page.getByLabel("單價（新台幣整數元）").fill("350");
   await page.getByRole("button", { name: "新增商品", exact: true }).click();
+  await assignSharedCategory(page, name);
   await page.getByRole("row").filter({ hasText: name }).getByRole("link", { name: "編輯" }).click();
   await expect(page.getByRole("button", { name: "上傳商品圖片", exact: true })).toBeEnabled();
 }

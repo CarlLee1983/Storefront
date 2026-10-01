@@ -1,92 +1,15 @@
 ---
 import { env } from "cloudflare:workers";
-import { MAX_QUANTITY } from "../cart/cart";
-import CartToast from "../components/CartToast.astro";
+import ProductList from "../components/ProductList.astro";
 import Layout from "../layouts/Layout.astro";
 
 export const prerender = false;
 
 // 前台不需登入；只列上架中的商品
 const products = await env.APP.listProducts();
-const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <Layout title="商品">
   {products.ok && products.data.length === 0 && <p>目前沒有上架的商品。</p>}
-  {
-    products.ok && products.data.length > 0 && (
-      <ul class="product-list">
-        {products.data.map((p, index) => (
-          <li class:list={["product-card", { "is-sold-out": !p.purchasable }]}>
-            <a class="product-link" href={`/products/${p.id}`}>
-            {p.cover && <img
-              src={`/images/${p.cover.variants[0]!.key}`}
-              srcset={p.cover.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
-              sizes="(min-width: 64rem) 22rem, (min-width: 40rem) 45vw, 90vw"
-              width={p.cover.variants.at(-1)!.width}
-              height={p.cover.variants.at(-1)!.height}
-              alt={`${p.name}的封面`}
-              loading={index === 0 ? "eager" : "lazy"}
-            />}
-            <h2>{p.name}</h2>
-            </a>
-            <p class="description">{p.description}</p>
-            <p class="price">NT$ {priceFormat.format(p.priceTwd)}</p>
-            <p class:list={["availability", { "sold-out": !p.purchasable }]}>{p.purchasable ? "可購買" : "已售完"}</p>
-            {p.purchasable && (
-              <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
-                <label>
-                  數量
-                  <input type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" required />
-                </label>
-                <button type="submit">加入購物車</button>
-                <CartToast />
-              </form>
-            )}
-          </li>
-        ))}
-      </ul>
-    )
-  }
+  {products.ok && products.data.length > 0 && <ProductList products={products.data} />}
 </Layout>
-
-<script>
-  import { parseCartCover } from "../cart/cover";
-  import { showCartToast } from "../cart/toast";
-  import { addToCart } from "../cart/cart";
-  import { addFeedback } from "../cart/feedback";
-  import { storageOf } from "../cart/storage";
-  import { updateCart } from "../cart/store";
-
-  // 商品資料來自頁面上的 data 屬性（伺服器端渲染時放入），加入當下的單價就是顧客看到的單價
-  for (const form of document.querySelectorAll<HTMLFormElement>("form.add-to-cart")) {
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const item = {
-        productId: Number(form.dataset.productId),
-        name: form.dataset.name ?? "",
-        unitPriceTwd: Number(form.dataset.price),
-        cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")),
-      };
-      const quantity = Number(new FormData(form).get("quantity"));
-      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
-        updateCart(storageOf(window), window, (current) => addToCart(current, item, quantity)),
-      ));
-    });
-  }
-</script>
-
-<style>
-  .product-card { display: flex; flex-direction: column; gap: var(--space-2); }
-  .product-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-sm); background: var(--color-bg); }
-  .product-card h2 { margin-block: var(--space-2) 0; }
-  .product-card p { margin: 0; }
-  .description { color: var(--color-muted); }
-  .price { font-size: var(--text-lg); font-weight: 700; }
-  .availability { font-size: var(--text-sm); color: var(--color-muted); }
-  .sold-out { align-self: start; padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); background: var(--color-bg); border: 1px solid var(--color-border); font-weight: 700; }
-  .is-sold-out img { filter: grayscale(1); }
-  .add-to-cart { margin-top: auto; display: grid; grid-template-columns: minmax(4rem, 1fr) auto; gap: var(--space-3); align-items: end; }
-  .add-to-cart label { margin: 0; }
-  .add-to-cart button { min-height: 44px; }
-</style>
