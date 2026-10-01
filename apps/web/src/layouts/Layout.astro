@@ -71,7 +71,16 @@ const customer = admin ? null : Astro.locals.customer;
       // 購物車件數：載入時、本頁改動時、其他分頁改動時（storage 事件）都重讀 localStorage
       const cartCountEl = document.querySelector<HTMLElement>("#cart-count");
       const showCartCount = () => {
-        if (cartCountEl) cartCountEl.textContent = String(cartCount(loadCart(storageOf(window))));
+        if (!cartCountEl) return;
+        const count = String(cartCount(loadCart(storageOf(window))));
+        if (cartCountEl.textContent !== count) {
+          cartCountEl.textContent = count;
+          cartCountEl.classList.remove("count-bump");
+          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            void cartCountEl.offsetWidth;
+            cartCountEl.classList.add("count-bump");
+          }
+        }
       };
       showCartCount();
       window.addEventListener(CART_CHANGED_EVENT, showCartCount);
@@ -94,3 +103,10 @@ const customer = admin ? null : Astro.locals.customer;
     </script>
   </body>
 </html>
+
+<style>
+  #cart-count { display: inline-block; min-width: 1ch; text-align: center; font-weight: 700; }
+  .count-bump { animation: count-bump var(--duration-normal) ease-out; }
+  @keyframes count-bump { 50% { transform: translateY(-.25rem) scale(1.2); } }
+  @media (prefers-reduced-motion: reduce) { .count-bump { animation: none; } }
+</style>

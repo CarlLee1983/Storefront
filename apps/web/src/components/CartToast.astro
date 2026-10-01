@@ -1,0 +1,14 @@
+<!-- Kept in the form's semantic context so each add action has its own status. -->
+<span class="cart-status" role="status" aria-live="polite" aria-atomic="true"></span>
+
+<style>
+  .cart-status:not(:empty) {
+    position: fixed; inset: auto var(--space-4) var(--space-4); z-index: 50;
+    width: fit-content; max-width: calc(100vw - 2 * var(--space-4)); margin-inline: auto;
+    padding: var(--space-4) var(--space-6); border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); color: var(--color-text); background: var(--color-surface);
+    box-shadow: var(--shadow-card); animation: toast-enter var(--duration-normal) ease-out;
+  }
+  @keyframes toast-enter { from { opacity: 0; transform: translateY(.5rem); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .cart-status:not(:empty) { animation: none; } }
+</style>
