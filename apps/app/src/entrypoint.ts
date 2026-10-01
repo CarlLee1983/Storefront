@@ -108,6 +108,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#catalog().listProducts();
   }
 
+  listCategories() {
+    return this.#catalog().listCategories();
+  }
+
+  getCategory(input: unknown) {
+    return this.#catalog().getCategory(input);
+  }
+
   // 顧客 RPC：第一個參數是瀏覽器的 cookie，由 App 自行驗 session，不信任呼叫端的任何身分聲明。
   checkout(cookie: string, input: unknown) {
     return this.#orders().checkout(cookie, input);
@@ -146,6 +154,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   getProductForAdmin(jwt: string, input: unknown) {
     return this.#admin().getProductForAdmin(jwt, input);
+  }
+
+  createCategory(jwt: string, input: unknown) {
+    return this.#admin().createCategory(jwt, input);
+  }
+
+  listCategoriesForAdmin(jwt: string) {
+    return this.#admin().listCategoriesForAdmin(jwt);
   }
 
   createProduct(jwt: string, input: unknown) {

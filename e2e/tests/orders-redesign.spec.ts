@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
@@ -17,6 +18,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await admin.getByLabel("單價（新台幣整數元）").fill("680");
     await admin.getByRole("button", { name: "新增商品" }).click();
     await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+    await assignSharedCategory(admin, name);
     const row = admin.getByRole("row", { name: new RegExp(name) });
     await row.getByLabel(`${name}的庫存增減量`).fill("5");
     await row.getByRole("button", { name: "調整庫存" }).click();

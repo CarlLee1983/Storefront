@@ -28,11 +28,18 @@ if (id !== null && Astro.request.method === "POST") {
   else failure = describeFailure(result, "儲存商品失敗，請稍後再試");
 }
 
+const categories = id === null || unauthorized ? null : await env.APP.listCategoriesForAdmin(jwt);
 const found = id === null || unauthorized ? null : await env.APP.getProductForAdmin(jwt, { id });
 if (unauthorized || (found && !found.ok && found.reason === "unauthorized")) Astro.response.status = 403;
 const product = found?.ok ? found.data : undefined;
 if (Astro.response.status !== 403 && !product) Astro.response.status = 404;
-const values = { name: product?.name ?? "", description: product?.description ?? "", priceTwd: String(product?.priceTwd ?? ""), ...submitted };
+const values = {
+  name: product?.name ?? "",
+  description: product?.description ?? "",
+  priceTwd: String(product?.priceTwd ?? ""),
+  categoryId: product?.category ? String(product.category.id) : "",
+  ...submitted,
+};
 ---
 
 <Layout title="編輯商品" admin>
@@ -60,6 +67,14 @@ const values = { name: product?.name ?? "", description: product?.description ??
             <input name="priceTwd" type="number" min="1" step="1" value={values.priceTwd} required />
             {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
           </label>
+          {/* 標籤文字用 for 關聯：巢狀在 label 裡的話，所有選項文字都會變成它的名稱 */}
+          <label for="category-id">分類</label>
+          <select id="category-id" name="categoryId">
+            <option value="" selected={values.categoryId === ""}>未分類</option>
+            {categories?.ok && categories.data.map((c) => <option value={String(c.id)} selected={values.categoryId === String(c.id)}>{c.name}</option>)}
+          </select>
+          {failure?.fields.categoryId?.map((m) => <span class="error">{m}</span>)}
+          <p>商品必須有分類才能上架。</p>
           <button type="submit">儲存</button>
           <a href="/admin">取消</a>
         </form>

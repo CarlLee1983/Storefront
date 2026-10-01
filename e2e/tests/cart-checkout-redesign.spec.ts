@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
@@ -11,6 +12,7 @@ async function createProduct(admin: Page, name: string, stock: number) {
   await admin.getByLabel("單價（新台幣整數元）").fill("680");
   await admin.getByRole("button", { name: "新增商品" }).click();
   await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await assignSharedCategory(admin, name);
   let row = admin.getByRole("row", { name: new RegExp(name) });
   if (stock) {
     await row.getByLabel(`${name}的庫存增減量`).fill(String(stock));

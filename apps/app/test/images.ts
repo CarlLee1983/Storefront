@@ -1,4 +1,5 @@
 import { env, exports } from "cloudflare:workers";
+import { assignDefaultCategory } from "./categories";
 
 /** Real, static 4:3 WebP fixtures generated with Pillow. */
 const FIXTURES: Record<number, string> = {
@@ -15,10 +16,11 @@ export function imageVariants() {
   }));
 }
 
-/** Existing domain tests arrange a listed product through the real image and listing RPCs. */
+/** Existing domain tests arrange a listed product through the real image, category and listing RPCs. */
 export async function uploadAndList(jwt: string, id: number) {
   const added = await exports.default.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() });
   if (!added.ok) throw new Error(`商品圖片上傳失敗：${added.reason}`);
+  await assignDefaultCategory(jwt, id);
   const listed = await exports.default.relistProduct(jwt, { id });
   if (!listed.ok) throw new Error(`商品上架失敗：${listed.reason}`);
   return added.data.image;
@@ -31,6 +33,7 @@ export async function seedImageAndList(id: number) {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO product_images (id, product_id, upload_id, position, variants) VALUES (?, ?, ?, 0, ?)")
       .bind(imageId, id, crypto.randomUUID(), JSON.stringify(variants)),
-    env.DB.prepare("UPDATE products SET listed = 1 WHERE id = ?").bind(id),
+    env.DB.prepare("INSERT OR IGNORE INTO categories (slug, name, description) VALUES ('seed', '種子分類', '測試用')"),
+    env.DB.prepare("UPDATE products SET listed = 1, listed_at = 0, category_id = (SELECT id FROM categories WHERE slug = 'seed') WHERE id = ?").bind(id),
   ]);
 }

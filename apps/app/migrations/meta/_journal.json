@@ -64,6 +64,13 @@
       "when": 1790839112555,
       "tag": "0008_careful_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790851334388,
+      "tag": "0009_categories",
+      "breakpoints": true
     }
   ]
 }

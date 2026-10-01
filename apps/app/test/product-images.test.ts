@@ -5,6 +5,7 @@ import { systemClock } from "../src/shared/clock";
 import { MAX_IMAGE_BYTES } from "../src/product-images";
 import type { ProductImageBucket } from "../src/images/upload";
 import { mintAccessJwt } from "./access";
+import { assignDefaultCategory } from "./categories";
 import { resetDb } from "./db";
 import { imageVariants } from "./images";
 
@@ -51,6 +52,7 @@ describe("商品圖片 RPC", () => {
       expect(variant.key.endsWith(`/${digest}.webp`)).toBe(true);
     }
     expect((await env.PRODUCT_IMAGES.list({ prefix: `products/${id}/${added.data.image.id}/` })).objects).toHaveLength(3);
+    await assignDefaultCategory(jwt, id);
     expect(await app.relistProduct(jwt, { id })).toEqual({ ok: true, data: { id } });
     expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ id, cover: added.data.image }] });
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { images: [added.data.image] } });
@@ -63,6 +65,7 @@ describe("商品圖片 RPC", () => {
     const two = await app.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() });
     if (!one.ok || !two.ok) throw new Error("upload failed");
     expect(one.data.image.variants[0]!.key).not.toBe(two.data.image.variants[0]!.key);
+    await assignDefaultCategory(jwt, id);
     await app.relistProduct(jwt, { id });
     expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ cover: one.data.image }] });
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { images: [one.data.image, two.data.image] } });

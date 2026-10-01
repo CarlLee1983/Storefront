@@ -17,6 +17,8 @@ const adminCalls = (jwt: string) => ({
   reorderProductImages: () => app.reorderProductImages(jwt, { id: 1, imageIds: [] }),
   deleteProductImage: () => app.deleteProductImage(jwt, { id: 1, imageId: crypto.randomUUID() }),
   addProductImage: () => app.addProductImage(jwt, { id: 1, uploadId: crypto.randomUUID(), variants: imageVariants() }),
+  createCategory: () => app.createCategory(jwt, { slug: "living", name: "客廳", description: "沙發" }),
+  listCategoriesForAdmin: () => app.listCategoriesForAdmin(jwt),
   createProduct: () => app.createProduct(jwt, { name: "馬克杯", description: "", priceTwd: 320 }),
   updateProduct: () => app.updateProduct(jwt, { id: 1, name: "馬克杯", description: "", priceTwd: 320 }),
   getProductForAdmin: () => app.getProductForAdmin(jwt, { id: 1 }),

@@ -1,6 +1,9 @@
 ---
 import "../styles/global.css";
+import { env } from "cloudflare:workers";
 import AccountLinks from "../components/AccountLinks.astro";
+import CategoryLinks from "../components/CategoryLinks.astro";
+import { categorySlugFromPath, loadNavCategories } from "../categories/nav";
 
 interface Props {
   title: string;
@@ -10,6 +13,9 @@ interface Props {
 const { title, admin = false, noindex = false } = Astro.props;
 // 管理後台由 Cloudflare Access 保護，與顧客登入無關，不顯示登入狀態
 const customer = admin ? null : Astro.locals.customer;
+// 後台頁不查分類；顧客頁的分類 RPC 失敗時當作沒有分類
+const categories = admin ? [] : await loadNavCategories(env.APP);
+const currentCategory = categorySlugFromPath(Astro.url.pathname);
 ---
 
 <!doctype html>
@@ -35,6 +41,7 @@ const customer = admin ? null : Astro.locals.customer;
           <>
             <nav class="desktop-only" aria-label="主要導覽">
               <a href="/">全部商品</a>
+              <CategoryLinks categories={categories} current={currentCategory} />
             </nav>
             <div class="tools">
               <div class="desktop-only account">
@@ -62,6 +69,7 @@ const customer = admin ? null : Astro.locals.customer;
           </div>
           <nav class="drawer-nav" aria-label="行動版導覽">
             <a href="/">全部商品</a>
+            <CategoryLinks categories={categories} current={currentCategory} />
           </nav>
           <div class="drawer-foot">
             <AccountLinks customer={customer} url={Astro.url} />

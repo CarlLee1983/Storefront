@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 
 async function createGallery(admin: Page, name: string) {
@@ -9,6 +10,7 @@ async function createGallery(admin: Page, name: string) {
   await admin.getByLabel("說明", { exact: true }).fill("為日常挑選的手工花器。\n每件作品都有不同的紋理與溫度。");
   await admin.getByLabel("單價（新台幣整數元）").fill("680");
   await admin.getByRole("button", { name: "新增商品", exact: true }).click();
+  await assignSharedCategory(admin, name);
   await admin.getByRole("row").filter({ hasText: name }).getByRole("link", { name: "編輯" }).click();
   const id = new URL(admin.url()).pathname.split("/").pop()!;
   const pngs = await admin.evaluate(() => ["#164e63", "#9f1239", "#3f6212"].map((color, index) => {

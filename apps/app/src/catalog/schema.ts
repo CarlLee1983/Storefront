@@ -1,4 +1,5 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { categories } from "../categories/schema";
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -10,4 +11,8 @@ export const products = sqliteTable("products", {
   listed: integer("listed", { mode: "boolean" }).notNull().default(false),
   /** 在庫數（On Hand）；只能以增減量調整，不會小於 0。預設 0，讓舊版 App 的 INSERT 仍可執行。 */
   onHand: integer("on_hand").notNull().default(0),
-});
+  /** 所屬分類，可為空；上架中的商品必須有分類。 */
+  categoryId: integer("category_id").references(() => categories.id),
+  /** 最近一次上架或重新上架的時間，UTC epoch 毫秒；從未上架為空。 */
+  listedAt: integer("listed_at"),
+}, (table) => [index("products_category_listed_idx").on(table.categoryId, table.listed)]);

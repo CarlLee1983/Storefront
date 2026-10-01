@@ -1,0 +1,12 @@
+---
+interface Props {
+  categories: Array<{ slug: string; name: string }>;
+  /** 目前所在分類的代稱；不在分類頁為 null。 */
+  current: string | null;
+}
+const { categories, current } = Astro.props;
+---
+
+{categories.map((category) => (
+  <a href={`/categories/${category.slug}`} aria-current={category.slug === current ? "page" : undefined}>{category.name}</a>
+))}
