@@ -21,28 +21,28 @@ describe("上架商品，前台看得到", () => {
     const listed = await app.listProducts();
     expect(listed).toEqual({
       ok: true,
-      data: [],
+      data: { items: [], total: 0, hasMore: false },
     });
   });
 
   it("沒有 Access JWT 的新增被拒絕，且沒有寫入", async () => {
     const result = await app.createProduct("", { name: "馬克杯", description: "", priceTwd: 320 });
     expect(result).toEqual({ ok: false, reason: "unauthorized" });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
   });
 
   it("簽章無效的 Access JWT 被拒絕，且沒有寫入", async () => {
     const jwt = await mintAccessJwt({ key: await generateRogueKey() });
     const result = await app.createProduct(jwt, { name: "馬克杯", description: "", priceTwd: 320 });
     expect(result).toEqual({ ok: false, reason: "unauthorized" });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
   });
 
   it("空白名稱被拒絕，帶 invalid_input 與欄位錯誤，且沒有寫入", async () => {
     const jwt = await mintAccessJwt();
     const result = await app.createProduct(jwt, { name: "   ", description: "", priceTwd: 320 });
     expect(result).toEqual({ ok: false, reason: "invalid_input", fields: { name: ["名稱不可為空"] } });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
   });
 
   it.each([
@@ -55,7 +55,7 @@ describe("上架商品，前台看得到", () => {
     const jwt = await mintAccessJwt();
     const result = await app.createProduct(jwt, { name: "馬克杯", description: "", priceTwd });
     expect(result).toMatchObject({ ok: false, reason: "invalid_input", fields: { priceTwd: [expect.any(String)] } });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
   });
 
   it("後台清單需要有效 Access JWT，並列出所有商品", async () => {

@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { categories } from "./schema";
 
@@ -21,6 +21,8 @@ const publicColumns = {
   description: categories.description,
 };
 
+const listedProductExists = sql`exists (select 1 from products where products.category_id = ${categories}.id and products.listed = 1)`;
+
 /** 後台清單：所有分類依建立順序，帶商品數。 */
 export async function selectCategoriesForAdmin(db: DrizzleD1Database): Promise<AdminCategory[]> {
   return db.select({
@@ -32,13 +34,14 @@ export async function selectCategoriesForAdmin(db: DrizzleD1Database): Promise<A
 /** 前台清單：至少有一件上架商品的分類，依建立順序。 */
 export async function selectListedCategories(db: DrizzleD1Database): Promise<PublicCategory[]> {
   return db.select(publicColumns).from(categories)
-    .where(sql`exists (select 1 from products where products.category_id = ${categories}.id and products.listed = 1)`)
+    .where(listedProductExists)
     .orderBy(asc(categories.id));
 }
 
-/** 依代稱取分類；不判斷是否有上架商品。 */
-export async function selectCategoryBySlug(db: DrizzleD1Database, slug: string): Promise<PublicCategory | null> {
-  const [row] = await db.select(publicColumns).from(categories).where(eq(categories.slug, slug));
+/** 前台依代稱取分類：至少有一件上架商品才算存在。 */
+export async function selectListedCategoryBySlug(db: DrizzleD1Database, slug: string): Promise<PublicCategory | null> {
+  const [row] = await db.select(publicColumns).from(categories)
+    .where(and(eq(categories.slug, slug), listedProductExists));
   return row ?? null;
 }
 

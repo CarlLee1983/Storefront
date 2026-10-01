@@ -7,9 +7,10 @@ export const prerender = false;
 
 // 前台不需登入；只列上架中的商品
 const products = await env.APP.listProducts();
+const items = products.ok ? products.data.items : [];
 ---
 
 <Layout title="商品">
-  {products.ok && products.data.length === 0 && <p>目前沒有上架的商品。</p>}
-  {products.ok && products.data.length > 0 && <ProductList products={products.data} />}
+  {products.ok && items.length === 0 && <p>目前沒有上架的商品。</p>}
+  {items.length > 0 && <ProductList products={items} />}
 </Layout>

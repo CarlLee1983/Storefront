@@ -1,8 +1,10 @@
 import { drizzle } from "drizzle-orm/d1";
 import { categorySlugInput } from "../categories/input";
-import { selectCategoryBySlug, selectListedCategories } from "../categories/queries";
-import { fail, ok, type Result } from "../shared/result";
-import { selectListedProduct, selectListedProducts, selectListedProductsInCategory, type ProductSummary } from "./queries";
+import { selectListedCategories, selectListedCategoryBySlug } from "../categories/queries";
+import { parseInput } from "../shared/input";
+import { fail, ok } from "../shared/result";
+import { listProductsInput } from "./input";
+import { selectListedProduct, selectListedProducts } from "./queries";
 
 /** 前台讀取，不需登入。 */
 export function createCatalogService(d1: D1Database) {
@@ -15,21 +17,23 @@ export function createCatalogService(d1: D1Database) {
       const product = await selectListedProduct(db, input.id);
       return product ? ok(product) : fail("not_found");
     },
-    async listProducts(): Promise<Result<ProductSummary[], never>> {
-      return ok(await selectListedProducts(db));
+    /** 上架商品列表：依條件篩選與排序，回傳第 1 到 `page` 頁的累計結果；沒有輸入時是預設值。輸入不合法回 invalid_input。 */
+    async listProducts(input: unknown) {
+      const parsed = parseInput(listProductsInput, input === undefined ? {} : input);
+      if (!parsed.ok) return parsed;
+      const { items, total } = await selectListedProducts(db, parsed.data);
+      return ok({ items, total, hasMore: items.length < total });
     },
     /** 至少有一件上架商品的分類，依建立順序。 */
     async listCategories() {
       return ok(await selectListedCategories(db));
     },
-    /** 依代稱取分類與其上架商品（上架時間由新到舊）；不合法的代稱、不存在、沒有上架商品都回 not_found。 */
+    /** 依代稱取分類（商品由 listProducts 取得）；不合法的代稱、不存在、沒有上架商品都回 not_found。 */
     async getCategory(input: unknown) {
       const parsed = categorySlugInput.safeParse(input);
       if (!parsed.success) return fail("not_found");
-      const category = await selectCategoryBySlug(db, parsed.data.slug);
-      if (!category) return fail("not_found");
-      const products = await selectListedProductsInCategory(db, category.id);
-      return products.length === 0 ? fail("not_found") : ok({ ...category, products });
+      const category = await selectListedCategoryBySlug(db, parsed.data.slug);
+      return category ? ok(category) : fail("not_found");
     },
   };
 }

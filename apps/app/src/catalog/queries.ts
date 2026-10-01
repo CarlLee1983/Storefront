@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
 import type { ProductImage } from "../product-images";
 import { products } from "./schema";
-import { availableQuantity, reservedQuantity } from "./stock";
+import { PAGE_SIZE, type ListProductsInput, type ProductSort } from "./input";
+import { availableExpr, availableQuantity, reservedQuantity } from "./stock";
 
 interface ProductBase {
   id: number;
@@ -79,20 +80,31 @@ function toSummary({ onHand, reserved, ...row }: Omit<ProductSummary, "purchasab
   return { ...row, purchasable: availableQuantity(onHand, reserved) > 0 };
 }
 
-/** 前台清單：只列上架中的商品，依新增順序。 */
-export async function selectListedProducts(db: DrizzleD1Database): Promise<ProductSummary[]> {
+const listingOrder = {
+  "new": [desc(products.listedAt), desc(products.id)],
+  "price-asc": [asc(products.priceTwd), desc(products.id)],
+  "price-desc": [desc(products.priceTwd), desc(products.id)],
+} satisfies Record<ProductSort, SQL[]>;
+
+/**
+ * 前台列表：上架中的商品，可依分類、可售數量篩選與排序；回傳第 1 到 `page` 頁的累計結果與符合條件的總件數。
+ * 排序值相同時一律以 id 遞減，分頁才穩定。分類代稱不存在時 `category_id = NULL` 不成立，自然是空結果。
+ */
+export async function selectListedProducts(
+  db: DrizzleD1Database,
+  { category, inStock, sort, page }: ListProductsInput,
+): Promise<{ items: ProductSummary[]; total: number }> {
+  const where = and(
+    eq(products.listed, true),
+    category === undefined ? undefined : sql`${products.categoryId} = (select id from categories where slug = ${category})`,
+    inStock ? sql`${availableExpr(sql`${products.onHand}`, sql`${products.id}`)} > 0` : undefined,
+  );
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
-
-  const rows = await db.select({ ...summaryColumns, cover }).from(products).where(eq(products.listed, true)).orderBy(asc(products.id));
-  return rows.map(toSummary);
-}
-
-/** 分類頁：分類內上架中的商品，依上架時間由新到舊（同一毫秒以 id 較大者在前）。 */
-export async function selectListedProductsInCategory(db: DrizzleD1Database, categoryId: number): Promise<ProductSummary[]> {
-  const rows = await db.select({ ...summaryColumns, cover }).from(products)
-    .where(and(eq(products.listed, true), eq(products.categoryId, categoryId)))
-    .orderBy(desc(products.listedAt), desc(products.id));
-  return rows.map(toSummary);
+  const [rows, [counted]] = await Promise.all([
+    db.select({ ...summaryColumns, cover }).from(products).where(where).orderBy(...listingOrder[sort]).limit(page * PAGE_SIZE),
+    db.select({ total: sql<number>`count(*)`.mapWith(Number) }).from(products).where(where),
+  ]);
+  return { items: rows.map(toSummary), total: counted!.total };
 }
 
 /** 後台清單：所有商品（含下架），依新增順序。 */

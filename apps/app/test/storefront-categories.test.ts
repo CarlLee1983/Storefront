@@ -53,7 +53,7 @@ describe("前台分類清單", () => {
 describe("依代稱取得前台分類", () => {
   beforeEach(resetDb);
 
-  it("回傳分類與其上架商品（沿用商品清單的商品項目，含封面），不含其他分類與下架的商品", async () => {
+  it("只回傳分類本身；其上架商品由 listProducts 依分類取得，不含其他分類與下架的商品", async () => {
     const jwt = await mintAccessJwt();
     const living = await createCategory(jwt, "living", "客廳", "沙發與燈");
     const dining = await createCategory(jwt, "dining", "餐廳", "餐桌與餐具");
@@ -70,13 +70,16 @@ describe("依代稱取得前台分類", () => {
         slug: "living",
         name: "客廳",
         description: "沙發與燈",
-        products: [{ id: sofa, name: "沙發", description: "沙發的說明", priceTwd: 500, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
       },
     });
-    // 商品項目與 listProducts 的完全相同
-    const listed = await app.listProducts();
-    if (!listed.ok || !category.ok) throw new Error("讀取失敗");
-    expect(category.data.products[0]).toEqual(listed.data.find((product) => product.id === sofa));
+    expect(await app.listProducts({ category: "living" })).toEqual({
+      ok: true,
+      data: {
+        items: [{ id: sofa, name: "沙發", description: "沙發的說明", priceTwd: 500, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+        total: 1,
+        hasMore: false,
+      },
+    });
   });
 
   it("代稱不存在、分類沒有商品、只有下架商品，都回 not_found", async () => {

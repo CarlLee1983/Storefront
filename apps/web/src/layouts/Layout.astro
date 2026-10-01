@@ -40,7 +40,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
         ) : (
           <>
             <nav class="desktop-only" aria-label="主要導覽">
-              <a href="/">全部商品</a>
+              <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
               <CategoryLinks categories={categories} current={currentCategory} />
             </nav>
             <div class="tools">
@@ -68,7 +68,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
             </button>
           </div>
           <nav class="drawer-nav" aria-label="行動版導覽">
-            <a href="/">全部商品</a>
+            <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
             <CategoryLinks categories={categories} current={currentCategory} />
           </nav>
           <div class="drawer-foot">

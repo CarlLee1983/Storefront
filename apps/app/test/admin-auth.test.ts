@@ -36,7 +36,7 @@ async function expectAllRejected(jwt: string) {
     expect(await call(), name).toEqual(UNAUTHORIZED);
   }
   // 拒絕之後沒有任何寫入
-  expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+  expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
 }
 
 describe("管理 RPC 的 Access JWT 驗證", () => {
