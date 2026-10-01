@@ -1,11 +1,26 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { BASE_URL, GATEWAY_API_KEY, GATEWAY_URL, MEMBER } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
 const PRODUCT = { name: "E2E 測試商品", description: "E2E 流程用的商品", priceTwd: "1200" };
 const TRACKING_NUMBER = "E2E-TRACK-0001";
+
+// Navigate by real Tab presses, rather than programmatically focusing the target.
+async function tabTo(page: Page, target: Locator) {
+  for (let steps = 0; steps < 80; steps++) {
+    if (await target.evaluate(element => element === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(target).toBeFocused();
+}
+
+async function audit(page: Page, testInfo: TestInfo, name: string) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+  await testInfo.attach(name, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+}
 
 const test = base.extend<{ admin: Page; gatewayConsole: Page }>({
   // 管理員 context 帶 Access JWT（與 Cloudflare Access 相同的 header），只會連到 Web；
@@ -30,7 +45,8 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   gatewayConsole,
   page,
 }, testInfo) => {
-  // 1. 管理員上架商品並補貨
+  test.setTimeout(180_000);
+  // 1. 管理員上傳多張圖片、上架商品並補貨
   await admin.goto("/admin");
   await admin.getByLabel("名稱", { exact: true }).fill(PRODUCT.name);
   await admin.getByLabel("說明", { exact: true }).fill(PRODUCT.description);
@@ -71,6 +87,20 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await expect(admin.locator("#product-images img")).toHaveCount(1);
   await admin.reload();
   await expect(admin.locator("#product-images img")).toHaveCount(1);
+  // A second selection uploads multiple files in one browser-resizing batch.
+  const additional = await admin.evaluate(() => ["#0f766e", "#9f1239"].map(color => {
+    const canvas = document.createElement("canvas"); canvas.width = 1600; canvas.height = 1000;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = color; ctx.fillRect(0, 0, 1600, 1000);
+    return canvas.toDataURL("image/png").split(",")[1]!;
+  }));
+  await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles(additional.map((data, index) => ({ name: `detail-${index}.png`, mimeType: "image/png", buffer: Buffer.from(data, "base64") })));
+  await admin.getByRole("button", { name: "上傳商品圖片", exact: true }).click();
+  await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
+  await expect(admin.locator("#product-images img")).toHaveCount(3);
+  await admin.reload();
+  await expect(admin.locator("#product-images img")).toHaveCount(3);
+  const coverSrc = (await admin.locator("#product-images img").first().getAttribute("src"))!;
   await testInfo.attach("admin-image-upload", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
   await admin.getByRole("link", { name: "回商品管理" }).click();
   await admin.getByRole("row", { name: new RegExp(PRODUCT.name) }).getByRole("button", { name: "重新上架" }).click();
@@ -87,6 +117,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await expect.poll(() => cover.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(cover).toHaveAttribute("srcset", /320w.*640w.*1280w/);
   await expect(cover).toHaveAttribute("width", "1280");
+  const coverSrcset = (await cover.getAttribute("srcset"))!;
   const imageResponse = await page.request.get((await cover.getAttribute("src"))!);
   expect(imageResponse.headers()["cache-control"]).toContain("immutable");
   expect(imageResponse.headers()["content-type"]).toBe("image/webp");
@@ -95,18 +126,44 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await testInfo.attach(`catalog-image-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   }
-  await productItem.getByRole("button", { name: "加入購物車" }).click();
-  await expect(productItem.getByRole("status")).not.toBeEmpty();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await audit(page, testInfo, "populated-home-mobile");
+  const detailLink = productItem.getByRole("link").filter({ has: page.getByRole("heading", { name: PRODUCT.name, exact: true }) });
+  await tabTo(page, detailLink);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/products\/\d+$/);
+  await expect(page.locator(".gallery-slide img")).toHaveCount(3);
+  await expect(page.locator(".gallery-slide img").first()).toHaveAttribute("src", coverSrc);
+  const gallery = page.getByRole("group", { name: "商品圖片瀏覽", exact: true });
+  await tabTo(page, gallery);
+  await page.keyboard.press("ArrowRight");
+  const thumbs = page.getByRole("group", { name: "選擇商品圖片" }).getByRole("button");
+  await expect(thumbs.nth(1)).toHaveAttribute("aria-current", "true");
+  await page.keyboard.press("End");
+  await expect(thumbs.nth(2)).toHaveAttribute("aria-current", "true");
+  await page.keyboard.press("Home");
+  await expect(thumbs.first()).toHaveAttribute("aria-current", "true");
+  await audit(page, testInfo, "populated-detail-mobile");
+  const add = page.getByRole("button", { name: "加入購物車", exact: true });
+  await tabTo(page, add);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  await expect(add).toBeFocused();
+  await expect(page.locator("#cart-count")).toHaveText("1");
+  await testInfo.attach("keyboard-add-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 
   await page.goto("/cart");
   await expect(page.getByRole("row", { name: new RegExp(PRODUCT.name) })).toBeVisible();
   await expect(page.getByText(/總金額：NT\$ 1,200/)).toBeVisible();
+  await expect(page.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("src", coverSrc);
+  await audit(page, testInfo, "populated-cart-mobile");
   await page.getByRole("link", { name: "前往結帳" }).click();
 
   await expect(page).toHaveURL(/\/checkout$/);
   await page.getByLabel("收件人姓名").fill("E2E 收件人");
   await page.getByLabel("收件人電話").fill("0912345678");
   await page.getByLabel("收件地址").fill("台北市中正區（E2E 示意地址）");
+  await audit(page, testInfo, "populated-checkout-mobile");
   await page.getByRole("button", { name: "送出訂單" }).click();
 
   await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
@@ -155,14 +212,25 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await expect(admin.getByRole("status")).toHaveText("已標為已出貨。");
   await expect(admin.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
 
-  // 6. 顧客回訂單頁看到已出貨與物流單號
+  // 6. 顧客訂單列表與詳情都顯示目前封面、已出貨狀態及物流單號
+  await page.goto("/orders");
+  const customerOrder = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(`#${orderId}\\b`) }) });
+  await expect(customerOrder).toContainText("已出貨");
+  await expect(customerOrder.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("srcset", coverSrcset);
+  await audit(page, testInfo, "populated-orders-mobile");
   await page.goto(orderPath);
   await expect(page.getByText("訂單狀態：已出貨")).toBeVisible();
   await expect(page.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
+  await expect(page.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("srcset", coverSrcset);
   for (const width of [320, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach(`order-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const path of ["/about", "/faq", "/returns", "/not-a-real-page"]) {
+    expect((await page.goto(path))!.status()).toBe(path === "/not-a-real-page" ? 404 : 200);
+    await audit(page, testInfo, `integrated-${path.slice(1)}`);
   }
 });
