@@ -69,6 +69,6 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   expect(await page.locator("#cart-count").evaluate(element => getComputedStyle(element).animationName)).toBe("none");
   await expect(card.getByRole("status")).toBeEmpty({ timeout: 7000 });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  expect(await page.locator(".product-list").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(3);
+  expect(await page.locator(".product-list").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(4);
   await testInfo.attach("homepage-desktop", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 });

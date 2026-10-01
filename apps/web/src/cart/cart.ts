@@ -39,8 +39,9 @@ function isValidItem(item: CartItem): boolean {
   return isPositiveInteger(item.productId) && isPositiveInteger(item.unitPriceTwd);
 }
 
-function clampQuantity(quantity: number): number {
-  return Math.min(quantity, MAX_QUANTITY);
+/** 夾在 1 到 MAX_QUANTITY 之間；加入與改數量時數量已驗證為正整數，下限是給加減按鈕用的。 */
+export function clampQuantity(quantity: number): number {
+  return Math.min(Math.max(quantity, 1), MAX_QUANTITY);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
@@ -6,6 +6,7 @@ import type { ProductImage } from "../product-images";
 import { products } from "./schema";
 import type { ListProductsInput } from "./input";
 import { PAGE_SIZE, type ProductSort } from "./listing";
+import type { ProductSummary } from "./types";
 import { availableExpr, availableQuantity, reservedQuantity } from "./stock";
 
 interface ProductBase {
@@ -16,12 +17,7 @@ interface ProductBase {
   priceTwd: number;
 }
 
-export interface ProductSummary extends ProductBase {
-  /** 是否還能購買（可售數量 > 0）；前台不需要知道確切數量。 */
-  purchasable: boolean;
-  /** 依圖片順位挑第一張；下架與舊資料可能沒有圖片。 */
-  cover: ProductImage | null;
-}
+export type { ProductSummary };
 
 export interface AdminProductSummary extends ProductBase {
   cover: ProductImage | null;
@@ -126,9 +122,23 @@ export async function selectProductForAdmin(db: DrizzleD1Database, id: number): 
 
 export interface ProductDetail extends ProductBase {
   purchasable: boolean;
+  /** 可售數量（在庫數減保留），最小為 0。 */
+  available: number;
   images: ProductImage[];
   /** 所屬分類的代稱與名稱；上架中的商品一定有。 */
   category: { slug: string; name: string } | null;
+  /** 同分類的其他上架商品，最多 {@link RELATED_LIMIT} 件，依上架時間由新到舊；沒有分類時為空。 */
+  related: ProductSummary[];
+}
+
+const RELATED_LIMIT = 4;
+
+/** 同分類推薦：不含自己，只含上架中的商品。 */
+async function selectRelatedProducts(db: DrizzleD1Database, categoryId: number, excludeId: number): Promise<ProductSummary[]> {
+  const rows = await db.select({ ...summaryColumns, cover }).from(products)
+    .where(and(eq(products.listed, true), eq(products.categoryId, categoryId), ne(products.id, excludeId)))
+    .orderBy(desc(products.listedAt), desc(products.id)).limit(RELATED_LIMIT);
+  return rows.map(toSummary);
 }
 
 /** One snapshot: an unlisted product never exposes its details through this public query. */
@@ -140,14 +150,17 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
       order by image.position, image.id
     ) ordered
   )`.mapWith((value: string) => JSON.parse(value) as ProductImage[]);
-  const [row] = await db.select({ ...summaryColumns, images, categorySlug: categories.slug, categoryName: categories.name }).from(products)
+  const [row] = await db.select({ ...summaryColumns, images, categoryId: products.categoryId, categorySlug: categories.slug, categoryName: categories.name }).from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .where(and(eq(products.id, id), eq(products.listed, true)));
   if (!row) return null;
-  const { onHand, reserved, categorySlug, categoryName, ...product } = row;
+  const { onHand, reserved, categoryId, categorySlug, categoryName, ...product } = row;
+  const available = Math.max(0, availableQuantity(onHand, reserved));
   return {
     ...product,
-    purchasable: availableQuantity(onHand, reserved) > 0,
+    purchasable: available > 0,
+    available,
     category: categorySlug === null ? null : { slug: categorySlug, name: categoryName! },
+    related: categoryId === null ? [] : await selectRelatedProducts(db, categoryId, id),
   };
 }
