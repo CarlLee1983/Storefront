@@ -82,7 +82,13 @@ export async function seedListedProducts(
   return ids.map(Number);
 }
 
-/** 下架指定商品；E2E 共用同一份資料庫，大量資料用完要撤掉，才不會擠掉其他 spec 在首頁找得到的商品。 */
-export async function unlistProducts(admin: APIRequestContext, ids: number[]) {
-  await Promise.all(ids.map((id) => post(admin, "/admin", { intent: "unlist", id: String(id) })));
+/**
+ * 下架後台清單中名稱以 `prefix` 開頭、且仍上架中的商品。依名稱前綴找，所以即使建立到一半失敗（拿不到編號）也能清乾淨；
+ * E2E 共用同一份資料庫，大量資料用完要撤掉。
+ */
+export async function unlistProductsByPrefix(admin: APIRequestContext, prefix: string) {
+  const html = await (await admin.get("/admin")).text();
+  const ids = html.split("<tr").filter((row) => new RegExp(`<td[^>]*>${prefix}[^<]*</td>`).test(row) && row.includes("上架中"))
+    .map((row) => /href="\/admin\/products\/(\d+)"/.exec(row)?.[1]).filter((id): id is string => id !== undefined);
+  await Promise.all(ids.map((id) => post(admin, "/admin", { intent: "unlist", id })));
 }

@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { listingHref, MAX_PAGE, parseListingParams, type ListingSort } from "../listing/params";
+import { listingHref, parseListingParams, reachedDisplayLimit, type ListingSort } from "../listing/params";
 import ProductList from "./ProductList.astro";
 
 // 列表區塊：排序連結、只看有貨開關、商品卡、已顯示件數與載入更多。
@@ -17,6 +17,9 @@ const { pathname, searchParams } = Astro.url;
 const state = parseListingParams(searchParams);
 const result = await env.APP.listProducts({ category, inStock: state.inStock, sort: state.sort, page: state.page });
 const listing = result.ok ? result.data : null;
+// 篩選表單送出時要保留的參數：目前的排序與其他不相關的參數；instock 由 checkbox 決定，頁數不帶（回到第 1 頁）
+const hiddenParams = [...searchParams].filter(([name]) => name !== "instock" && name !== "page" && name !== "sort");
+if (state.sort !== "new") hiddenParams.push(["sort", state.sort]);
 const clearHref = listingHref(pathname, searchParams, { inStock: false });
 ---
 
@@ -26,10 +29,14 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false });
       <a href={listingHref(pathname, searchParams, { sort })} aria-current={state.sort === sort ? "true" : undefined}>{label}</a>
     ))}
   </nav>
-  <a class="listing-switch" role="switch" aria-checked={state.inStock ? "true" : "false"} href={listingHref(pathname, searchParams, { inStock: !state.inStock })}>
-    <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-    只看有貨
-  </a>
+  <form class="listing-filter" method="get" action={pathname}>
+    {hiddenParams.map(([name, value]) => <input type="hidden" name={name} value={value} />)}
+    <label class="listing-switch">
+      <input type="checkbox" name="instock" value="1" checked={state.inStock} />
+      只看有貨
+    </label>
+    <noscript><button type="submit">套用</button></noscript>
+  </form>
 </div>
 
 {
@@ -44,12 +51,21 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false });
     <>
       <ProductList products={listing.items} />
       <p class="listing-count">已顯示 {listing.items.length} / {listing.total} 件</p>
-      {listing.hasMore && state.page < MAX_PAGE && (
+      {reachedDisplayLimit(state.page, listing.items.length, listing.total) ? (
+        <p class="listing-limit">已達顯示上限，請用篩選或排序縮小範圍</p>
+      ) : listing.hasMore && (
         <p><a class="load-more" href={listingHref(pathname, searchParams, { page: state.page + 1 })}>載入更多</a></p>
       )}
     </>
   )
 }
+
+<script>
+  // 有 JS 時，勾選或取消就直接送出表單（沒有 JS 時由 noscript 的「套用」按鈕送出）
+  for (const checkbox of document.querySelectorAll<HTMLInputElement>(".listing-filter input[type=checkbox]")) {
+    checkbox.addEventListener("change", () => checkbox.form?.submit());
+  }
+</script>
 
 <style>
   .listing-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-block: var(--space-4); }
@@ -60,11 +76,10 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false });
   }
   .listing-sort a:hover, .listing-switch:hover, .load-more:hover { background: var(--color-panel); }
   .listing-sort a[aria-current="true"] { background: var(--color-inverse); border-color: var(--color-inverse); color: var(--color-on-inverse); }
-  .switch-track { display: inline-flex; width: 2.5rem; height: 1.5rem; padding: 2px; border-radius: 999px; background: var(--color-panel); border: 1px solid var(--color-control-border); }
-  .switch-thumb { width: 1.125rem; height: 1.125rem; border-radius: 50%; background: var(--color-control-border); transition: transform var(--duration-fast); }
-  .listing-switch[aria-checked="true"] .switch-track { background: var(--color-primary); border-color: var(--color-primary); }
-  .listing-switch[aria-checked="true"] .switch-thumb { background: var(--color-on-inverse); transform: translateX(1rem); }
-  .listing-count { color: var(--color-muted); margin-top: var(--space-6); }
+  .listing-filter { display: flex; align-items: center; gap: var(--space-3); }
+  .listing-switch { margin: 0; cursor: pointer; }
+  .listing-switch input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--color-primary); }
+  .listing-count, .listing-limit { color: var(--color-muted); margin-top: var(--space-6); }
   .load-more { justify-content: center; font-weight: 700; }
   .listing-empty { padding-block: var(--space-8); }
 </style>

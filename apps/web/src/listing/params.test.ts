@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listingHref, parseListingParams } from "./params";
+import { listingHref, MAX_PAGE, parseListingParams, reachedDisplayLimit } from "./params";
 
 const parse = (query: string) => parseListingParams(new URLSearchParams(query));
 
@@ -75,5 +75,13 @@ describe("listingHref", () => {
     const current = params("page=2");
     listingHref("/products", current, { sort: "price-asc" });
     expect(current.toString()).toBe("page=2");
+  });
+});
+
+describe("reachedDisplayLimit", () => {
+  it("到達頁數上限且還有沒顯示的商品才算達到上限", () => {
+    expect(reachedDisplayLimit(MAX_PAGE, 480, 500)).toBe(true);
+    expect(reachedDisplayLimit(MAX_PAGE, 480, 480)).toBe(false);
+    expect(reachedDisplayLimit(MAX_PAGE - 1, 456, 500)).toBe(false);
   });
 });

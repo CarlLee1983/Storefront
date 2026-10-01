@@ -4,7 +4,8 @@ import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
 import type { ProductImage } from "../product-images";
 import { products } from "./schema";
-import { PAGE_SIZE, type ListProductsInput, type ProductSort } from "./input";
+import type { ListProductsInput } from "./input";
+import { PAGE_SIZE, type ProductSort } from "./listing";
 import { availableExpr, availableQuantity, reservedQuantity } from "./stock";
 
 interface ProductBase {
@@ -100,7 +101,8 @@ export async function selectListedProducts(
     inStock ? sql`${availableExpr(sql`${products.onHand}`, sql`${products.id}`)} > 0` : undefined,
   );
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
-  const [rows, [counted]] = await Promise.all([
+  // 列表與總件數放同一個 batch（隱含交易），兩者看到同一份資料，hasMore 才不會因並行寫入而矛盾。
+  const [rows, [counted]] = await db.batch([
     db.select({ ...summaryColumns, cover }).from(products).where(where).orderBy(...listingOrder[sort]).limit(page * PAGE_SIZE),
     db.select({ total: sql<number>`count(*)`.mapWith(Number) }).from(products).where(where),
   ]);

@@ -16,6 +16,7 @@ if (!category) Astro.response.status = 404;
     category ? (
       <>
         <p class="category-description">{category.description}</p>
+        <p class="category-count">共 {category.listedProductCount} 件商品</p>
         <ProductListing category={category.slug} />
       </>
     ) : (
@@ -29,4 +30,5 @@ if (!category) Astro.response.status = 404;
 
 <style>
   .category-description { font-size: var(--text-lg); }
+  .category-count { color: var(--color-muted); }
 </style>

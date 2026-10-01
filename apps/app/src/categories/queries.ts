@@ -38,10 +38,12 @@ export async function selectListedCategories(db: DrizzleD1Database): Promise<Pub
     .orderBy(asc(categories.id));
 }
 
-/** 前台依代稱取分類：至少有一件上架商品才算存在。 */
-export async function selectListedCategoryBySlug(db: DrizzleD1Database, slug: string): Promise<PublicCategory | null> {
-  const [row] = await db.select(publicColumns).from(categories)
-    .where(and(eq(categories.slug, slug), listedProductExists));
+/** 前台依代稱取分類：至少有一件上架商品才算存在，並帶上架商品數（不受列表篩選影響）。 */
+export async function selectListedCategoryBySlug(db: DrizzleD1Database, slug: string): Promise<(PublicCategory & { listedProductCount: number }) | null> {
+  const [row] = await db.select({
+    ...publicColumns,
+    listedProductCount: sql<number>`(select count(*) from products where products.category_id = ${categories}.id and products.listed = 1)`.mapWith(Number),
+  }).from(categories).where(and(eq(categories.slug, slug), listedProductExists));
   return row ?? null;
 }
 
