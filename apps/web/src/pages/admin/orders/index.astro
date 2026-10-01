@@ -37,7 +37,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {orders.data.length === 0 && <p>沒有符合的訂單。</p>}
         {
           orders.data.length > 0 && (
-            <table>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
                 <tr><th>訂單</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th><th>付款</th></tr>
               </thead>
@@ -53,7 +53,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )
         }
       </>

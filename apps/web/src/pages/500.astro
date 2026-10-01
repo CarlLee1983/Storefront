@@ -1,0 +1,9 @@
+---
+import Layout from "../layouts/Layout.astro";
+export const prerender = false;
+Astro.response.status = 500;
+---
+
+<Layout title="暫時無法顯示頁面">
+  <p>伺服器暫時發生問題，請稍後再試。</p><p><a href="/">回首頁</a></p>
+</Layout>
