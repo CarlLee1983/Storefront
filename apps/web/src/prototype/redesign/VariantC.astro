@@ -1,0 +1,246 @@
+---
+// PROTOTYPE — 版型 C「沉浸式大圖」：滿版圖片主導。header 疊在主視覺上、選單一律收進抽屜（含分類大圖）、
+// 篩選是可橫向捲動的 chip 列、列表每 5 件穿插一張跨欄大卡、詳情頁滿版圖庫＋底部固定購買列、購物車底部固定結帳列。
+import Art from "./Art.astro";
+import { CART, CATEGORIES, DETAIL, DETAIL_COPY, DETAIL_GALLERY, DETAIL_SPECS, RELATED, SORTS, cartTotal, discountPct, listing, readListing, twd, withParams } from "./fixtures";
+
+interface Props { page: "product" | "category" | "cart"; url: URL }
+const { page, url } = Astro.props;
+const q = readListing(url);
+const living = CATEGORIES[0]!;
+const list = listing(living.slug, q);
+const cartCount = CART.reduce((n, l) => n + l.quantity, 0);
+const overlay = page === "category";
+---
+
+<div class:list={["c", { overlay }]}>
+  <header class="top">
+    <button type="button" class="menu-btn" data-open="c-menu"><span class="burger" aria-hidden="true"></span>選單</button>
+    <a class="brand" href="#">STOREFRONT</a>
+    <div class="tools">
+      <button type="button" class="round" aria-label="搜尋" data-open="c-menu"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2"/></svg></button>
+      <a href="#" class="round cart-btn" aria-label={`購物車，${cartCount} 件`}><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 8h14l-1.5 12h-11Z M9 8a3 3 0 0 1 6 0" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="badge">{cartCount}</span></a>
+    </div>
+  </header>
+
+  <dialog id="c-menu" class="drawer side" aria-label="選單">
+    <div class="side-head"><form role="search" class="side-search"><label class="sr-only" for="c-q">搜尋商品</label><input id="c-q" type="search" placeholder="搜尋家具、燈具、器物" /></form><button type="button" class="round" data-close aria-label="關閉選單">✕</button></div>
+    <ul class="side-cats">
+      {CATEGORIES.map(c => <li><a href="#"><Art kind={c.art} tone="#9a8f80" bg="#e6e1d8" label="" ratio="wide" /><span><b>{c.name}</b><small>{c.blurb}</small></span></a></li>)}
+    </ul>
+    <div class="side-links"><a href="#" class="sale-link">特價商品 →</a><a href="#">全部商品 →</a><a href="#">登入</a><a href="#">我的訂單</a></div>
+  </dialog>
+
+  <main>
+    {page === "category" && (
+      <>
+        <section class="hero">
+          <Art kind="sofa" tone="#8f8a80" bg="#c9c3b8" label="" ratio="wide" />
+          <div class="hero-copy"><p>Living</p><h1>{living.name}</h1><span>{list.total} 件商品 · {living.blurb}</span></div>
+        </section>
+        <div class="chips-bar">
+          <label class="sort"><span class="sr-only">排序</span>
+            <select onchange="location.href=this.value">
+              {SORTS.map(s => <option value={withParams(url, { sort: s.key, page: null })} selected={q.sort === s.key}>{s.label}</option>)}
+            </select>
+          </label>
+          <a class="chip" href={withParams(url, { instock: q.inStock ? null : "1", page: null })} role="switch" aria-checked={q.inStock ? "true" : "false"}>只看有貨</a>
+          <a class="chip" href={withParams(url, { sale: q.onSale ? null : "1", page: null })} role="switch" aria-checked={q.onSale ? "true" : "false"}>只看特價</a>
+          {CATEGORIES.slice(1).map(c => <a class="chip ghost" href="#">{c.name}</a>)}
+        </div>
+        <ul class="mosaic">
+          {list.shown.map((p, i) => (
+            <li class:list={["tile", { wide: i % 5 === 0, "on-sale": p.compareAtTwd, "sold-out": p.available === 0 }]}>
+              <a href="#" class="tile-link">
+                <Art kind={p.art} tone={p.tone} label={p.name} ratio={i % 5 === 0 ? "wide" : "portrait"} bg={i % 5 === 0 ? "#e2ddd4" : "#ececea"} />
+                <span class="tile-info">
+                  <span class="tile-name">{p.name}</span>
+                  <span class="tile-price"><span class="price-now">{twd(p.priceTwd)}</span>{p.compareAtTwd && <s class="price-was"><span class="sr-only">原價</span>{twd(p.compareAtTwd)}</s>}</span>
+                </span>
+                {p.compareAtTwd && <span class="flag">特價 −{discountPct(p)}%</span>}
+                {p.available === 0 && <span class="flag dark">已售完</span>}
+              </a>
+            </li>
+          ))}
+        </ul>
+        {list.hasMore ? <a class="more" href={withParams(url, { page: String(q.page + 1) })}>載入更多 <small>{list.shown.length} / {list.total}</small></a> : <p class="more done">已顯示全部 {list.total} 件</p>}
+      </>
+    )}
+
+    {page === "product" && (
+      <>
+        <section class="pdp-gallery" aria-label="商品圖片">
+          <div class="slides" tabindex="0">
+            {DETAIL_GALLERY.map((g, i) => <div class="slide"><Art kind={g.art} tone={g.tone} bg={g.bg} label={`${DETAIL.name}，第 ${i + 1} 張`} ratio="portrait" /></div>)}
+          </div>
+          <p class="dots" aria-hidden="true">{DETAIL_GALLERY.map((_, i) => <span class:list={{ on: i === 0 }}></span>)}</p>
+        </section>
+        <article class="pdp-body on-sale">
+          <p class="kicker"><a href="#">工作區</a></p>
+          <h1>{DETAIL.name}</h1>
+          <p class="lead">{DETAIL_COPY}</p>
+          <dl class="spec-grid">{DETAIL_SPECS.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+          <details><summary>配送與退換</summary><p>含稅、免運。付款後無法自行取消，商品問題請聯繫客服由人工處理。</p></details>
+        </article>
+        <section class="also">
+          <h2>搭配這些一起看</h2>
+          <ul class="h-scroll">{RELATED.map(p => <li class:list={{ "on-sale": p.compareAtTwd }}><a href="#"><Art kind={p.art} tone={p.tone} label={p.name} ratio="portrait" /><span>{p.name}</span><span class="price-now">{twd(p.priceTwd)}</span></a></li>)}</ul>
+        </section>
+        <div class="buy-bar on-sale">
+          <div class="bb-info"><span class="bb-name">{DETAIL.name}</span><span><span class="price-now">{twd(DETAIL.priceTwd)}</span> <s class="price-was"><span class="sr-only">原價</span>{twd(DETAIL.compareAtTwd!)}</s></span></div>
+          <label class="bb-qty"><span class="sr-only">數量</span><select><option>1</option><option>2</option><option>3</option></select></label>
+          <button type="button" class="bb-add">加入購物車</button>
+        </div>
+      </>
+    )}
+
+    {page === "cart" && (
+      <section class="cart">
+        <h1>購物車 <span>{cartCount} 件</span></h1>
+        <ul class="cart-cards">
+          {CART.map(l => (
+            <li>
+              <div class="cc-img"><Art kind={l.product.art} tone={l.product.tone} label="" ratio="portrait" /></div>
+              <div class="cc-body">
+                <a href="#" class="cc-name">{l.product.name}</a>
+                <span class="cc-unit">{twd(l.product.priceTwd)} / 件</span>
+                <div class="cc-row">
+                  <div class="qty"><button type="button" aria-label={`減少${l.product.name}數量`}>−</button><span aria-live="polite">{l.quantity}</span><button type="button" aria-label={`增加${l.product.name}數量`}>＋</button></div>
+                  <span class="price-now">{twd(l.product.priceTwd * l.quantity)}</span>
+                </div>
+                <button type="button" class="cc-remove" aria-label={`移除${l.product.name}`}>移除</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p class="note">單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。含稅、免運。</p>
+        <div class="checkout-bar"><span class="cb-total"><small>總金額</small><span class="price-now">{twd(cartTotal())}</span></span><a href="#" class="cb-go">前往結帳</a></div>
+      </section>
+    )}
+  </main>
+
+  <footer class="foot">
+    <p class="brand">STOREFRONT</p>
+    <p>為日常挑選的家具與器物</p>
+    <nav aria-label="頁尾"><a href="#">關於</a><a href="#">常見問題</a><a href="#">退換貨說明</a></nav>
+  </footer>
+</div>
+
+<style>
+  .c { --bar: 64px; }
+  .brand { font-family: var(--latin); font-weight: 800; letter-spacing: 0.32em; font-size: 15px; text-decoration: none; text-align: center; }
+  .top { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 10px 16px; background: var(--paper); }
+  .overlay .top { position: absolute; left: 0; right: 0; background: transparent; color: #fff; }
+  .menu-btn { display: inline-flex; gap: 10px; align-items: center; border: 0; background: none; cursor: pointer; font-weight: 700; padding: 10px 0; justify-self: start; }
+  .burger, .burger::before, .burger::after { display: block; width: 20px; height: 2px; background: currentColor; position: relative; }
+  .burger::before, .burger::after { content: ""; position: absolute; }
+  .burger::before { top: -6px; } .burger::after { top: 6px; }
+  .tools { justify-self: end; display: flex; gap: 8px; }
+  .round { position: relative; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; border: 0; background: rgb(255 255 255 / 0.9); color: var(--ink); cursor: pointer; }
+  .c:not(.overlay) .round { background: var(--panel); }
+  .badge { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: #fff; font: 700 11px/18px var(--latin); text-align: center; }
+
+  .side { width: min(440px, 100vw); background: var(--paper); }
+  .side[open] { animation: slide 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  @keyframes slide { from { transform: translateX(-100%); } }
+  .side-head { display: flex; gap: 10px; padding: 14px 16px; }
+  .side-search { flex: 1; }
+  .side-search input { width: 100%; height: 42px; border-radius: 21px; border: 0; background: var(--panel); padding: 0 18px; font-size: 16px; }
+  .side-cats { list-style: none; margin: 0; padding: 0 16px; display: grid; gap: 10px; }
+  .side-cats a { position: relative; display: block; aspect-ratio: 16 / 7; overflow: hidden; text-decoration: none; border-radius: 6px; }
+  .side-cats a > span { position: absolute; inset: auto 0 0 0; padding: 14px; display: grid; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); color: #fff; }
+  .side-cats b { font-size: 22px; }
+  .side-cats small { font-size: 13px; }
+  .side-links { display: grid; padding: 16px; }
+  .side-links a { padding: 14px 0; border-bottom: 1px solid var(--line); text-decoration: none; font-weight: 700; }
+  .sale-link { color: var(--accent); }
+
+  .hero { position: relative; height: min(78vh, 640px); overflow: hidden; }
+  .hero :global(svg) { height: 100%; }
+  .hero-copy { position: absolute; left: 16px; right: 16px; bottom: 28px; color: #fff; text-shadow: 0 1px 12px rgb(0 0 0 / 0.35); }
+  .hero-copy p { font-family: var(--latin); letter-spacing: 0.3em; text-transform: uppercase; font-size: 13px; margin: 0; }
+  .hero-copy h1 { font-size: clamp(72px, 20vw, 168px); margin: 0; line-height: 1; font-weight: 800; letter-spacing: -0.03em; }
+  .hero-copy span { font-size: 15px; }
+  @media (min-width: 900px) { .hero-copy { left: 40px; bottom: 48px; } }
+
+  .chips-bar { position: sticky; top: 0; z-index: 15; display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; background: rgb(255 255 255 / 0.96); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  .chip, .sort select { flex: none; display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 20px; border: 1px solid var(--ink); text-decoration: none; font-size: 14px; background: none; font-family: inherit; }
+  .chip[aria-checked="true"] { background: var(--ink); color: #fff; }
+  .chip[aria-checked="true"]::before { content: "✓ "; margin-right: 4px; }
+  .chip.ghost { border-color: var(--line); color: var(--muted); }
+
+  .mosaic { list-style: none; margin: 0; padding: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .tile { position: relative; }
+  .tile.wide { grid-column: 1 / -1; }
+  .tile-link { display: block; text-decoration: none; position: relative; border-radius: 6px; overflow: hidden; }
+  .tile-info { display: grid; gap: 2px; padding: 10px 2px; }
+  .tile.wide .tile-info { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px; background: linear-gradient(transparent, rgb(0 0 0 / 0.55)); color: #fff; }
+  .tile.wide .price-was { color: #e8e8e8; }
+  .tile.wide.on-sale .price-now { color: #fff; }
+  .tile-name { font-weight: 700; }
+  .tile.wide .tile-name { font-size: 24px; }
+  .tile-price { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+  .flag { position: absolute; top: 10px; left: 10px; border-radius: 4px; background: var(--accent); color: #fff; font: 700 12px/1 var(--latin); padding: 7px 9px; }
+  .flag.dark { background: var(--ink); }
+  .sold-out :global(svg) { filter: grayscale(1); opacity: 0.6; }
+  @media (min-width: 900px) { .mosaic { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 24px 40px; gap: 24px; } .tile.wide { grid-column: span 2; } }
+  .more { display: block; text-align: center; margin: 12px 16px 48px; padding: 18px; border-radius: 6px; background: var(--ink); color: #fff; text-decoration: none; font-weight: 800; }
+  .more small { font-weight: 400; opacity: 0.8; margin-left: 8px; }
+  .more.done { background: var(--panel); color: var(--muted); }
+
+  .pdp-gallery { position: relative; }
+  .slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .slide { flex: 0 0 100%; scroll-snap-align: start; aspect-ratio: 4 / 5; max-height: 82vh; }
+  .dots { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; gap: 6px; margin: 0; }
+  .dots span { width: 24px; height: 3px; background: rgb(0 0 0 / 0.25); }
+  .dots span.on { background: var(--ink); }
+  @media (min-width: 900px) { .slide { flex-basis: 50%; aspect-ratio: 4 / 5; } }
+  .pdp-body { max-width: 680px; margin: 0 auto; padding: 32px 16px; }
+  .kicker { margin: 0 0 8px; font-size: 13px; }
+  .pdp-body h1 { font-size: clamp(36px, 8vw, 64px); line-height: 1.05; margin: 0 0 20px; font-weight: 800; letter-spacing: -0.02em; }
+  .lead { font-size: 18px; line-height: 1.8; margin: 0 0 28px; }
+  .spec-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); margin: 0 0 20px; }
+  .spec-grid div { background: var(--paper); padding: 14px 0; }
+  .spec-grid dt { font-size: 12px; color: var(--muted); }
+  .spec-grid dd { margin: 4px 0 0; font-weight: 700; }
+  details { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0; }
+  summary { font-weight: 700; cursor: pointer; }
+  .also { padding: 24px 0 120px; }
+  .also h2 { padding: 0 16px; font-size: 24px; }
+  .h-scroll { list-style: none; margin: 0; padding: 0 16px; display: grid; grid-auto-flow: column; grid-auto-columns: 60%; gap: 12px; overflow-x: auto; }
+  .h-scroll a { display: grid; gap: 4px; text-decoration: none; }
+  @media (min-width: 900px) { .h-scroll { grid-auto-columns: 22%; padding: 0 40px; } .also h2 { padding: 0 40px; } }
+  /* bottom 留 64px 給 prototype 切換列，正式版貼底 */
+  .buy-bar { position: fixed; left: 0; right: 0; bottom: 64px; z-index: 30; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgb(0 0 0 / 0.06); }
+  .bb-info { display: grid; min-width: 0; }
+  .bb-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bb-info .price-was { font-size: 12px; }
+  .bb-qty select { height: 48px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: none; }
+  .bb-add { height: 48px; padding: 0 22px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 800; cursor: pointer; }
+
+  .cart { max-width: 720px; margin: 0 auto; padding: 24px 16px 140px; }
+  .cart h1 { font-size: clamp(40px, 10vw, 72px); margin: 0 0 20px; font-weight: 800; letter-spacing: -0.03em; }
+  .cart h1 span { font-size: 16px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
+  .cart-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .cart-cards li { display: grid; grid-template-columns: 120px 1fr; gap: 16px; padding: 12px; border-radius: 8px; background: var(--panel); }
+  .cc-img { border-radius: 6px; overflow: hidden; }
+  .cc-body { display: grid; align-content: start; gap: 6px; position: relative; }
+  .cc-name { font-weight: 800; font-size: 17px; text-decoration: none; padding-right: 48px; }
+  .cc-unit { font-size: 13px; color: var(--muted); font-family: var(--latin); }
+  .cc-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .qty { display: flex; align-items: center; gap: 4px; background: var(--paper); border-radius: 22px; }
+  .qty button { width: 40px; height: 40px; border: 0; background: none; font-size: 18px; cursor: pointer; }
+  .qty span { min-width: 20px; text-align: center; font: 700 15px var(--latin); }
+  .cc-remove { position: absolute; top: -4px; right: 0; border: 0; background: none; text-decoration: underline; font-size: 13px; cursor: pointer; padding: 6px; }
+  .note { font-size: 13px; color: var(--muted); margin: 16px 0; }
+  .checkout-bar { position: fixed; left: 0; right: 0; bottom: 64px; z-index: 30; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--ink); color: #fff; }
+  .cb-total { display: grid; }
+  .cb-total small { font-size: 12px; opacity: 0.75; }
+  .cb-total .price-now { font-size: 24px; }
+  .cb-go { padding: 14px 28px; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 800; }
+  @media (min-width: 900px) { .checkout-bar, .buy-bar { left: 50%; right: auto; transform: translateX(-50%); width: min(720px, 100vw - 32px); bottom: 70px; border-radius: 10px; } }
+
+  .foot { text-align: center; padding: 48px 16px 64px; background: var(--panel); margin-top: 24px; }
+  .foot p { margin: 0 0 8px; }
+  .foot nav { display: flex; justify-content: center; gap: 20px; margin-top: 16px; }
+</style>

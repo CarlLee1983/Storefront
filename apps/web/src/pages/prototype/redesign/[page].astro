@@ -1,0 +1,69 @@
+---
+// PROTOTYPE — 前台改版三頁草稿：三個版型 × 商品詳情／分類列表／購物車，以 ?variant=A|B|C 切換。
+// 丟棄式分支 prototype/storefront-redesign 專用；只在 astro dev 下回應，正式建置一律 404。
+import Switcher from "../../../prototype/redesign/Switcher.astro";
+import VariantA from "../../../prototype/redesign/VariantA.astro";
+import VariantB from "../../../prototype/redesign/VariantB.astro";
+import VariantC from "../../../prototype/redesign/VariantC.astro";
+
+if (!import.meta.env.DEV) return new Response(null, { status: 404 });
+
+const PAGES = ["product", "category", "cart"] as const;
+type Page = (typeof PAGES)[number];
+const page = Astro.params.page as Page;
+if (!PAGES.includes(page)) return new Response(null, { status: 404 });
+const requested = Astro.url.searchParams.get("variant");
+const variant = (requested === "B" || requested === "C" ? requested : "A") as "A" | "B" | "C";
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>PROTOTYPE {variant} · {page}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet" />
+    <style is:global>
+      :root {
+        --ink: #141414; --muted: #5f5f5f; --line: #dcdcd8; --panel: #f2f2f0; --paper: #ffffff;
+        --accent: #c4321c; --accent-ink: #ffffff;
+        --latin: "Inter", system-ui, sans-serif;
+        --body: "Inter", -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html { font-family: var(--body); color: var(--ink); background: var(--paper); -webkit-text-size-adjust: 100%; }
+      body { margin: 0; padding-bottom: 72px; }
+      img, svg { max-width: 100%; }
+      a { color: inherit; }
+      button { font: inherit; color: inherit; }
+      :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      dialog.drawer { margin: 0; width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; padding: 0; }
+      dialog.drawer::backdrop { background: rgb(0 0 0 / 0.4); }
+      .price-now, .price-was { white-space: nowrap; }
+      .price-now { font-family: var(--latin); font-weight: 800; font-variant-numeric: tabular-nums; }
+      .price-was { font-family: var(--latin); color: var(--muted); text-decoration: line-through; font-variant-numeric: tabular-nums; }
+      .on-sale .price-now { color: var(--accent); }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+    </style>
+  </head>
+  <body>
+    {variant === "A" && <VariantA page={page} url={Astro.url} />}
+    {variant === "B" && <VariantB page={page} url={Astro.url} />}
+    {variant === "C" && <VariantC page={page} url={Astro.url} />}
+    <Switcher page={page} variant={variant} url={Astro.url} />
+    <script>
+      // 抽屜：[data-open] 開啟同 id 的 <dialog>，[data-close] 關閉所在的 dialog
+      document.addEventListener("click", event => {
+        const target = event.target instanceof Element ? event.target : null;
+        const opener = target?.closest<HTMLElement>("[data-open]");
+        if (opener) (document.getElementById(opener.dataset.open!) as HTMLDialogElement | null)?.showModal();
+        const closer = target?.closest("[data-close]");
+        if (closer) closer.closest("dialog")?.close();
+      });
+    </script>
+  </body>
+</html>

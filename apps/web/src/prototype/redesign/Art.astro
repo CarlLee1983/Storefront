@@ -1,0 +1,95 @@
+---
+// PROTOTYPE — 代替棚拍商品照的 SVG 線稿，丟棄式分支專用。
+import type { ArtKind } from "./fixtures";
+
+interface Props {
+  kind: ArtKind;
+  tone: string;
+  bg?: string;
+  label: string;
+  ratio?: "square" | "portrait" | "wide";
+}
+const { kind, tone, bg = "#ececea", label, ratio = "square" } = Astro.props;
+const viewBox = ratio === "portrait" ? "0 0 400 500" : ratio === "wide" ? "0 0 640 400" : "0 0 400 400";
+const [, , w, h] = viewBox.split(" ").map(Number) as [number, number, number, number];
+const ox = w / 2 - 200;
+const oy = h - 400;
+const wood = "#a0704a";
+---
+
+<svg viewBox={viewBox} role="img" aria-label={label} preserveAspectRatio="xMidYMid slice" style="display:block;width:100%;height:100%">
+  <rect width={w} height={h} fill={bg} />
+  <ellipse cx={w / 2} cy={h - 52} rx="130" ry="10" fill="#000" opacity="0.07" />
+  <g transform={`translate(${ox} ${oy})`}>
+    {kind === "chair" && (
+      <g>
+        <path d="M120 300 L105 350 M280 300 L295 350 M150 300 L160 345 M250 300 L240 345" stroke={wood} stroke-width="9" stroke-linecap="round" />
+        <path d="M95 240 Q200 330 305 240 Q300 285 200 305 Q100 285 95 240Z" fill={wood} />
+        <path d="M130 110 Q200 70 270 110 L300 240 Q200 290 100 240Z" fill={tone} />
+        <ellipse cx="200" cy="255" rx="80" ry="18" fill="#1c1c1c" />
+      </g>
+    )}
+    {kind === "lamp" && (
+      <g>
+        <path d="M110 200 Q110 110 200 110 Q290 110 290 200Z" fill={tone} />
+        <rect x="194" y="200" width="12" height="125" fill={tone} />
+        <path d="M150 350 L250 350 L235 322 L165 322Z" fill={tone} />
+        <ellipse cx="200" cy="203" rx="50" ry="6" fill="#fff6d8" opacity="0.9" />
+      </g>
+    )}
+    {kind === "table" && (
+      <g>
+        <ellipse cx="200" cy="190" rx="165" ry="26" fill={tone} />
+        <rect x="35" y="190" width="330" height="10" fill={tone} />
+        <path d="M200 200 L200 350 M150 200 L120 350 M250 200 L280 350" stroke={wood} stroke-width="10" stroke-linecap="round" />
+      </g>
+    )}
+    {kind === "shelf" && (
+      <g>
+        <rect x="110" y="60" width="8" height="292" fill={tone} />
+        <rect x="282" y="60" width="8" height="292" fill={tone} />
+        {[70, 140, 210, 280, 340].map(y => <rect x="110" y={y} width="180" height="8" fill={y === 70 ? wood : tone} />)}
+        <rect x="140" y="110" width="22" height="30" fill="#c4321c" />
+        <rect x="230" y="245" width="40" height="35" fill="#cfc8bc" />
+      </g>
+    )}
+    {kind === "vase" && (
+      <g>
+        <path d="M150 350 Q105 260 150 190 Q175 160 175 120 L225 120 Q225 160 250 190 Q295 260 250 350Z" fill={tone} />
+        <path d="M200 120 Q190 60 150 40 M200 120 Q215 70 255 50 M200 120 Q200 80 205 30" stroke="#4d5b3a" stroke-width="5" fill="none" stroke-linecap="round" />
+      </g>
+    )}
+    {kind === "sofa" && (
+      <g>
+        <rect x="50" y="170" width="300" height="120" rx="18" fill={tone} />
+        <rect x="35" y="215" width="50" height="95" rx="16" fill={tone} filter="brightness(0.9)" />
+        <rect x="315" y="215" width="50" height="95" rx="16" fill={tone} />
+        <rect x="85" y="245" width="230" height="55" rx="10" fill="#fff" opacity="0.18" />
+        <path d="M70 310 L70 345 M330 310 L330 345" stroke="#2a2a2a" stroke-width="8" />
+      </g>
+    )}
+    {kind === "stool" && (
+      <g>
+        <ellipse cx="200" cy="200" rx="90" ry="20" fill={tone} />
+        <rect x="110" y="200" width="180" height="16" fill={tone} />
+        <path d="M140 216 L120 350 M260 216 L280 350 M200 216 L200 350" stroke={tone} stroke-width="10" stroke-linecap="round" />
+      </g>
+    )}
+    {kind === "bed" && (
+      <g>
+        <rect x="40" y="150" width="20" height="200" fill={wood} />
+        <rect x="40" y="250" width="330" height="60" fill="#5a5a5a" />
+        <rect x="60" y="220" width="310" height="40" rx="10" fill="#e8e6e1" />
+        <rect x="75" y="195" width="90" height="35" rx="14" fill="#cfcdc8" />
+      </g>
+    )}
+    {kind === "mirror" && (
+      <g>
+        <circle cx="200" cy="190" r="130" fill={tone} />
+        <circle cx="200" cy="190" r="118" fill="#dfe3e4" />
+        <path d="M140 120 L180 100" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity="0.8" />
+      </g>
+    )}
+    {kind === "bowl" && <path d="M90 250 Q200 380 310 250Z" fill={tone} />}
+  </g>
+</svg>

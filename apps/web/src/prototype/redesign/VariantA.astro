@@ -1,0 +1,304 @@
+---
+// PROTOTYPE — 版型 A「編輯式格線」：最貼近參考稿。一排導覽列、超大粗體標題、1px 格線拼貼的商品方塊、淺灰面板。
+import Art from "./Art.astro";
+import { CART, CATEGORIES, DETAIL, DETAIL_COPY, DETAIL_GALLERY, DETAIL_SPECS, RELATED, SORTS, cartTotal, discountPct, listing, readListing, twd, withParams } from "./fixtures";
+
+interface Props { page: "product" | "category" | "cart"; url: URL }
+const { page, url } = Astro.props;
+const q = readListing(url);
+const living = CATEGORIES[0]!;
+const list = listing(living.slug, q);
+const cartCount = CART.reduce((n, l) => n + l.quantity, 0);
+---
+
+<div class="a">
+  <header class="top">
+    <a class="brand" href="#">Storefront</a>
+    <nav class="desk-nav" aria-label="主要導覽">
+      <a href="#">全部商品</a>
+      {CATEGORIES.map(c => <a href="#" aria-current={page === "category" && c.slug === living.slug ? "page" : undefined}>{c.name}</a>)}
+      <a href="#" class="sale-link">特價</a>
+    </nav>
+    <div class="tools">
+      <button type="button" class="icon" aria-label="搜尋" data-open="a-search"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2"/></svg></button>
+      <a class="login" href="#">登入</a>
+      <a href="#" class="cart-link">購物車 (<span>{cartCount}</span>)</a>
+      <button type="button" class="icon menu" aria-label="開啟選單" data-open="a-menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2"/></svg></button>
+    </div>
+  </header>
+
+  <dialog id="a-menu" class="drawer menu-drawer" aria-label="選單">
+    <div class="drawer-head"><span class="brand">Storefront</span><button type="button" class="icon" data-close aria-label="關閉選單">✕</button></div>
+    <form class="drawer-search" role="search"><label class="sr-only" for="a-q">搜尋商品</label><input id="a-q" type="search" placeholder="搜尋商品" /></form>
+    <nav aria-label="行動版導覽">
+      <a href="#">全部商品</a>
+      {CATEGORIES.map(c => <a href="#">{c.name}<small>{c.blurb}</small></a>)}
+      <a href="#" class="sale-link">特價</a>
+    </nav>
+    <div class="drawer-foot"><a href="#">登入</a><a href="#">我的訂單</a></div>
+  </dialog>
+  <dialog id="a-search" class="drawer search-drawer" aria-label="搜尋">
+    <div class="drawer-head"><span class="eyebrow">SEARCH</span><button type="button" class="icon" data-close aria-label="關閉搜尋">✕</button></div>
+    <form role="search" class="big-search"><label class="sr-only" for="a-q2">搜尋商品</label><input id="a-q2" type="search" placeholder="想找什麼？" autofocus /></form>
+  </dialog>
+
+  <main>
+    {page === "category" && (
+      <>
+        <section class="cat-hero">
+          <div class="cat-copy">
+            <p class="eyebrow">CATEGORY 01 / 04</p>
+            <h1>{living.name}</h1>
+            <p class="lede">{living.blurb}。為長時間待著的地方挑選的家具與器物。</p>
+            <p class="count"><span class="num">{list.total}</span> 件商品</p>
+          </div>
+          <div class="cat-art"><Art kind="sofa" tone="#b9b7b2" bg="#e6e4df" label="" ratio="wide" /></div>
+        </section>
+        <div class="toolbar">
+          <div class="sorts" role="group" aria-label="排序">
+            {SORTS.map(s => <a href={withParams(url, { sort: s.key, page: null })} aria-current={q.sort === s.key ? "true" : undefined}>{s.label}</a>)}
+          </div>
+          <div class="toggles">
+            <a href={withParams(url, { instock: q.inStock ? null : "1", page: null })} role="switch" aria-checked={q.inStock ? "true" : "false"}><span class="box" aria-hidden="true"></span>只看有貨</a>
+            <a href={withParams(url, { sale: q.onSale ? null : "1", page: null })} role="switch" aria-checked={q.onSale ? "true" : "false"}><span class="box" aria-hidden="true"></span>只看特價</a>
+          </div>
+        </div>
+        <ul class="grid">
+          {list.shown.map(p => (
+            <li class:list={["card", { "on-sale": p.compareAtTwd, "sold-out": p.available === 0 }]}>
+              <a href="#" class="card-media">
+                <Art kind={p.art} tone={p.tone} label={p.name} />
+                {p.compareAtTwd && <span class="tag">−{discountPct(p)}%</span>}
+                {p.available === 0 && <span class="tag dark">已售完</span>}
+              </a>
+              <div class="card-body">
+                <a href="#" class="card-name">{p.name}</a>
+                <p class="card-price"><span class="price-now">{twd(p.priceTwd)}</span>{p.compareAtTwd && <s class="price-was"><span class="sr-only">原價</span>{twd(p.compareAtTwd)}</s>}</p>
+              </div>
+              <button type="button" class="add" disabled={p.available === 0} aria-label={`把${p.name}加入購物車`}>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 4h2l2.4 11h11.2L21 7H7" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="19" r="1.5" fill="currentColor"/><circle cx="17" cy="19" r="1.5" fill="currentColor"/></svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div class="more">
+          <p>已顯示 {list.shown.length} / {list.total} 件</p>
+          {list.hasMore && <a class="btn ghost" href={withParams(url, { page: String(q.page + 1) })}>載入更多</a>}
+        </div>
+      </>
+    )}
+
+    {page === "product" && (
+      <>
+        <nav class="crumbs" aria-label="麵包屑"><a href="#">全部商品</a> / <a href="#">工作區</a> / <span aria-current="page">{DETAIL.name}</span></nav>
+        <section class="pdp">
+          <div class="gallery">
+            <div class="main-img"><Art kind={DETAIL_GALLERY[0]!.art} tone={DETAIL_GALLERY[0]!.tone} bg={DETAIL_GALLERY[0]!.bg} label={`${DETAIL.name}，第 1 張`} /></div>
+            <div class="thumbs">
+              {DETAIL_GALLERY.map((g, i) => <button type="button" aria-label={`顯示第 ${i + 1} 張`} aria-current={i === 0 ? "true" : undefined}><Art kind={g.art} tone={g.tone} bg={g.bg} label="" /></button>)}
+            </div>
+          </div>
+          <div class="info on-sale">
+            <p class="eyebrow">WORKSPACE</p>
+            <h1>{DETAIL.name}</h1>
+            <p class="pdp-price"><span class="price-now">{twd(DETAIL.priceTwd)}</span><s class="price-was"><span class="sr-only">原價</span>{twd(DETAIL.compareAtTwd!)}</s><span class="tag inline">−{discountPct(DETAIL)}%</span></p>
+            <p class="stock">現貨，可售 {DETAIL.available} 件</p>
+            <p class="copy">{DETAIL_COPY}</p>
+            <form class="buy">
+              <label for="a-qty">數量</label>
+              <div class="stepper"><button type="button" aria-label="減少數量">−</button><input id="a-qty" inputmode="numeric" value="1" /><button type="button" aria-label="增加數量">＋</button></div>
+              <button type="button" class="btn primary">加入購物車 <span aria-hidden="true">→</span></button>
+            </form>
+            <dl class="specs">{DETAIL_SPECS.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+            <p class="policy">含稅、免運。付款後無法自行取消，商品問題請聯繫客服。</p>
+          </div>
+        </section>
+        <section class="related">
+          <div class="related-head"><div><p class="eyebrow">YOU MAY ALSO LIKE</p><h2>同樣適合你的空間</h2></div><a href="#">看全部 →</a></div>
+          <ul class="grid four">
+            {RELATED.map(p => (
+              <li class:list={["card", { "on-sale": p.compareAtTwd }]}>
+                <a href="#" class="card-media"><Art kind={p.art} tone={p.tone} label={p.name} /></a>
+                <div class="card-body"><a href="#" class="card-name">{p.name}</a><p class="card-price"><span class="price-now">{twd(p.priceTwd)}</span>{p.compareAtTwd && <s class="price-was">{twd(p.compareAtTwd)}</s>}</p></div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </>
+    )}
+
+    {page === "cart" && (
+      <section class="cart">
+        <div class="cart-head"><p class="eyebrow">YOUR CART</p><h1>購物車</h1></div>
+        <div class="cart-layout">
+          <ul class="lines">
+            {CART.map(l => (
+              <li>
+                <div class="line-img"><Art kind={l.product.art} tone={l.product.tone} label="" /></div>
+                <div class="line-main">
+                  <a href="#" class="line-name">{l.product.name}</a>
+                  <p class="muted">單價 <span class="num">{twd(l.product.priceTwd)}</span></p>
+                  <div class="line-actions">
+                    <div class="stepper small"><button type="button" aria-label={`減少${l.product.name}數量`}>−</button><input aria-label={`${l.product.name}的數量`} inputmode="numeric" value={l.quantity} /><button type="button" aria-label={`增加${l.product.name}數量`}>＋</button></div>
+                    <button type="button" class="text-btn">移除</button>
+                  </div>
+                </div>
+                <p class="line-sub price-now">{twd(l.product.priceTwd * l.quantity)}</p>
+              </li>
+            ))}
+          </ul>
+          <aside class="summary">
+            <h2>訂單摘要</h2>
+            <dl><div><dt>小計</dt><dd class="num">{twd(cartTotal())}</dd></div><div><dt>運費</dt><dd>免運</dd></div></dl>
+            <p class="total"><span>總金額</span><span class="price-now">{twd(cartTotal())}</span></p>
+            <a href="#" class="btn primary block">前往結帳 <span aria-hidden="true">→</span></a>
+            <p class="muted small">單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。</p>
+          </aside>
+        </div>
+      </section>
+    )}
+  </main>
+
+  <footer class="foot">
+    <div class="foot-brand"><span class="brand">Storefront</span><p>為日常挑選的家具與器物。</p></div>
+    <nav aria-label="頁尾"><a href="#">關於</a><a href="#">常見問題</a><a href="#">退換貨說明</a></nav>
+  </footer>
+</div>
+
+<style>
+  .a { --gap: 1px; }
+  .eyebrow { font-family: var(--latin); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; margin: 0 0 12px; }
+  .num { font-family: var(--latin); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .brand { font-family: var(--latin); font-weight: 800; font-size: 20px; letter-spacing: -0.02em; text-decoration: none; }
+
+  .top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 24px; padding: 14px 16px; background: var(--paper); border-bottom: 1px solid var(--line); }
+  .desk-nav { display: none; gap: 28px; flex: 1; justify-content: center; font-size: 15px; }
+  .desk-nav a, .tools a { text-decoration: none; }
+  .desk-nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+  .sale-link { color: var(--accent); font-weight: 700; }
+  .tools { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 15px; }
+  .icon { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; background: none; cursor: pointer; }
+  .login { display: none; }
+  @media (min-width: 900px) { .desk-nav, .login { display: flex; } .menu { display: none; } .top { padding: 18px 40px; } }
+
+  .drawer { background: var(--paper); }
+  .drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .drawer-search { padding: 16px; }
+  .drawer input[type="search"] { width: 100%; font-size: 17px; padding: 14px; border: 1px solid var(--ink); border-radius: 0; }
+  .menu-drawer nav { display: grid; }
+  .menu-drawer nav a { display: grid; padding: 18px 16px; border-bottom: 1px solid var(--line); font-size: 26px; font-weight: 800; text-decoration: none; letter-spacing: -0.01em; }
+  .menu-drawer nav small { font-size: 13px; font-weight: 400; color: var(--muted); }
+  .drawer-foot { display: flex; gap: 24px; padding: 20px 16px; }
+  .big-search { padding: 24px 16px; }
+  .big-search input { font-size: 28px !important; border: 0 !important; border-bottom: 3px solid var(--ink) !important; }
+
+  main { min-height: 60vh; }
+  .cat-hero { display: grid; background: var(--panel); }
+  .cat-copy { padding: 40px 16px 32px; }
+  .cat-hero h1 { font-size: clamp(56px, 14vw, 128px); line-height: 0.95; margin: 0 0 16px; letter-spacing: -0.03em; font-weight: 800; }
+  .lede { margin: 0 0 20px; font-size: 17px; max-width: 30em; }
+  .count { margin: 0; font-size: 14px; }
+  .cat-art { min-height: 220px; }
+  @media (min-width: 900px) { .cat-hero { grid-template-columns: 1fr 1fr; } .cat-copy { padding: 72px 40px; } }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .sorts { display: flex; gap: 4px; overflow-x: auto; }
+  .sorts a { padding: 8px 12px; text-decoration: none; border: 1px solid var(--line); white-space: nowrap; }
+  .sorts a[aria-current="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .toggles { display: flex; gap: 20px; }
+  .toggles a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; min-height: 40px; }
+  .box { width: 18px; height: 18px; border: 2px solid var(--ink); display: inline-block; }
+  .toggles a[aria-checked="true"] .box { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 3px #fff; }
+  @media (min-width: 900px) { .toolbar { padding: 18px 40px; } }
+
+  .grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); background: var(--line); border-bottom: 1px solid var(--line); }
+  @media (min-width: 900px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .card { position: relative; background: var(--paper); display: grid; grid-template-rows: auto 1fr; }
+  .card-media { position: relative; display: block; aspect-ratio: 1; }
+  .card-body { padding: 12px 52px 16px 12px; }
+  .card-name { display: block; text-decoration: none; font-size: 15px; margin-bottom: 4px; }
+  .card-price { margin: 0; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: 16px; }
+  .card-price .price-was { font-size: 13px; }
+  .sold-out .card-media { opacity: 0.55; }
+  .tag { position: absolute; top: 10px; left: 10px; background: var(--accent); color: var(--accent-ink); font: 700 12px/1 var(--latin); padding: 6px 8px; }
+  .tag.dark { background: var(--ink); left: auto; right: 10px; }
+  .tag.inline { position: static; display: inline-block; }
+  .add { position: absolute; right: 10px; bottom: 12px; width: 40px; height: 40px; border: 0; background: var(--panel); cursor: pointer; display: grid; place-items: center; }
+  .add:hover:not(:disabled) { background: var(--ink); color: #fff; }
+  .add:disabled { opacity: 0.4; cursor: not-allowed; }
+  .more { display: grid; justify-items: center; gap: 12px; padding: 32px 16px 48px; font-size: 14px; }
+  .btn { display: inline-flex; justify-content: center; align-items: center; gap: 10px; min-height: 52px; padding: 0 28px; font-weight: 700; font-size: 16px; text-decoration: none; border: 2px solid var(--ink); background: none; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.block { width: 100%; }
+
+  .crumbs { padding: 14px 16px; font-size: 13px; color: var(--muted); }
+  .crumbs a { color: var(--muted); }
+  .pdp { display: grid; gap: 0; }
+  .main-img { aspect-ratio: 1; }
+  .thumbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+  .thumbs button { padding: 0; border: 0; aspect-ratio: 1; cursor: pointer; opacity: 0.6; }
+  .thumbs button[aria-current="true"] { opacity: 1; box-shadow: inset 0 -4px 0 var(--ink); }
+  .info { padding: 28px 16px 40px; }
+  .info h1 { font-size: clamp(34px, 7vw, 56px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -0.02em; font-weight: 800; }
+  .pdp-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; font-size: 28px; margin: 0 0 8px; }
+  .pdp-price .price-was { font-size: 18px; }
+  .stock { margin: 0 0 20px; font-size: 14px; }
+  .copy { line-height: 1.8; margin: 0 0 24px; }
+  .buy { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: end; margin-bottom: 28px; }
+  .buy label { grid-column: 1 / -1; font-size: 13px; font-weight: 700; }
+  .buy .btn { min-width: 0; }
+  .stepper { display: flex; border: 1px solid var(--ink); height: 52px; }
+  .stepper button { width: 44px; border: 0; background: none; font-size: 20px; cursor: pointer; }
+  .stepper input { width: 44px; text-align: center; border: 0; font: 700 16px var(--latin); }
+  .stepper.small { height: 40px; }
+  .stepper.small button, .stepper.small input { width: 36px; }
+  .specs { margin: 0 0 20px; border-top: 1px solid var(--ink); }
+  .specs div { display: grid; grid-template-columns: 6em 1fr; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .specs dt { color: var(--muted); }
+  .specs dd { margin: 0; }
+  .policy { font-size: 13px; color: var(--muted); }
+  @media (min-width: 900px) {
+    .crumbs { padding: 18px 40px; }
+    .pdp { grid-template-columns: 1.3fr 1fr; align-items: start; }
+    .info { position: sticky; top: 80px; padding: 8px 40px 40px; }
+  }
+  .related { padding-top: 48px; }
+  .related-head { display: flex; justify-content: space-between; align-items: end; padding: 0 16px 20px; }
+  .related-head h2 { font-size: clamp(28px, 6vw, 44px); margin: 0; letter-spacing: -0.02em; font-weight: 800; }
+  @media (min-width: 900px) { .related-head { padding: 0 40px 24px; } }
+
+  .cart { padding: 32px 16px 48px; }
+  .cart-head h1 { font-size: clamp(48px, 12vw, 96px); margin: 0 0 24px; letter-spacing: -0.03em; font-weight: 800; line-height: 1; }
+  .cart-layout { display: grid; gap: 24px; }
+  .lines { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink); }
+  .lines li { display: grid; grid-template-columns: 96px 1fr; gap: 4px 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .line-img { width: 96px; aspect-ratio: 1; }
+  .line-name { font-weight: 700; text-decoration: none; }
+  .line-main p { margin: 4px 0 10px; font-size: 14px; }
+  .line-actions { display: flex; gap: 16px; align-items: center; }
+  .text-btn { border: 0; background: none; text-decoration: underline; cursor: pointer; min-height: 40px; }
+  .line-sub { grid-column: 2; margin: 0; font-size: 17px; }
+  .summary { background: var(--panel); padding: 24px; align-self: start; }
+  .summary h2 { margin: 0 0 16px; font-size: 18px; }
+  .summary dl { margin: 0 0 12px; }
+  .summary dl div { display: flex; justify-content: space-between; padding: 6px 0; font-size: 15px; }
+  .summary dd { margin: 0; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--ink); padding-top: 16px; margin: 0 0 20px; font-weight: 700; }
+  .total .price-now { font-size: 28px; }
+  @media (min-width: 900px) {
+    .cart { padding: 56px 40px; }
+    .cart-layout { grid-template-columns: 1fr 360px; gap: 48px; }
+    .lines li { grid-template-columns: 120px 1fr auto; }
+    .line-img { width: 120px; }
+    .line-sub { grid-column: 3; grid-row: 1; }
+    .summary { position: sticky; top: 90px; }
+  }
+
+  .foot { display: grid; gap: 20px; padding: 40px 16px; background: var(--ink); color: #fff; margin-top: 48px; }
+  .foot p { color: #c8c8c8; margin: 6px 0 0; }
+  .foot nav { display: flex; gap: 24px; }
+  .foot a { color: #fff; }
+  @media (min-width: 900px) { .foot { grid-template-columns: 1fr auto; padding: 56px 40px; } }
+</style>
