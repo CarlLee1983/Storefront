@@ -8,14 +8,16 @@ import ProductList from "./ProductList.astro";
 interface Props {
   /** 只列這個分類（代稱）；省略就是全部商品。 */
   category?: string;
+  /** 搜尋關鍵字（已去掉前後空白）；只有搜尋結果頁會帶。 */
+  q?: string;
 }
-const { category } = Astro.props;
+const { category, q } = Astro.props;
 
 const SORT_LABELS: Array<[ListingSort, string]> = [["new", "新上架"], ["price-asc", "價格低到高"], ["price-desc", "價格高到低"]];
 
 const { pathname, searchParams } = Astro.url;
 const state = parseListingParams(searchParams);
-const result = await env.APP.listProducts({ category, inStock: state.inStock, sort: state.sort, page: state.page });
+const result = await env.APP.listProducts({ category, q, inStock: state.inStock, sort: state.sort, page: state.page });
 const listing = result.ok ? result.data : null;
 // 篩選表單送出時要保留的參數：目前的排序與其他不相關的參數；instock 由 checkbox 決定，頁數不帶（回到第 1 頁）
 const hiddenParams = [...searchParams].filter(([name]) => name !== "instock" && name !== "page" && name !== "sort");
@@ -44,8 +46,9 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false });
     <p class="error" role="alert">商品列表暫時無法顯示，請稍後再試。</p>
   ) : listing.items.length === 0 ? (
     <div class="listing-empty">
-      <p>{state.inStock ? "目前沒有符合條件的商品。" : "目前沒有上架的商品。"}</p>
+      <p>{q !== undefined ? `找不到符合「${q}」的商品` : state.inStock ? "目前沒有符合條件的商品。" : "目前沒有上架的商品。"}</p>
       {state.inStock && <p><a href={clearHref}>清除篩選</a></p>}
+      {q !== undefined && <p><a href="/products">前往全部商品</a></p>}
     </div>
   ) : (
     <>

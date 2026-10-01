@@ -26,6 +26,14 @@ describe("parseListingParams", () => {
     expect(parse(`page=${page}`).page).toBe(1);
   });
 
+  it("解析搜尋關鍵字 q：去掉前後空白，空字串與只有空白視為沒有", () => {
+    expect(parse("q=luma").q).toBe("luma");
+    expect(parse("q=%20%20luma%20%E6%A4%85%20").q).toBe("luma 椅");
+    expect(parse("q=%E5%BC%A7%E5%BD%A2").q).toBe("弧形");
+    expect(parse("q=100%25&sort=price-asc")).toMatchObject({ q: "100%", sort: "price-asc" });
+    for (const query of ["", "q=", "q=%20%20%20"]) expect(parse(query).q, query).toBeUndefined();
+  });
+
   it("同一個參數出現多次時取第一個", () => {
     expect(parse("sort=price-asc&sort=price-desc&page=2&page=3")).toMatchObject({ sort: "price-asc", page: 2 });
   });
@@ -64,6 +72,13 @@ describe("listingHref", () => {
   it("保留不相關的其他參數", () => {
     expect(listingHref("/products", params("q=luma&utm_source=a&page=2"), { sort: "price-asc" })).toBe("/products?q=luma&utm_source=a&sort=price-asc");
     expect(listingHref("/products", params("q=luma&sort=price-asc"), { page: 2 })).toBe("/products?q=luma&sort=price-asc&page=2");
+  });
+
+  it("搜尋關鍵字在切換排序、篩選與載入更多時都保留，頁數重置規則不變", () => {
+    expect(listingHref("/search", params("q=luma&page=3"), { sort: "price-asc" })).toBe("/search?q=luma&sort=price-asc");
+    expect(listingHref("/search", params("q=luma&sort=price-asc&page=3"), { inStock: true })).toBe("/search?q=luma&sort=price-asc&instock=1");
+    expect(listingHref("/search", params("q=luma&instock=1"), { page: 2 })).toBe("/search?q=luma&instock=1&page=2");
+    expect(listingHref("/search", params("q=100%25+%E6%A3%89"), { sort: "price-desc" })).toBe("/search?q=100%25+%E6%A3%89&sort=price-desc");
   });
 
   it("目前網址上的非法值不會被帶到新網址", () => {

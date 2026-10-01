@@ -1,0 +1,26 @@
+---
+import ProductListing from "../components/ProductListing.astro";
+import SearchForm from "../components/SearchForm.astro";
+import Layout from "../layouts/Layout.astro";
+import { MAX_QUERY_LENGTH, parseListingParams } from "../listing/params";
+
+export const prerender = false;
+
+// 前台不需登入；關鍵字在網址參數 q，排序、篩選與頁數沿用列表的網址參數
+const { q } = parseListingParams(Astro.url.searchParams);
+// 空白關鍵字沒有東西可搜，直接回到全部商品
+if (q === undefined) return Astro.redirect("/products", 302);
+const tooLong = q.length > MAX_QUERY_LENGTH;
+if (tooLong) Astro.response.status = 400;
+---
+
+<Layout title={tooLong ? "搜尋" : `搜尋：${q}`} noindex>
+  <SearchForm id="search-page-q" label="重新搜尋" value={tooLong ? "" : q} />
+  {
+    tooLong ? (
+      <p class="error" role="alert">搜尋關鍵字不可超過 {MAX_QUERY_LENGTH} 字，請縮短後再試。</p>
+    ) : (
+      <ProductListing q={q} />
+    )
+  }
+</Layout>

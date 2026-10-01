@@ -3,6 +3,8 @@ import "../styles/global.css";
 import { env } from "cloudflare:workers";
 import AccountLinks from "../components/AccountLinks.astro";
 import CategoryLinks from "../components/CategoryLinks.astro";
+import SearchDialog from "../components/SearchDialog.astro";
+import SearchForm from "../components/SearchForm.astro";
 import { categorySlugFromPath, loadNavCategories } from "../categories/nav";
 
 interface Props {
@@ -47,6 +49,9 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
               <CategoryLinks categories={categories} current={currentCategory} />
             </nav>
             <div class="tools">
+              <div class="desktop-only">
+                <SearchDialog />
+              </div>
               <div class="desktop-only account">
                 <AccountLinks customer={customer} url={Astro.url} />
               </div>
@@ -69,6 +74,9 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
             <button type="button" class="icon-button" id="menu-close" aria-label="關閉選單" autofocus>
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none" /></svg>
             </button>
+          </div>
+          <div class="drawer-search">
+            <SearchForm id="drawer-search-q" label="選單搜尋" />
           </div>
           <nav class="drawer-nav" aria-label="行動版導覽">
             <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
@@ -150,6 +158,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
 
 <style>
   #cart-count { display: inline-block; min-width: 1ch; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .drawer-search { padding: var(--space-4); border-bottom: 1px solid var(--color-border); }
   .count-bump { animation: count-bump var(--duration-normal) ease-out; }
   @keyframes count-bump { 50% { transform: translateY(-.25rem) scale(1.2); } }
   @media (prefers-reduced-motion: reduce) { .count-bump { animation: none; } }

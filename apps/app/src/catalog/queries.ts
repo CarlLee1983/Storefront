@@ -83,18 +83,31 @@ const listingOrder = {
   "price-desc": [desc(products.priceTwd), desc(products.id)],
 } satisfies Record<ProductSort, SQL[]>;
 
+/** LIKE 的萬用字元與跳脫字元本身加上反斜線，讓關鍵字當成一般文字比對。 */
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
 /**
- * 前台列表：上架中的商品，可依分類、可售數量篩選與排序；回傳第 1 到 `page` 頁的累計結果與符合條件的總件數。
+ * 名稱或說明含關鍵字（子字串、英文不分大小寫）；關鍵字一律以參數傳入。
+ * 兩邊都用 SQLite 的 `lower()`，大小寫規則一致（只處理 ASCII，即英文）。
+ */
+function keywordMatch(q: string): SQL {
+  const pattern = sql`'%' || lower(${escapeLike(q)}) || '%'`;
+  return sql`(lower(${products.name}) like ${pattern} escape '\\' or lower(${products.description}) like ${pattern} escape '\\')`;
+}
+
+/**
+ * 前台列表：上架中的商品，可依分類、可售數量、關鍵字篩選與排序；回傳第 1 到 `page` 頁的累計結果與符合條件的總件數。
  * 排序值相同時一律以 id 遞減，分頁才穩定。分類代稱不存在時 `category_id = NULL` 不成立，自然是空結果。
  */
 export async function selectListedProducts(
   db: DrizzleD1Database,
-  { category, inStock, sort, page }: ListProductsInput,
+  { category, inStock, q, sort, page }: ListProductsInput,
 ): Promise<{ items: ProductSummary[]; total: number }> {
   const where = and(
     eq(products.listed, true),
     category === undefined ? undefined : sql`${products.categoryId} = (select id from categories where slug = ${category})`,
     inStock ? sql`${availableExpr(sql`${products.onHand}`, sql`${products.id}`)} > 0` : undefined,
+    q === undefined ? undefined : keywordMatch(q),
   );
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
   // 列表與總件數放同一個 batch（隱含交易），兩者看到同一份資料，hasMore 才不會因並行寫入而矛盾。
