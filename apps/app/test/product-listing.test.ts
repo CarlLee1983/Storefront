@@ -140,4 +140,108 @@ describe("前台商品列表查詢", () => {
       expect(await app.listProducts(input), JSON.stringify(input)).toMatchObject({ ok: false, reason: "invalid_input" });
     }
   });
+
+  describe("關鍵字搜尋 q", () => {
+    /** 以名稱與說明各自可識別的商品安排搜尋情境；說明預設是「{名稱}的說明」。 */
+    async function seedNamed(jwt: string, categoryId: number, name: string, description?: string, seed: Omit<Seed, "name"> = {}): Promise<number> {
+      const id = await seedProduct(jwt, categoryId, { name, ...seed });
+      if (description !== undefined) await env.DB.prepare("UPDATE products SET description = ? WHERE id = ?").bind(description, id).run();
+      return id;
+    }
+
+    it("名稱與說明都能命中，且只列上架商品", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt);
+      await seedNamed(jwt, living, "弧形單椅", "柔和的曲線");
+      await seedNamed(jwt, living, "邊桌", "搭配弧形單椅使用");
+      await seedNamed(jwt, living, "檯燈", "暖色光源");
+      const hidden = await seedNamed(jwt, living, "弧形下架品", "弧形");
+      await app.unlistProduct(jwt, { id: hidden });
+
+      expect((await names({ q: "弧形" })).sort()).toEqual(["弧形單椅", "邊桌"].sort());
+      expect(await names({ q: "光源" })).toEqual(["檯燈"]);
+      expect(await app.listProducts({ q: "弧形" })).toMatchObject({ ok: true, data: { total: 2, hasMore: false } });
+      expect(await app.listProducts({ q: "找不到的字" })).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
+    });
+
+    it("英文不分大小寫", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt);
+      await seedNamed(jwt, living, "Luma 弧形單椅", "");
+      await seedNamed(jwt, living, "檯燈", "Warm LIGHT");
+
+      expect(await names({ q: "luma" })).toEqual(["Luma 弧形單椅"]);
+      expect(await names({ q: "LUMA" })).toEqual(["Luma 弧形單椅"]);
+      expect(await names({ q: "light" })).toEqual(["檯燈"]);
+    });
+
+    it("% 與 _ 與反斜線都視為一般字元，不是萬用字元", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt);
+      await seedNamed(jwt, living, "100% 純棉", "");
+      await seedNamed(jwt, living, "a_b 杯", "");
+      await seedNamed(jwt, living, "axb 杯", "");
+      await seedNamed(jwt, living, "路徑 a\\b", "");
+      await seedNamed(jwt, living, "普通商品", "");
+
+      expect(await names({ q: "%" })).toEqual(["100% 純棉"]);
+      expect(await names({ q: "_" })).toEqual(["a_b 杯"]);
+      expect(await names({ q: "a_b" })).toEqual(["a_b 杯"]);
+      expect(await names({ q: "\\" })).toEqual(["路徑 a\\b"]);
+      expect(await names({ q: "100%" })).toEqual(["100% 純棉"]);
+    });
+
+    it("單引號等字元當成資料，不會改變查詢", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt);
+      await seedNamed(jwt, living, "普通商品", "");
+      expect(await names({ q: "' OR 1=1 --" })).toEqual([]);
+    });
+
+    it("前後空白會先去掉；空字串與只有空白視同沒有帶", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt);
+      await seedNamed(jwt, living, "沙發", "");
+      await seedNamed(jwt, living, "餐盤", "");
+
+      expect(await names({ q: "  沙發  " })).toEqual(["沙發"]);
+      expect((await names({ q: "" })).sort()).toEqual(["沙發", "餐盤"].sort());
+      expect((await names({ q: "   " })).sort()).toEqual(["沙發", "餐盤"].sort());
+    });
+
+    it("長度上限 50 字（去掉空白後計算）：剛好 50 可用，51 回 invalid_input", async () => {
+      expect(await app.listProducts({ q: "a".repeat(50) })).toMatchObject({ ok: true });
+      expect(await app.listProducts({ q: ` ${"a".repeat(50)} ` })).toMatchObject({ ok: true });
+      expect(await app.listProducts({ q: "a".repeat(51) })).toMatchObject({ ok: false, reason: "invalid_input", fields: { q: [expect.any(String)] } });
+      expect(await app.listProducts({ q: 5 })).toMatchObject({ ok: false, reason: "invalid_input" });
+    });
+
+    it("可與分類、只看有貨、排序組合，total 依篩選後計算", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt, "living", "客廳");
+      const dining = await createCategory(jwt, "dining", "餐廳");
+      await seedNamed(jwt, living, "木質椅甲", "", { priceTwd: 300, stock: 1, listedAt: 1 });
+      await seedNamed(jwt, living, "木質椅乙", "", { priceTwd: 900, stock: 1, listedAt: 2 });
+      await seedNamed(jwt, living, "木質椅丙", "", { priceTwd: 600, stock: 0, listedAt: 3 });
+      await seedNamed(jwt, dining, "木質餐盤", "", { priceTwd: 100, stock: 1, listedAt: 4 });
+      await seedNamed(jwt, living, "鐵製椅", "", { priceTwd: 100, stock: 1, listedAt: 5 });
+
+      expect(await names({ q: "木質", category: "living", sort: "price-asc" })).toEqual(["木質椅甲", "木質椅丙", "木質椅乙"]);
+      expect(await names({ q: "木質", category: "living", inStock: true, sort: "price-desc" })).toEqual(["木質椅乙", "木質椅甲"]);
+      expect(await app.listProducts({ q: "木質", inStock: true })).toMatchObject({ ok: true, data: { total: 3 } });
+    });
+
+    it("分頁：total 與 hasMore 依搜尋後的結果計算", async () => {
+      const jwt = await mintAccessJwt();
+      const living = await createCategory(jwt);
+      await seedBulk(living, 30);
+      await seedNamed(jwt, living, "特別的椅子", "");
+
+      expect(await app.listProducts({ q: "商品" })).toMatchObject({ ok: true, data: { total: 30, hasMore: true } });
+      const second = await app.listProducts({ q: "商品", page: 2 });
+      if (!second.ok) throw new Error("listProducts 失敗");
+      expect([second.data.items.length, second.data.total, second.data.hasMore]).toEqual([30, 30, false]);
+      expect(await app.listProducts({ q: "特別" })).toMatchObject({ ok: true, data: { total: 1, hasMore: false } });
+    });
+  });
 });

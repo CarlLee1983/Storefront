@@ -1,0 +1,32 @@
+---
+import SearchForm from "./SearchForm.astro";
+
+// header 的搜尋入口（桌機與手機共用）：圖示按鈕打開原生 dialog，裡面是搜尋表單。
+// showModal() 負責焦點陷阱與 Esc；開啟時焦點在輸入框（autofocus），關閉後瀏覽器把焦點還給原本的按鈕。
+---
+
+<button type="button" class="icon-button" id="search-button" aria-label="搜尋" aria-haspopup="dialog">
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="2" fill="none" /><path d="M16 16l5 5" stroke="currentColor" stroke-width="2" fill="none" /></svg>
+</button>
+<dialog id="search-dialog" class="search-dialog" aria-label="搜尋">
+  <div class="search-dialog-head">
+    <span class="brand">搜尋</span>
+    <button type="button" class="icon-button" id="search-close" aria-label="關閉搜尋">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none" /></svg>
+    </button>
+  </div>
+  <SearchForm id="header-search-q" label="站內搜尋" autofocus />
+</dialog>
+
+<script>
+  const searchButton = document.querySelector<HTMLButtonElement>("#search-button");
+  const searchDialog = document.querySelector<HTMLDialogElement>("#search-dialog");
+  searchButton?.addEventListener("click", () => searchDialog?.showModal());
+  document.querySelector("#search-close")?.addEventListener("click", () => searchDialog?.close());
+</script>
+
+<style>
+  .search-dialog { width: min(100% - 2rem, 32rem); margin: 10vh auto auto; padding: var(--space-4); border: 1px solid var(--color-border); color: var(--color-text); background: var(--color-surface); }
+  .search-dialog::backdrop { background: rgb(20 20 20 / .4); }
+  .search-dialog-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+</style>

@@ -1,0 +1,28 @@
+---
+// 搜尋表單：header 搜尋框、手機抽屜與搜尋結果頁共用；GET /search?q=，沒有 JS 也能用。
+interface Props {
+  /** 輸入框 id；同一頁可能有多份表單，各自不可重複。 */
+  id: string;
+  /** 搜尋地標的名稱；同一頁有多份表單時各自不同（axe landmark-unique）。 */
+  label: string;
+  /** 預先填入的關鍵字。 */
+  value?: string;
+  autofocus?: boolean;
+}
+const { id, label, value = "", autofocus = false } = Astro.props;
+---
+
+<form class="search-form" method="get" action="/search" role="search" aria-label={label}>
+  <label for={id}>搜尋商品</label>
+  <div class="search-row">
+    <input id={id} type="search" name="q" value={value} autocomplete="off" autofocus={autofocus} />
+    <button type="submit">搜尋</button>
+  </div>
+</form>
+
+<style>
+  .search-form label { margin-block: 0 var(--space-2); font-size: var(--text-sm); color: var(--color-muted); }
+  .search-row { display: flex; gap: var(--space-2); }
+  .search-row input { flex: 1; min-height: 44px; }
+  .search-row button { padding-inline: var(--space-4); }
+</style>

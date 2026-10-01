@@ -1,0 +1,30 @@
+---
+import { env } from "cloudflare:workers";
+import ProductListing from "../components/ProductListing.astro";
+import SearchForm from "../components/SearchForm.astro";
+import Layout from "../layouts/Layout.astro";
+import { parseListingParams } from "../listing/params";
+
+export const prerender = false;
+
+// 前台不需登入；關鍵字在網址參數 q，排序、篩選與頁數沿用列表的網址參數
+const state = parseListingParams(Astro.url.searchParams);
+const { q } = state;
+// 空白關鍵字沒有東西可搜，直接回到全部商品；排序與篩選是針對搜尋結果的，沒有關鍵字就不再有意義，所以不帶過去
+if (q === undefined) return Astro.redirect("/products", 302);
+const result = await env.APP.listProducts({ q, inStock: state.inStock, sort: state.sort, page: state.page });
+// 關鍵字是否合法（例如長度上限）一律以 App 的驗證為準
+const queryError = !result.ok && result.reason === "invalid_input" ? result.fields.q?.[0] : undefined;
+if (queryError !== undefined) Astro.response.status = 400;
+---
+
+<Layout title={queryError === undefined ? `搜尋：${q}` : "搜尋"} noindex>
+  <SearchForm id="search-page-q" label="重新搜尋" value={queryError === undefined ? q : ""} />
+  {
+    queryError !== undefined ? (
+      <p class="error" role="alert">{queryError}，請修改後再試。</p>
+    ) : (
+      <ProductListing q={q} result={result} />
+    )
+  }
+</Layout>
