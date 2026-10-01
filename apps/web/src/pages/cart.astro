@@ -9,19 +9,20 @@ export const prerender = false;
   <p id="cart-empty" hidden>購物車是空的。<a href="/">去逛逛商品</a></p>
   <p id="cart-error" class="error" role="alert" hidden></p>
   <div id="cart-content" hidden data-max-quantity={MAX_QUANTITY}>
-    <table>
+    <table role="table" aria-label="購物車商品">
       <thead>
-        <tr><th>商品</th><th>單價</th><th>數量</th><th>小計</th><th><span class="visually-hidden">操作</span></th></tr>
+        <tr><th scope="col">商品</th><th scope="col">單價</th><th scope="col">數量</th><th scope="col">小計</th><th scope="col"><span class="visually-hidden">操作</span></th></tr>
       </thead>
       <tbody id="cart-lines"></tbody>
     </table>
-    <p>總金額：<strong>NT$ <span id="cart-total">0</span></strong>（新台幣、含稅、免運）</p>
+    <div class="cart-summary"><p>總金額：<strong>NT$ <span id="cart-total">0</span></strong>（新台幣、含稅、免運）</p>
     <p>單價為加入購物車當時所見的價格。</p>
-    <p><a href="/checkout">前往結帳</a></p>
+    <p><a class="checkout-link" href="/checkout">前往結帳</a></p></div>
   </div>
 </Layout>
 
 <script>
+  import { createCartCover } from "../cart/cover";
   import { cartTotal, lineSubtotal, removeFromCart, setQuantity, type Cart, type CartLine } from "../cart/cart";
   import { loadCart, storageOf } from "../cart/storage";
   import { SAVE_FAILED_MESSAGE } from "../cart/feedback";
@@ -32,36 +33,49 @@ export const prerender = false;
   const content = $("#cart-content");
   const maxQuantity = Number(content.dataset.maxQuantity);
 
-  const cell = (text: string) => {
+  const cell = (text: string, label: string) => {
     const td = document.createElement("td");
     td.textContent = text;
+    td.dataset.label = label;
+    if (label === "小計") td.className = "line-subtotal";
     return td;
   };
 
   // 商品名稱來自 localStorage，一律用 textContent，不當 HTML
   function renderLine(line: CartLine) {
     const row = document.createElement("tr");
+    row.dataset.productId = String(line.productId);
+    const productCell = cell("", "商品");
+    productCell.className = "cart-product";
+    const name = document.createElement("span");
+    name.textContent = line.name;
+    productCell.appendChild(createCartCover(line.cover, line.name));
+    productCell.appendChild(name);
     const quantityCell = document.createElement("td");
     const input = document.createElement("input");
+    quantityCell.dataset.label = "數量";
     input.type = "number";
+    input.inputMode = "numeric";
+    input.dataset.action = "quantity";
     input.min = "1";
     input.max = String(maxQuantity);
     input.step = "1";
     input.value = String(line.quantity);
     input.setAttribute("aria-label", `${line.name} 數量`);
-    input.addEventListener("change", () => change((c) => setQuantity(c, line.productId, Number(input.value))));
+    input.addEventListener("change", () => change((c) => setQuantity(c, line.productId, Number(input.value)), input));
     quantityCell.appendChild(input);
     const removeCell = document.createElement("td");
     const remove = document.createElement("button");
     remove.type = "button";
+    remove.dataset.action = "remove";
     remove.textContent = "移除";
     remove.addEventListener("click", () => change((c) => removeFromCart(c, line.productId)));
     removeCell.appendChild(remove);
     for (const child of [
-      cell(line.name),
-      cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`),
+      productCell,
+      cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`, "單價"),
       quantityCell,
-      cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`),
+      cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`, "小計"),
       removeCell,
     ]) {
       row.appendChild(child);
@@ -77,12 +91,34 @@ export const prerender = false;
   }
 
   // 無效數量（如清空輸入框）會被 setQuantity 拒絕、購物車不變；照樣重畫，輸入框就還原成實際數量
-  function change(fn: (cart: Cart) => Cart) {
+  function change(fn: (cart: Cart) => Cart, quantityInput?: HTMLInputElement) {
+    const focused = document.activeElement as HTMLElement | null;
+    const row = focused?.closest<HTMLTableRowElement>("tr[data-product-id]");
+    const previousIndex = row ? Array.from(row.parentElement!.children).indexOf(row) : -1;
+    const productId = row?.dataset.productId;
+    const action = focused?.dataset.action;
     const { cart, saved } = updateCart(storageOf(window), window, fn);
     const error = $("#cart-error");
     error.textContent = saved ? "" : SAVE_FAILED_MESSAGE;
     error.hidden = saved;
+    // Keep the edited input in the DOM so Tab/Shift+Tab retain their native focus order.
+    if (quantityInput) {
+      const editedRow = quantityInput.closest<HTMLTableRowElement>("tr")!;
+      const line = cart.lines.find(line => String(line.productId) === editedRow.dataset.productId);
+      if (line) {
+        quantityInput.value = String(line.quantity);
+        editedRow.querySelector<HTMLElement>(".line-subtotal")!.textContent = `NT$ ${priceFormat.format(lineSubtotal(line))}`;
+        $("#cart-total").textContent = priceFormat.format(cartTotal(cart));
+        return;
+      }
+    }
     render(cart);
+    if (productId && action) {
+      const next = document.querySelector<HTMLElement>(`tr[data-product-id="${productId}"] [data-action="${action}"]`)
+        ?? document.querySelectorAll<HTMLElement>(`#cart-lines [data-action="${action}"]`)[Math.min(previousIndex, cart.lines.length - 1)]
+        ?? document.querySelector<HTMLElement>("#cart-empty a");
+      next?.focus();
+    }
   }
 
   const refresh = () => render(loadCart(storageOf(window)));
@@ -90,3 +126,22 @@ export const prerender = false;
   // 其他分頁改動了購物車時，本頁跟著更新
   window.addEventListener("storage", refresh);
 </script>
+
+<style>
+  .cart-summary { padding: var(--space-4); margin-top: var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+  .checkout-link { display: inline-block; background: var(--color-primary); color: var(--color-surface); padding: var(--space-3) var(--space-6); border-radius: var(--radius-sm); font-weight: 700; }
+  :global(#cart-lines .cart-product) { display: flex; align-items: center; gap: var(--space-3); }
+  :global(#cart-lines .cart-cover) { display: grid; flex-shrink: 0; place-items: center; width: 80px; height: 80px; background: var(--color-bg); border-radius: var(--radius-sm); overflow: hidden; }
+  :global(#cart-lines .cart-cover img) { width: 100%; height: 100%; object-fit: cover; }
+  :global(#cart-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-muted); text-align: center; }
+  :global(#cart-lines input) { max-width: 6rem; min-height: 44px; }
+  @media (max-width: 39.99rem) {
+    thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    :global(#cart-lines) { display: grid; gap: var(--space-4); }
+    :global(#cart-lines tr) { display: grid; padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+    :global(#cart-lines td) { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding-block: var(--space-2); border: 0; }
+    :global(#cart-lines td:not(.cart-product)[data-label]::before) { content: attr(data-label); color: var(--color-muted); }
+    :global(#cart-lines .cart-product) { justify-content: start; font-weight: 700; }
+    :global(#cart-lines td:last-child) { justify-content: end; }
+  }
+</style>
