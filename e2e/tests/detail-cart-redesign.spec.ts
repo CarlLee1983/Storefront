@@ -62,9 +62,16 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   await openMainDetail(page);
 
   const crumbs = page.getByRole("navigation", { name: "麵包屑" });
-  await expect(crumbs.getByRole("link", { name: "全部商品" })).toHaveAttribute("href", "/products");
-  await expect(crumbs.getByRole("link", { name: CATEGORY.name })).toHaveAttribute("href", `/categories/${CATEGORY.slug}`);
   await expect(crumbs.getByText(MAIN.name)).toHaveAttribute("aria-current", "page");
+  const detailUrl = page.url();
+  await crumbs.getByRole("link", { name: "全部商品" }).click();
+  await expect(page).toHaveURL(/\/products$/);
+  await expect(page.getByRole("heading", { level: 1, name: "全部商品" })).toBeVisible();
+  await page.goto(detailUrl);
+  await crumbs.getByRole("link", { name: CATEGORY.name }).click();
+  await expect(page).toHaveURL(new RegExp(`/categories/${CATEGORY.slug}$`));
+  await expect(page.getByRole("heading", { level: 1, name: CATEGORY.name })).toBeVisible();
+  await page.goto(detailUrl);
 
   const information = page.getByRole("region", { name: "商品資訊" });
   await expect(information.getByRole("heading", { level: 1, name: MAIN.name })).toBeVisible();
