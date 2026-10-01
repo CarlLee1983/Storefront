@@ -1,3 +1,5 @@
+import { parseCartCover, type CartCover } from "./cover";
+
 /** 單筆數量上限；超過時夾到上限（不拒絕），避免顧客連按或手誤而失去整次加入。 */
 export const MAX_QUANTITY = 99;
 
@@ -10,6 +12,8 @@ export interface CartItem {
   name: string;
   /** 加入當下看到的單價，新台幣正整數元；結帳時用來與最新單價比對。 */
   unitPriceTwd: number;
+  /** 加入當下的封面；舊購物車可能沒有。 */
+  cover?: CartCover;
 }
 
 export interface CartLine extends CartItem {
@@ -100,7 +104,8 @@ function parseLine(value: unknown): CartLine | null {
   if (typeof name !== "string") return null;
   if (typeof unitPriceTwd !== "number" || !isPositiveInteger(unitPriceTwd)) return null;
   if (typeof quantity !== "number" || !isPositiveInteger(quantity) || quantity > MAX_QUANTITY) return null;
-  return { productId, name, unitPriceTwd, quantity };
+  const cover = parseCartCover(value.cover);
+  return { productId, name, unitPriceTwd, quantity, ...(cover ? { cover } : {}) };
 }
 
 /**
