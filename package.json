@@ -14,6 +14,7 @@
     "db:migrate": "bun run --filter @storefront/app db:migrate:local && bun run --filter @storefront/gateway db:migrate:local",
     "dev:gateway": "bun run --filter @storefront/gateway dev",
     "admin:dev-token": "bun run --filter @storefront/app admin:dev-token",
+    "seed": "bun e2e/seed/demo-seed.ts",
     "preview": "bun run --filter @storefront/web preview",
     "db:migrate:gateway:preview": "bun run --filter @storefront/gateway db:migrate:preview",
     "deploy:gateway:preview": "bun run --filter @storefront/gateway deploy:preview",

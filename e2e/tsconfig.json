@@ -11,5 +11,5 @@
     "noEmit": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["harness", "tests", "playwright.config.ts"]
+  "include": ["harness", "tests", "seed", "playwright.config.ts"]
 }
