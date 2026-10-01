@@ -25,11 +25,12 @@ export async function uploadAndList(jwt: string, id: number) {
 }
 
 /** 圖片以外的大量並行測試只安排 metadata 前置條件，避免 R2 I/O 蓋過要驗證的交易並行。 */
-export async function seedImageAndList(jwt: string, id: number) {
+export async function seedImageAndList(id: number) {
   const imageId = crypto.randomUUID();
   const variants = imageVariants().map(({ width, height }) => ({ key: `products/${id}/${imageId}/${"0".repeat(64)}.webp`, width, height }));
-  await env.DB.prepare("INSERT INTO product_images (id, product_id, upload_id, position, variants) VALUES (?, ?, ?, 0, ?)")
-    .bind(imageId, id, crypto.randomUUID(), JSON.stringify(variants)).run();
-  const listed = await exports.default.relistProduct(jwt, { id });
-  if (!listed.ok) throw new Error(`商品上架失敗：${listed.reason}`);
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO product_images (id, product_id, upload_id, position, variants) VALUES (?, ?, ?, 0, ?)")
+      .bind(imageId, id, crypto.randomUUID(), JSON.stringify(variants)),
+    env.DB.prepare("UPDATE products SET listed = 1 WHERE id = ?").bind(id),
+  ]);
 }
