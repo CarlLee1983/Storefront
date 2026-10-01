@@ -42,7 +42,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
     await expect(admin.getByRole("status")).toHaveText("已建立分類。");
     const categoryRow = admin.getByRole("row", { name: new RegExp(LIVING.slug) });
     await expect(categoryRow).toContainText(LIVING.name);
-    await expect(categoryRow.getByRole("cell", { name: "0", exact: true })).toBeVisible();
+    await expect(categoryRow.getByRole("cell", { name: "0", exact: true })).toHaveCount(2);
 
     // 代稱已被使用：顯示原因，不新增
     await createCategory(admin, { ...LIVING, name: "重複代稱" });
@@ -62,7 +62,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
     await expect(productRow).toContainText(LIVING.name);
     await productRow.getByRole("button", { name: "重新上架" }).click();
     await expect(productRow).toContainText("上架中");
-    await expect(admin.getByRole("row", { name: new RegExp(LIVING.slug) }).getByRole("cell", { name: "1", exact: true })).toBeVisible();
+    await expect(admin.getByRole("row", { name: new RegExp(LIVING.slug) }).getByRole("cell", { name: "1", exact: true })).toHaveCount(2);
   });
 
   // 桌機：從主要導覽進入分類頁
@@ -72,7 +72,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await nav.getByRole("link", { name: LIVING.name }).click();
   await expect(page).toHaveURL(/\/categories\/e2e-living$/);
   await expect(page.getByRole("heading", { level: 1, name: LIVING.name })).toBeVisible();
-  await expect(page.getByText(LIVING.description)).toBeVisible();
+  await expect(page.getByRole("main").getByText(LIVING.description)).toBeVisible();
   await expect(page.getByText("共 1 件商品")).toBeVisible();
   await expect(page.getByText("已顯示 1 / 1 件")).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();

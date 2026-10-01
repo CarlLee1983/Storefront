@@ -1,0 +1,112 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { parseCategoryId } from "../../../admin/category-form";
+import { describeFailure, logFailure } from "../../../admin/failure";
+import { toText } from "../../../shared/form-values";
+import Layout from "../../../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let unauthorized = false;
+let deleteError = "";
+
+const UNAVAILABLE = "操作失敗，請稍後再試";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const id = parseCategoryId(toText(form.get("id")));
+  if (form.get("intent") !== "delete" || id === null) {
+    // 被竄改或不認得的表單：不呼叫任何 RPC
+    Astro.response.status = 400;
+    deleteError = UNAVAILABLE;
+  } else {
+    try {
+      const result = await env.APP.deleteCategory(jwt, { id });
+      if (result.ok) return Astro.redirect("/admin/categories?saved=deleted", 303);
+      if (result.reason === "unauthorized") unauthorized = true;
+      else {
+        const name = toText(form.get("name"));
+        deleteError = `無法刪除「${name}」：${describeFailure(result, "刪除分類失敗，請稍後再試").message}`;
+      }
+    } catch (cause) {
+      logFailure("admin_category_delete_failed", cause);
+      Astro.response.status = 503;
+      deleteError = "刪除分類失敗，請稍後再試";
+    }
+  }
+}
+
+let categories: Awaited<ReturnType<typeof env.APP.listCategoriesForAdmin>> | null = null;
+if (!unauthorized) {
+  try {
+    categories = await env.APP.listCategoriesForAdmin(jwt);
+  } catch (cause) {
+    logFailure("admin_category_list_failed", cause);
+    Astro.response.status = 503;
+    deleteError ||= "無法載入分類，請稍後再試";
+  }
+}
+if (unauthorized || (categories && !categories.ok)) Astro.response.status = 403;
+const SAVED_MESSAGES: Record<string, string> = {
+  updated: "已儲存分類。",
+  deleted: "已刪除分類。",
+};
+const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
+---
+
+<Layout title="分類管理" admin>
+  {
+    Astro.response.status === 403 ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        {savedMessage && <p role="status">{savedMessage}</p>}
+        {deleteError && <p class="error" role="alert">{deleteError}</p>}
+        <p>新增分類請至<a href="/admin">商品管理</a>頁。只有沒有任何商品（不分上架與否）的分類可以刪除。</p>
+        {categories?.ok && categories.data.length === 0 && <p>目前沒有分類。</p>}
+        {
+          categories?.ok && categories.data.length > 0 && (
+            <div class="table-scroll" tabindex="0" role="region" aria-label="分類資料表"><table>
+              <thead>
+                <tr><th>圖片</th><th>名稱</th><th>代稱</th><th>說明</th><th>商品數</th><th>上架商品數</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                {categories.data.map((c) => (
+                  <tr>
+                    <td>{c.image ? <img src={`/images/${c.image.variants[0]!.key}`} class="admin-thumb" width="64" height="48" alt={`${c.name}的分類圖片`} loading="lazy" /> : <span>尚無圖片</span>}</td>
+                    <td>{c.name}</td>
+                    <td>{c.slug}</td>
+                    <td>{c.description}</td>
+                    <td>{c.productCount}</td>
+                    <td>{c.listedProductCount}</td>
+                    <td>
+                      <a href={`/admin/categories/${c.id}`} aria-label={`修改${c.name}（含圖片）`}>修改與圖片</a>
+                      <form method="post" class="inline" data-confirm={`確定刪除分類「${c.name}」？`}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="name" value={c.name} />
+                        <input type="hidden" name="intent" value="delete" />
+                        <button type="submit" aria-label={`刪除${c.name}`}>刪除</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )
+        }
+      </>
+    )
+  }
+</Layout>
+
+<script>
+  // 刪除前確認；沒有 JavaScript 時直接送出，由 App 擋下有商品的分類
+  for (const form of document.querySelectorAll<HTMLFormElement>("form[data-confirm]")) {
+    form.addEventListener("submit", (event) => {
+      if (!confirm(form.dataset.confirm)) event.preventDefault();
+    });
+  }
+</script>

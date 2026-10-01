@@ -17,7 +17,7 @@ describe("建立分類", () => {
     expect(created).toEqual({ ok: true, data: { id: expect.any(Number), slug: "living" } });
     expect(await app.listCategoriesForAdmin(jwt)).toEqual({
       ok: true,
-      data: [{ id: expect.any(Number), ...LIVING, productCount: 0 }],
+      data: [{ id: expect.any(Number), ...LIVING, image: null, productCount: 0, listedProductCount: 0 }],
     });
     expect(await app.listCategories()).toEqual({ ok: true, data: [] });
   });

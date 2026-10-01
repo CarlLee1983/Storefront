@@ -5,7 +5,7 @@ import type { AddProductImageInput } from "./input";
 export type ProductImageBucket = Pick<R2Bucket, "put" | "delete">;
 
 /** 只刪除此嘗試專屬的 UUID namespace，不能誤刪同 uploadId 或同內容的成功上傳。 */
-async function cleanup(bucket: ProductImageBucket, keys: string[]) {
+export async function cleanup(bucket: ProductImageBucket, keys: string[]) {
   try {
     if (keys.length) await bucket.delete(keys);
   } catch {
@@ -19,13 +19,39 @@ async function findUpload(d1: D1Database, input: AddProductImageInput): Promise<
   return row ? { id: row.id, variants: JSON.parse(row.variants) as ProductImage["variants"] } : null;
 }
 
-interface HashedVariant { width: number; height: number; bytes: Uint8Array<ArrayBuffer>; hash: string }
-function replay(image: ProductImage, variants: HashedVariant[]) {
+export interface HashedVariant { width: number; height: number; bytes: Uint8Array<ArrayBuffer>; hash: string }
+/** 依寬度由小到大排序，並算出每個尺寸內容的 SHA-256（image key 的一部分）。 */
+export function hashVariants(input: Array<{ width: number; height: number; bytes: Uint8Array }>): Promise<HashedVariant[]> {
+  return Promise.all([...input].sort((a, b) => a.width - b.width).map(async (variant) => {
+    const bytes = new Uint8Array(variant.bytes);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    const hash = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
+    return { width: variant.width, height: variant.height, bytes, hash };
+  }));
+}
+
+/** 已存的圖片與這次上傳的內容是否一致；一致回原圖片（冪等重試），否則同一上傳識別碼被拿來傳不同圖片。 */
+export function replay(image: ProductImage, variants: HashedVariant[]) {
   const matches = image.variants.length === variants.length && variants.every((variant, index) => {
     const saved = image.variants[index]!;
     return saved.width === variant.width && saved.height === variant.height && saved.key.endsWith(`/${variant.hash}.webp`);
   });
   return matches ? ok({ image }) : invalidInput({ uploadId: ["同一上傳識別碼不能用於不同的圖片"] });
+}
+
+/**
+ * 依序寫進 R2，key 是 `<prefix>/<內容雜湊>.webp`。每個 key 在寫入前就記進 `keys`，
+ * 中途失敗時呼叫端仍能清掉已寫入（與可能已寫入）的物件。
+ */
+export async function writeVariants(bucket: ProductImageBucket, prefix: string, variants: HashedVariant[], keys: string[]): Promise<ProductImage["variants"]> {
+  const saved: ProductImage["variants"] = [];
+  for (const variant of variants) {
+    const key = `${prefix}/${variant.hash}.webp`;
+    keys.push(key);
+    await bucket.put(key, variant.bytes, { httpMetadata: { contentType: "image/webp", cacheControl: "public, max-age=31536000, immutable" } });
+    saved.push({ key, width: variant.width, height: variant.height });
+  }
+  return saved;
 }
 
 export async function uploadProductImage(d1: D1Database, bucket: ProductImageBucket | undefined, input: AddProductImageInput) {
@@ -37,23 +63,13 @@ export async function uploadProductImage(d1: D1Database, bucket: ProductImageBuc
     const product = await d1.prepare("SELECT (SELECT count(*) FROM product_images WHERE product_id = products.id) AS image_count FROM products WHERE id = ?")
       .bind(input.id).first<{ image_count: number }>();
     if (!product) return fail("product_not_found");
-    variants = await Promise.all([...input.variants].sort((a, b) => a.width - b.width).map(async (variant) => {
-      const bytes = new Uint8Array(variant.bytes);
-      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-      const hash = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
-      return { width: variant.width, height: variant.height, bytes, hash };
-    }));
+    variants = await hashVariants(input.variants);
     const saved = await findUpload(d1, input);
     if (saved) return replay(saved, variants);
     if (product.image_count >= MAX_PRODUCT_IMAGES) return fail("image_limit");
     if (!bucket) return fail("image_upload_failed");
     image = { id: crypto.randomUUID(), variants: [] };
-    for (const variant of variants) {
-      const key = `products/${input.id}/${image.id}/${variant.hash}.webp`;
-      keys.push(key);
-      await bucket.put(key, variant.bytes, { httpMetadata: { contentType: "image/webp", cacheControl: "public, max-age=31536000, immutable" } });
-      image.variants.push({ key, width: variant.width, height: variant.height });
-    }
+    image.variants = await writeVariants(bucket, `products/${input.id}/${image.id}`, variants, keys);
     // 單句配置順序、檢查 8 張上限與 uploadId 唯一性；並行重試至多新增一張。
     commitUncertain = true;
     const inserted = await d1.prepare(`

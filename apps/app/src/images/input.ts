@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { productIdInput } from "../admin/input";
+import { categoryId } from "../categories/input";
 import { IMAGE_WIDTHS, MAX_IMAGE_BYTES, MAX_IMAGE_HEIGHT } from "../product-images";
 
 const ascii = (bytes: Uint8Array, offset: number, value: string) =>
@@ -53,10 +54,13 @@ const variant = z.object({
   }
 });
 
-export const addProductImageInput = productIdInput.extend({
+/** 商品圖片與分類圖片共用的上傳欄位：識別碼與全部尺寸。 */
+const imageUploadFields = {
   uploadId: z.uuid({ error: "上傳識別碼必須是 UUID" }),
   variants: z.array(variant).length(IMAGE_WIDTHS.length, "必須提供所有圖片尺寸"),
-}).superRefine(({ variants }, ctx) => {
+};
+
+function checkVariantSet({ variants }: { variants: Array<{ width: number; height: number }> }, ctx: z.RefinementCtx) {
   const sorted = [...variants].sort((a, b) => a.width - b.width);
   if (sorted.some((value, index) => value.width !== IMAGE_WIDTHS[index])) {
     ctx.addIssue({ code: "custom", message: "圖片尺寸不可重複或缺漏", path: ["variants"] });
@@ -65,9 +69,14 @@ export const addProductImageInput = productIdInput.extend({
   if (largest && sorted.some(({ width, height }) => Math.abs(height - largest.height * width / largest.width) > 1)) {
     ctx.addIssue({ code: "custom", message: "各尺寸必須保持相同比例", path: ["variants"] });
   }
-});
+}
+
+export const addProductImageInput = productIdInput.extend(imageUploadFields).superRefine(checkVariantSet);
+
+export const setCategoryImageInput = z.object({ id: categoryId, ...imageUploadFields }).superRefine(checkVariantSet);
 
 export type AddProductImageInput = z.output<typeof addProductImageInput>;
+export type SetCategoryImageInput = z.output<typeof setCategoryImageInput>;
 
 export const reorderProductImagesInput = productIdInput.extend({
   imageIds: z.array(z.uuid()).max(8).refine(ids => new Set(ids).size === ids.length, "商品圖片不可重複"),

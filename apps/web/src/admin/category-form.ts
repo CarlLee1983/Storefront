@@ -20,3 +20,13 @@ export function categoryIdFromSelect(value: FormDataEntryValue | null): number |
   if (value === null) return undefined;
   return toText(value) === "" ? null : toNumber(value);
 }
+
+/** 修改分類表單 → RPC 輸入；只有名稱與說明，代稱沒有修改途徑。 */
+export function categoryUpdateFormToInput(form: FormData, id: number) {
+  return { id, name: toText(form.get("categoryName")), description: toText(form.get("categoryDescription")) };
+}
+
+/** 網址或表單上的分類編號；不是正整數就回傳 null（頁面顯示找不到）。 */
+export function parseCategoryId(value: string | undefined): number | null {
+  return value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) : null;
+}

@@ -29,5 +29,9 @@ export const createCategoryInput = z.object({
   description,
 });
 
+/** 修改分類：只能改名稱與說明；多帶的欄位（包含 `slug`）一律忽略，代稱沒有任何修改途徑。 */
+export const updateCategoryInput = z.object({ id: categoryId, name, description });
+export const categoryIdInput = z.object({ id: categoryId });
+
 /** 前台依代稱取分類；任何不合法的輸入都等同找不到，由呼叫端處理。 */
 export const categorySlugInput = z.object({ slug: z.string().max(MAX_SLUG_LENGTH).regex(SLUG_PATTERN) });

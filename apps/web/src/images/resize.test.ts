@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_IMAGE_BYTES } from "@storefront/app/product-images";
+import { UserFacingError } from "../admin/failure";
 import { MAX_SOURCE_BYTES, resizeProductImage, targetHeight, validateSource } from "./resize";
 afterEach(() => vi.unstubAllGlobals());
 describe("browser image resize", () => {
   it("bounds input size and supported formats", () => {
     for (const type of ["image/jpeg", "image/png", "image/webp"]) expect(() => validateSource({ type, size: 1 })).not.toThrow();
     for (const file of [{ type: "image/svg+xml", size: 1 }, { type: "image/png", size: 0 }, { type: "image/png", size: MAX_SOURCE_BYTES + 1 }]) expect(() => validateSource(file)).toThrow();
+  });
+  it("rejections are user-facing errors, so pages can show their message", () => {
+    expect(() => validateSource({ type: "image/svg+xml", size: 1 })).toThrow(UserFacingError);
+    expect(() => targetHeight(0, 1, 320)).toThrow(UserFacingError);
   });
   it("keeps aspect ratio and rejects unsafe dimensions", () => {
     expect(targetHeight(1600, 1000, 320)).toBe(200);

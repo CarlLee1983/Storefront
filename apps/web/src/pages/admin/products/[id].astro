@@ -1,12 +1,8 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import {
-  describeFailure,
-  parseProductId,
-  productUpdateFormToInput,
-  type Failure,
-} from "../../../admin/product-form";
+import { describeFailure, type Failure } from "../../../admin/failure";
+import { parseProductId, productUpdateFormToInput } from "../../../admin/product-form";
 import { formToRecord } from "../../../shared/form-values";
 import Layout from "../../../layouts/Layout.astro";
 
@@ -112,8 +108,7 @@ const values = {
   #product-images :global(.drag-over) { outline: 3px solid currentColor; }
 </style>
 <script>
-  import { resizeProductImage } from "../../../images/resize";
-  import { describeFailure } from "../../../admin/product-form";
+  import { errorMessage, readResult, uploadImage } from "../../../images/client";
   import type { ProductImage } from "@storefront/app/product-images";
   const form = document.querySelector<HTMLFormElement>("#image-upload");
   if (form) {
@@ -140,13 +135,8 @@ const values = {
     }
     function showError(cause: unknown) {
       status.textContent = "";
-      error.textContent = cause instanceof Error && /^[\u4e00-\u9fff]/.test(cause.message) ? cause.message : "商品圖片操作失敗，請稍後再試。";
+      error.textContent = errorMessage(cause, "商品圖片操作失敗，請稍後再試。");
       error.hidden = false;
-    }
-    async function resultOf<T>(response: Response): Promise<T> {
-      const result = await response.json() as { ok: boolean; reason: string; data: T };
-      if (!response.ok || !result.ok) throw new Error(result.reason === "unauthorized" ? "沒有權限，請重新通過 Cloudflare Access 登入後再試。" : describeFailure(result, "商品圖片操作失敗，請稍後再試").message);
-      return result.data;
     }
     async function run(action: () => Promise<void>) {
       if (busy) return;
@@ -158,14 +148,14 @@ const values = {
         // Bound reconciliation while keeping one mutation at a time and preserving
         // unfinished upload identities. Retry still replays the same committed image.
         try {
-          const data = await resultOf<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!, { signal: AbortSignal.timeout(3000) }));
+          const data = await readResult<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!, { signal: AbortSignal.timeout(3000) }));
           images = data.images; render();
         } catch { /* Keep the last known gallery and the original useful error. */ }
       }
       finally { setBusy(false); }
     }
     async function mutate(method: string, body: unknown) {
-      return resultOf(await fetch(list.dataset.endpoint!, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+      return readResult(await fetch(list.dataset.endpoint!, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
     }
     function render(focusId?: string, focusAction?: string) {
       list.replaceChildren(...images.map((image, index) => {
@@ -214,7 +204,7 @@ const values = {
       });
     }
     refreshButton.addEventListener("click", () => void run(async () => {
-      const data = await resultOf<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!)); images = data.images; render(); status.textContent = "已重新載入商品圖片。";
+      const data = await readResult<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!)); images = data.images; render(); status.textContent = "已重新載入商品圖片。";
     }));
     form.addEventListener("submit", event => {
       event.preventDefault();
@@ -223,9 +213,8 @@ const values = {
         while (pending.length) {
           const next = pending[0]!;
           status.textContent = `正在縮放並上傳商品圖片（剩餘 ${pending.length} 張）…`;
-          const body = await resizeProductImage(next.file); body.set("uploadId", next.uploadId);
-          const data = await resultOf<{ image: ProductImage }>(await fetch(form.action, { method: "POST", body }));
-          if (!images.some(image => image.id === data.image.id)) images.push(data.image);
+          const image = await uploadImage(form.action, next.file, next.uploadId, "商品圖片");
+          if (!images.some(value => value.id === image.id)) images.push(image);
           pending.shift(); render();
         }
         input.value = ""; status.textContent = "已上傳商品圖片。可以回商品管理上架。";
