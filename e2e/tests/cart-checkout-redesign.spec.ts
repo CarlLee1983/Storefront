@@ -44,7 +44,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   try { await createProduct(await adminContext.newPage(), name, 10); }
   finally { await adminContext.close(); }
   await page.context().addCookies([memberSessionCookie()]);
-  await page.goto("/");
+  await page.goto("/products");
   const product = page.getByRole("listitem").filter({ hasText: name });
   const source = await product.getByRole("img").getAttribute("src");
   await product.getByRole("button", { name: "加入購物車" }).click();
@@ -101,7 +101,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.goto("/cart");
   await expect(page.getByText("購物車是空的。")).toBeVisible();
   await expect(page.getByRole("link", { name: "去逛逛商品" })).toBeVisible();
-  await page.goto("/");
+  await page.goto("/products");
   await product.getByRole("button", { name: "加入購物車" }).click();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await page.goto("/cart");

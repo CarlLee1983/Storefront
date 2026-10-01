@@ -112,6 +112,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#catalog().getStorefrontNav();
   }
 
+  getFeaturedProducts() {
+    return this.#catalog().getFeaturedProducts();
+  }
+
   listCategories() {
     return this.#catalog().listCategories();
   }
@@ -182,6 +186,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   listCategoriesForAdmin(jwt: string) {
     return this.#admin().listCategoriesForAdmin(jwt);
+  }
+
+  setProductFeatured(jwt: string, input: unknown) {
+    return this.#admin().setProductFeatured(jwt, input);
   }
 
   createProduct(jwt: string, input: unknown) {

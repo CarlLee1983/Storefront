@@ -26,6 +26,8 @@ export interface AdminProductSummary extends ProductBase {
   /** 所屬分類；上架中的商品一定有。 */
   category: { id: number; slug: string; name: string } | null;
   listed: boolean;
+  /** 是否為精選；下架商品可以保有精選標記。 */
+  featured: boolean;
   /** 在庫數（On Hand）。 */
   onHand: number;
   /** 保留數：待付款訂單的訂單明細數量總和。 */
@@ -57,6 +59,7 @@ const cover = sql<ProductImage | null>`(
 const adminColumns = {
   ...summaryColumns,
   listed: products.listed,
+  featured: sql<boolean>`${products.featuredAt} is not null`.mapWith(Boolean),
   cover,
   categoryId: categories.id,
   categorySlug: categories.slug,
@@ -127,6 +130,20 @@ export async function existsProductOnSale(db: DrizzleD1Database): Promise<boolea
   const [row] = await db.select({ id: products.id }).from(products)
     .where(and(eq(products.listed, true), isNotNull(products.compareAtPriceTwd))).limit(1);
   return row !== undefined;
+}
+
+/** 首頁精選的件數。 */
+const FEATURED_LIMIT = 4;
+
+/**
+ * 首頁精選：上架中的精選商品依精選時間由新到舊，不足時以上架時間最新、且未入選的上架商品補滿；最多 {@link FEATURED_LIMIT} 件。
+ * 一個查詢完成：精選（featured_at 非空）排在補位之前，其餘依上架時間，同值以 id 遞減讓順序穩定，所以不會重複。
+ */
+export async function selectFeaturedProducts(db: DrizzleD1Database): Promise<ProductSummary[]> {
+  const rows = await db.select({ ...summaryColumns, cover }).from(products).where(eq(products.listed, true))
+    .orderBy(sql`${products.featuredAt} is null`, desc(products.featuredAt), desc(products.listedAt), desc(products.id))
+    .limit(FEATURED_LIMIT);
+  return rows.map(toSummary);
 }
 
 /** 後台清單：所有商品（含下架），依新增順序。 */

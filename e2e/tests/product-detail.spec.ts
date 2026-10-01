@@ -44,7 +44,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     const { id, coverSrc } = await createGallery(admin, name);
     const detailPath = `/products/${id}`;
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/");
+    await page.goto("/products");
     await page.getByRole("link").filter({ has: page.getByRole("heading", { name, exact: true }) }).click();
     await expect(page).toHaveURL(new RegExp(`${detailPath}$`));
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();

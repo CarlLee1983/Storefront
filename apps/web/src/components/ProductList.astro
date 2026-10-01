@@ -5,8 +5,13 @@ import CartToast from "./CartToast.astro";
 
 interface Props {
   products: ProductSummary[];
+  /** 商品名稱的標題層級：預設 h2；放在已有 h2 區塊標題底下的頁面傳 3。 */
+  headingLevel?: 2 | 3;
+  /** 第一張封面是否立即載入；列表首屏可以，頁面中段的區塊（例如首頁精選）不該搶頻寬。 */
+  eagerFirst?: boolean;
 }
-const { products } = Astro.props;
+const { products, headingLevel = 2, eagerFirst = true } = Astro.props;
+const Heading = `h${headingLevel}` as "h2" | "h3";
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -25,13 +30,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                 width={p.cover.variants.at(-1)!.width}
                 height={p.cover.variants.at(-1)!.height}
                 alt={`${p.name}的封面`}
-                loading={index === 0 ? "eager" : "lazy"}
+                loading={eagerFirst && index === 0 ? "eager" : "lazy"}
               />
             : <span class="cover-placeholder">暫無圖片</span>}
           {!p.purchasable && <span class="sold-out">已售完</span>}
           {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
         </span>
-        <h2>{p.name}</h2>
+        <Heading>{p.name}</Heading>
       </a>
       <p class="price">
         <span class="price-now">NT$ {priceFormat.format(p.priceTwd)}</span>
@@ -85,13 +90,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   /* 相鄰卡片的邊框是疊合的，焦點外框要浮在鄰居上面 */
   .product-card:focus-within { z-index: 1; }
   .product-link { color: var(--color-text); text-decoration: none; }
-  .product-link:hover h2 { text-decoration: underline; text-underline-offset: .2em; }
+  .product-link:hover :is(h2, h3) { text-decoration: underline; text-underline-offset: .2em; }
   .cover-frame { position: relative; display: block; aspect-ratio: 1; background: var(--color-panel); }
   .cover-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .cover-placeholder { display: grid; place-items: center; width: 100%; height: 100%; font-size: var(--text-sm); color: var(--color-muted); }
   .is-sold-out img { opacity: .55; }
   .sold-out { position: absolute; top: var(--space-3); left: var(--space-3); padding: var(--space-1) var(--space-2); font-size: var(--text-sm); font-weight: 700; line-height: 1.4; color: var(--color-on-inverse); background: var(--color-inverse); }
-  .product-card h2 { margin: var(--space-3) var(--space-3) 0; font-size: var(--text-base); font-weight: 400; line-height: 1.4; }
+  .product-card :is(h2, h3) { margin: var(--space-3) var(--space-3) 0; font-size: var(--text-base); font-weight: 400; line-height: 1.4; }
   .price { margin: var(--space-1) var(--space-3) var(--space-4); padding-right: calc(44px + var(--space-3)); font-weight: 700; }
   .add-to-cart { margin: 0; }
   .add-button { position: absolute; right: var(--space-3); bottom: var(--space-3); display: grid; place-items: center; width: 44px; padding: 0; color: var(--color-text); background: var(--color-panel); border-color: var(--color-control-border); }

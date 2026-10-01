@@ -82,6 +82,11 @@ export async function seedListedProducts(
   return ids.map(Number);
 }
 
+/** 依序把商品標為精選（走後台清單的表單，不開瀏覽器頁面）；精選時間跟著傳入順序遞增。 */
+export async function featureProducts(admin: APIRequestContext, ids: number[]) {
+  for (const id of ids) await post(admin, "/admin", { intent: "feature", id: String(id) });
+}
+
 /**
  * 下架後台清單中名稱以 `prefix` 開頭、且仍上架中的商品。依名稱前綴找，所以即使建立到一半失敗（拿不到編號）也能清乾淨；
  * E2E 共用同一份資料庫，大量資料用完要撤掉。

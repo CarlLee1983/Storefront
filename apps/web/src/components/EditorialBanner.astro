@@ -1,0 +1,43 @@
+---
+import { EDITORIAL_BANNER, imageSrc, imageSrcset } from "../home/content";
+
+// 編輯式橫幅：左側強調色面板放大標題與一句文案，右側是情境照；手機上下堆疊。
+const { image, title, description, linkText } = EDITORIAL_BANNER;
+---
+
+<section class="banner" aria-labelledby="banner-title">
+  <div class="banner-copy">
+    <h2 id="banner-title">{title}</h2>
+    <p>{description}</p>
+    <a href="/products">{linkText}<span aria-hidden="true"> →</span></a>
+  </div>
+  <div class="banner-media">
+    <img
+      src={imageSrc(image)}
+      srcset={imageSrcset(image)}
+      sizes="(min-width: 72rem) 36rem, (min-width: 56.25rem) 50vw, 100vw"
+      width={image.width}
+      height={image.height}
+      alt={image.alt}
+      loading="lazy"
+    />
+  </div>
+</section>
+
+<style>
+  .banner { display: grid; margin-top: var(--space-8); background: var(--color-primary); color: var(--color-on-inverse); }
+  .banner-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--space-4); padding: var(--space-8) var(--space-4); }
+  .banner-copy h2 { margin: 0; font-size: clamp(2.25rem, 8vw, 4.5rem); font-weight: 800; line-height: 1.05; letter-spacing: -.03em; text-wrap: balance; }
+  .banner-copy p { margin: 0; font-size: var(--text-lg); max-width: 24em; }
+  .banner-copy a { color: var(--color-on-inverse); font-weight: 700; text-decoration-thickness: 2px; }
+  .banner-copy a:hover { color: var(--color-on-inverse); }
+  .banner-copy :focus-visible { outline-color: var(--color-on-inverse); }
+  .banner-media { aspect-ratio: 4 / 3; }
+  .banner-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  @media (min-width: 56.25rem) {
+    .banner { grid-template-columns: 1fr 1fr; }
+    .banner-copy { padding: var(--space-8); }
+    .banner-media { position: relative; aspect-ratio: auto; min-height: 28rem; }
+    .banner-media img { position: absolute; inset: 0; }
+  }
+</style>

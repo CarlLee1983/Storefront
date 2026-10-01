@@ -1,0 +1,165 @@
+---
+import { HERO_SLIDES, imageSrc, imageSrcset } from "../home/content";
+
+// 主視覺輪播（WAI-ARIA carousel 模式）。沒有 JS 時是一條可捲動的橫向軌道，顯示第一張；
+// 控制列（上一張、下一張、暫停、張數）由腳本啟用後才出現；沒有 JS 時軌道本身可聚焦，用方向鍵捲動，
+// 啟用後改由按鈕切換，軌道就不再是 tab stop。
+const count = HERO_SLIDES.length;
+---
+
+<section class="hero" id="hero" aria-roledescription="carousel" aria-label="主視覺">
+  <div class="hero-track" id="hero-track" role="group" aria-label="主視覺投影片" tabindex="0">
+    {HERO_SLIDES.map((slide, index) => (
+      <div class="hero-slide" role="group" aria-roledescription="slide" aria-label={`第 ${index + 1} 張，共 ${count} 張`}>
+        <div class="hero-copy">
+          <h2>{slide.title}</h2>
+          <p>{slide.description}</p>
+          <a class="button-link" href="/products">開始選購</a>
+        </div>
+        <div class="hero-media">
+          <img
+            src={imageSrc(slide.image)}
+            srcset={imageSrcset(slide.image)}
+            sizes="(min-width: 72rem) 42rem, (min-width: 56.25rem) 56vw, 100vw"
+            width={slide.image.width}
+            height={slide.image.height}
+            alt={slide.image.alt}
+            loading={index === 0 ? "eager" : "lazy"}
+            fetchpriority={index === 0 ? "high" : undefined}
+          />
+        </div>
+      </div>
+    ))}
+  </div>
+  <div class="hero-controls" id="hero-controls" hidden>
+    <button type="button" class="hero-toggle" id="hero-toggle" aria-label="暫停自動輪播">暫停</button>
+    <button type="button" id="hero-prev" aria-label="上一張">‹</button>
+    <button type="button" id="hero-next" aria-label="下一張">›</button>
+    <p class="hero-status" id="hero-status" aria-live="off" data-count={count}>1 / {count}</p>
+  </div>
+</section>
+
+<script>
+  import { HERO_INTERVAL_MS, indexFromScroll, stepIndex } from "../home/carousel";
+
+  const root = document.querySelector<HTMLElement>("#hero");
+  if (root) initCarousel(root);
+
+  function initCarousel(root: HTMLElement) {
+    const track = root.querySelector<HTMLElement>("#hero-track")!;
+    const controls = root.querySelector<HTMLElement>("#hero-controls")!;
+    const toggle = root.querySelector<HTMLButtonElement>("#hero-toggle")!;
+    const status = root.querySelector<HTMLElement>("#hero-status")!;
+    const count = track.children.length;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    let index = 0;
+    let userPaused = false;
+    let hovering = false;
+    let focusWithin = false;
+    let timer: number | undefined;
+    let settle: number | undefined;
+
+    const slides = [...track.children] as HTMLElement[];
+    let navigation = 0;
+
+    root.classList.add("is-enhanced");
+    controls.hidden = false;
+    track.removeAttribute("tabindex");
+
+    // 提前載入並解碼某一張的圖片，切過去時才不會先看到空白
+    const warm = (slideIndex: number) => {
+      const image = slides[slideIndex]?.querySelector("img");
+      if (!image) return Promise.resolve();
+      image.loading = "eager";
+      return image.decode().catch(() => undefined);
+    };
+
+    // 只有目前這張可以聚焦與被讀到；其餘投影片的連結不會被 Tab 到
+    const showIndex = (next: number) => {
+      index = next;
+      status.textContent = `${index + 1} / ${count}`;
+      slides.forEach((slide, slideIndex) => { slide.inert = slideIndex !== index; });
+    };
+
+    const goTo = async (next: number) => {
+      const ticket = ++navigation;
+      showIndex(next);
+      sync();
+      // 圖片最多等 1.5 秒，網路太慢時寧可先切過去
+      await Promise.race([warm(next), new Promise((resolve) => window.setTimeout(resolve, 1500))]);
+      if (ticket !== navigation) return;
+      track.scrollTo({ left: next * track.clientWidth, behavior: reduced.matches ? "auto" : "smooth" });
+    };
+
+    // 自動輪播只在：沒被使用者暫停、滑鼠與焦點都不在輪播內、沒有要求減少動態效果、分頁可見時進行
+    function sync() {
+      window.clearInterval(timer);
+      timer = undefined;
+      const playing = !userPaused && !hovering && !focusWithin && !reduced.matches && !document.hidden;
+      if (playing) timer = window.setInterval(() => goTo(stepIndex(index, 1, count)), HERO_INTERVAL_MS);
+      // 自動輪播中不朗讀張數變化；暫停或手動操作時才朗讀
+      status.setAttribute("aria-live", playing ? "off" : "polite");
+      toggle.hidden = reduced.matches;
+      toggle.textContent = userPaused ? "播放" : "暫停";
+      toggle.setAttribute("aria-label", userPaused ? "播放自動輪播" : "暫停自動輪播");
+    }
+
+    root.querySelector("#hero-prev")!.addEventListener("click", () => goTo(stepIndex(index, -1, count)));
+    root.querySelector("#hero-next")!.addEventListener("click", () => goTo(stepIndex(index, 1, count)));
+    toggle.addEventListener("click", () => {
+      userPaused = !userPaused;
+      sync();
+    });
+
+    // 使用者以捲動或觸控滑動換張時，等捲動停下來再更新張數，避免平滑捲動途中閃過中間幾張
+    track.addEventListener("scroll", () => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => showIndex(indexFromScroll(track.scrollLeft, track.clientWidth, count)), 120);
+    });
+
+    root.addEventListener("mouseenter", () => { hovering = true; sync(); });
+    root.addEventListener("mouseleave", () => { hovering = false; sync(); });
+    root.addEventListener("focusin", () => { focusWithin = true; sync(); });
+    root.addEventListener("focusout", (event) => {
+      if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) return;
+      focusWithin = false;
+      sync();
+    });
+    document.addEventListener("visibilitychange", sync);
+    reduced.addEventListener("change", sync);
+    // 視窗寬度改變時，軌道要停在同一張
+    window.addEventListener("resize", () => track.scrollTo({ left: index * track.clientWidth, behavior: "auto" }));
+
+    showIndex(0);
+    sync();
+  }
+</script>
+
+<style>
+  .hero { background: var(--color-panel); }
+  .hero-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+  .is-enhanced .hero-track { scrollbar-width: none; }
+  .is-enhanced .hero-track::-webkit-scrollbar { display: none; }
+  .hero-slide { flex: 0 0 100%; min-width: 0; display: grid; scroll-snap-align: start; }
+  /* 手機上下堆疊：圖在上、文案在下；桌機文字在左、圖在右（示範圖的主體都偏右，左側是留白的牆面） */
+  .hero-media { order: -1; aspect-ratio: 16 / 9; }
+  .hero-media img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: right center; }
+  .hero-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4) var(--space-8); }
+  .hero-copy h2 { margin: 0; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 800; line-height: 1.1; letter-spacing: -.03em; text-wrap: balance; }
+  .hero-copy p { margin: 0; font-size: var(--text-lg); max-width: 28em; }
+  .button-link { display: inline-flex; align-items: center; min-height: 48px; padding: var(--space-2) var(--space-6); font-weight: 700; text-decoration: none; color: var(--color-on-inverse); background: var(--color-primary); }
+  .button-link:hover { color: var(--color-on-inverse); background: var(--color-primary-hover); }
+  .hero-controls { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--color-border); }
+  .hero-controls[hidden] { display: none; }
+  .hero-controls button { min-width: 44px; padding: var(--space-1) var(--space-3); color: var(--color-text); background: transparent; border-color: var(--color-control-border); }
+  .hero-controls button:hover { background: var(--color-surface); }
+  .hero-controls button[hidden] { display: none; }
+  .hero-status { margin: 0 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+  @media (min-width: 56.25rem) {
+    .hero-slide { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+    .hero-media { order: 0; }
+    .hero-copy { padding: var(--space-8); }
+    .hero-controls { padding-inline: var(--space-8); }
+  }
+</style>

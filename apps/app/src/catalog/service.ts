@@ -4,7 +4,7 @@ import { selectListedCategories, selectListedCategoryBySlug } from "../categorie
 import { parseInput } from "../shared/input";
 import { fail, ok } from "../shared/result";
 import { listProductsInput } from "./input";
-import { existsProductOnSale, selectListedProduct, selectListedProducts } from "./queries";
+import { existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts } from "./queries";
 
 /** 前台讀取，不需登入。 */
 export function createCatalogService(d1: D1Database) {
@@ -28,6 +28,10 @@ export function createCatalogService(d1: D1Database) {
     async getStorefrontNav() {
       const [categories, hasSale] = await Promise.all([selectListedCategories(db), existsProductOnSale(db)]);
       return ok({ categories, hasSale });
+    },
+    /** 首頁精選商品（最多 4 件，不足時以最新上架補滿）；沒有任何上架商品時為空陣列。 */
+    async getFeaturedProducts() {
+      return ok(await selectFeaturedProducts(db));
     },
     /** 至少有一件上架商品的分類，依建立順序。 */
     async listCategories() {

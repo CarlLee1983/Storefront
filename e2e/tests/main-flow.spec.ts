@@ -113,7 +113,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await page.context().addCookies([memberSessionCookie()]);
 
   // 3. 加入購物車 → 購物車頁 → 結帳 → 訂單頁待付款
-  await page.goto("/");
+  await page.goto("/products");
   const productItem = page.getByRole("listitem").filter({ hasText: PRODUCT.name });
   const cover = productItem.getByRole("img", { name: `${PRODUCT.name}的封面` });
   await expect(cover).toBeVisible();

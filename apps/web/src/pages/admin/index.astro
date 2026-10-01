@@ -4,7 +4,7 @@ import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "@storefront/app/category-slug";
 import { readAccessJwt } from "../../admin/access-jwt";
 import { describeFailure, type Failure } from "../../admin/failure";
 import { saleStatusText } from "../../admin/sale-status";
-import { dispatchProductForm, productFormToInput } from "../../admin/product-form";
+import { dispatchProductForm, FEATURE_INTENT, productFormToInput, UNFEATURE_INTENT } from "../../admin/product-form";
 import { formToRecord } from "../../shared/form-values";
 import Layout from "../../layouts/Layout.astro";
 
@@ -21,6 +21,12 @@ let categoryFailure: Failure | undefined;
 let categorySubmitted: Record<string, string> = {};
 const LISTING_FAILED = "操作失敗，請稍後再試";
 
+/** 清單上按鈕（上下架、精選）的失敗：未授權交給頁面回 403，其餘顯示在清單上方。 */
+function failListingAction(result: { reason: string; fields?: Record<string, string[]> }) {
+  if (result.reason === "unauthorized") unauthorized = true;
+  else listingError = describeFailure(result, LISTING_FAILED).message;
+}
+
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const dispatch = dispatchProductForm(form);
@@ -34,8 +40,12 @@ if (Astro.request.method === "POST") {
     const result =
       action === "unlist" ? await env.APP.unlistProduct(jwt, { id }) : await env.APP.relistProduct(jwt, { id });
     if (result.ok) return Astro.redirect(`/admin?saved=${action}`, 303);
-    if (result.reason === "unauthorized") unauthorized = true;
-    else listingError = describeFailure(result, LISTING_FAILED).message;
+    failListingAction(result);
+  } else if (dispatch.kind === "featured") {
+    // 清單上的精選切換
+    const result = await env.APP.setProductFeatured(jwt, { id: dispatch.id, featured: dispatch.featured });
+    if (result.ok) return Astro.redirect(`/admin?saved=${dispatch.featured ? FEATURE_INTENT : UNFEATURE_INTENT}`, 303);
+    failListingAction(result);
   } else if (dispatch.kind === "create-category") {
     categorySubmitted = formToRecord(form);
     const result = await env.APP.createCategory(jwt, dispatch.input);
@@ -70,6 +80,8 @@ const SAVED_MESSAGES: Record<string, string> = {
   updated: "已儲存商品。",
   unlist: "已下架商品。",
   relist: "已重新上架商品。",
+  [FEATURE_INTENT]: "已標為精選商品。",
+  [UNFEATURE_INTENT]: "已取消精選。",
   stock: "已調整庫存。",
   category: "已建立分類。",
 };
@@ -90,7 +102,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           products?.ok && products.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>特價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
+                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>特價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th>精選</th><th></th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
@@ -105,6 +117,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <td>{p.reserved}</td>
                     <td>{p.available}</td>
                     <td>{p.listed ? "上架中" : "已下架"}</td>
+                    <td>
+                      {p.featured ? "精選" : "—"}
+                      <form method="post" class="inline">
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="intent" value={p.featured ? UNFEATURE_INTENT : FEATURE_INTENT} />
+                        <button type="submit" aria-label={`${p.featured ? "取消精選" : "標為精選"}：${p.name}`}>{p.featured ? "取消精選" : "標為精選"}</button>
+                      </form>
+                    </td>
                     <td>
                       <a href={`/admin/products/${p.id}`}>編輯</a>
                       <form method="post" class="inline">

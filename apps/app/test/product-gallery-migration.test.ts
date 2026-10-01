@@ -31,7 +31,7 @@ it("0007→0008 preserves full galleries, image keys and upload identities while
     data: {
       id, name: row!.name, description: row!.description, priceTwd: row!.price_twd, compareAtPriceTwd: null,
       onHand: row!.on_hand, reserved: 0, available: row!.on_hand,
-      cover: images[0], images, listed: true, category: null,
+      cover: images[0], images, listed: true, featured: false, category: null,
     },
   };
   await applyD1Migrations(d1, env.TEST_MIGRATIONS);
