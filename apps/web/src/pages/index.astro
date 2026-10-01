@@ -18,6 +18,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <ul class="product-list">
         {products.data.map((p, index) => (
           <li class:list={["product-card", { "is-sold-out": !p.purchasable }]}>
+            <a class="product-link" href={`/products/${p.id}`}>
             {p.cover && <img
               src={`/images/${p.cover.variants[0]!.key}`}
               srcset={p.cover.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
@@ -28,6 +29,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               loading={index === 0 ? "eager" : "lazy"}
             />}
             <h2>{p.name}</h2>
+            </a>
             <p class="description">{p.description}</p>
             <p class="price">NT$ {priceFormat.format(p.priceTwd)}</p>
             <p class:list={["availability", { "sold-out": !p.purchasable }]}>{p.purchasable ? "可購買" : "已售完"}</p>

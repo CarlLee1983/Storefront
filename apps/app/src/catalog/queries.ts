@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { productImages } from "../images/schema";
 import type { ProductImage } from "../product-images";
@@ -79,4 +79,25 @@ export async function selectProductForAdmin(db: DrizzleD1Database, id: number): 
   const images = await db.select({ id: productImages.id, variants: productImages.variants }).from(productImages)
     .where(eq(productImages.productId, id)).orderBy(asc(productImages.position), asc(productImages.id));
   return { ...toAdminSummary(row), images };
+}
+
+export interface ProductDetail extends ProductBase {
+  purchasable: boolean;
+  images: ProductImage[];
+}
+
+/** One snapshot: an unlisted product never exposes its details through this public query. */
+export async function selectListedProduct(db: DrizzleD1Database, id: number): Promise<ProductDetail | null> {
+  const images = sql<ProductImage[]>`(
+    select json_group_array(json(ordered.image)) from (
+      select json_object('id', image.id, 'variants', json(image.variants)) as image
+      from product_images image where image.product_id = ${products}.id
+      order by image.position, image.id
+    ) ordered
+  )`.mapWith((value: string) => JSON.parse(value) as ProductImage[]);
+  const [row] = await db.select({ ...summaryColumns, images }).from(products)
+    .where(and(eq(products.id, id), eq(products.listed, true)));
+  if (!row) return null;
+  const { onHand, reserved, ...product } = row;
+  return { ...product, purchasable: availableQuantity(onHand, reserved) > 0 };
 }

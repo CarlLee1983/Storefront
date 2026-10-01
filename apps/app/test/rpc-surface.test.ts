@@ -17,6 +17,7 @@ const RPC_METHODS = [
   "getCustomerSession",
   "getMyOrder",
   "getOrderForAdmin",
+  "getProduct",
   "getProductForAdmin",
   "listMyOrders",
   "listOrdersForAdmin",
