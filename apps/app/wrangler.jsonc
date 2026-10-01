@@ -47,16 +47,16 @@
       // BETTER_AUTH_URL 是該環境 Web 的公開 origin，必須等於 apps/web/wrangler.jsonc 該環境的 routes 網域
       // （OAuth callback 由它組成，須在 Google 與 LINE 後台登記 /api/auth/callback/{google,line}）
       "vars": {
-        "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
+        "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
         "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
-        "BETTER_AUTH_URL": "https://REPLACE_WITH_PREVIEW_DOMAIN",
-        "GATEWAY_BASE_URL": "https://REPLACE_WITH_PREVIEW_GATEWAY_DOMAIN"
+        "BETTER_AUTH_URL": "https://storefront-preview.gravito.dev",
+        "GATEWAY_BASE_URL": "https://storefront-pay-preview.gravito.dev"
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "storefront-preview",
-          "database_id": "REPLACE_WITH_PREVIEW_D1_DATABASE_ID",
+          "database_id": "d3c54d49-fab8-4529-8477-5708fef537d8",
           "migrations_dir": "migrations"
         }
       ]
@@ -67,16 +67,16 @@
       "triggers": { "crons": ["* * * * *"] },
       // BETTER_AUTH_URL 同 preview：等於 apps/web/wrangler.jsonc production routes 的網域
       "vars": {
-        "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM.cloudflareaccess.com",
+        "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
         "ACCESS_AUD": "REPLACE_WITH_ACCESS_APPLICATION_AUD_TAG",
-        "BETTER_AUTH_URL": "https://REPLACE_WITH_PRODUCTION_DOMAIN",
-        "GATEWAY_BASE_URL": "https://REPLACE_WITH_PRODUCTION_GATEWAY_DOMAIN"
+        "BETTER_AUTH_URL": "https://storefront.gravito.dev",
+        "GATEWAY_BASE_URL": "https://storefront-pay.gravito.dev"
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "storefront-production",
-          "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID",
+          "database_id": "cecac52f-499e-429a-956e-eea4b18e6f67",
           "migrations_dir": "migrations"
         }
       ]
