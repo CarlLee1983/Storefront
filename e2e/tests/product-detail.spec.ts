@@ -81,6 +81,10 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await expect(thumbs.nth(1)).toHaveAttribute("aria-current", "true");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await expect(page.locator(".gallery-position")).toHaveText("2 / 3");
+    await expect.poll(() => page.locator(".gallery-slide").nth(1).evaluate(slide =>
+      Math.abs(slide.getBoundingClientRect().left - slide.parentElement!.getBoundingClientRect().left))).toBeLessThan(2);
+    await expect(page.locator("[data-gallery-index][aria-current=\"true\"]")).toHaveCount(1);
     await testInfo.attach("product-detail-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     const row = admin.getByRole("row").filter({ hasText: name });
     await row.getByLabel(`${name}的庫存增減量`).fill("10");
@@ -100,7 +104,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await page.setViewportSize({ width: 1440, height: 1000 });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach("product-detail-desktop-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await page.getByRole("link", { name: /購物車（4）/ }).click();
+    await page.getByRole("link", { name: /購物車（\s*4\s*）/ }).click();
     await expect(page.getByRole("img", { name: `${name}的封面`, exact: true })).toHaveAttribute("src", coverSrc!);
     await page.goBack();
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();

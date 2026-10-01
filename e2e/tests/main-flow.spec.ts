@@ -79,6 +79,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await admin.route("**/admin/products/*/images", async route => { const committed = await route.fetch(); expect(committed.status()).toBe(201); await route.abort("failed"); }, { times: 1 });
   await admin.getByRole("button", { name: "上傳商品圖片" }).click();
   await expect(admin.locator("#image-error")).toBeVisible();
+  await expect(admin.getByRole("button", { name: "上傳商品圖片", exact: true })).toBeEnabled();
   let uploadRequests = 0;
   admin.on("request", request => { if (request.method() === "POST" && request.url().endsWith("/images")) uploadRequests++; });
   await admin.locator("#image-upload").evaluate(form => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });

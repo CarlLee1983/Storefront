@@ -40,6 +40,7 @@ const { name, images } = Astro.props;
     const position = gallery.querySelector<HTMLElement>(".gallery-position");
     let selected = 0;
     const select = (index: number) => {
+      if (!Number.isInteger(index) || index < 0 || index >= slides.length) return;
       selected = index;
       thumbnails.forEach((button, i) => {
         if (i === index) button.setAttribute("aria-current", "true");
@@ -67,9 +68,36 @@ const { name, images } = Astro.props;
       navigate(key === "Home" ? 0 : key === "End" ? slides.length - 1 : current + (key === "ArrowRight" ? 1 : -1), target !== track);
     });
     let frame = 0;
+    let measuredWidth = track.clientWidth;
+    let restoreAfterLayout = false;
+    const restorePosition = () => {
+      const width = track.clientWidth;
+      if (width <= 0 || !restoreAfterLayout) return;
+      restoreAfterLayout = false;
+      measuredWidth = width;
+      track.scrollTo({ left: selected * width, behavior: "instant" });
+    };
+    new ResizeObserver(() => {
+      const width = track.clientWidth;
+      if (width !== measuredWidth) restoreAfterLayout = true;
+      restorePosition();
+    }).observe(track);
     track.addEventListener("scroll", () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => select(Math.max(0, Math.min(slides.length - 1, Math.round(track.scrollLeft / track.clientWidth)))));
+      frame = requestAnimationFrame(() => {
+        // Layout measurement or a temporarily hidden gallery can have zero width.
+        const width = track.clientWidth;
+        if (width <= 0) {
+          restoreAfterLayout = true;
+          // A temporary measurement can restore its width before ResizeObserver runs.
+          requestAnimationFrame(restorePosition);
+        } else if (restoreAfterLayout || width !== measuredWidth) {
+          restoreAfterLayout = true;
+          restorePosition();
+        } else {
+          select(Math.max(0, Math.min(slides.length - 1, Math.round(track.scrollLeft / width))));
+        }
+      });
     }, { passive: true });
   }
 </script>

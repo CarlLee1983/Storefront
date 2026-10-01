@@ -41,6 +41,10 @@ Suggested issue report fields:
 
 Local synthetic fixtures exercise actual production-built routes and delivery through local R2, but do not measure deployed network latency. Label them as local production-build results. Any later deployed measurement should be reported separately.
 
+## Current measurement status
+
+On 2026-10-01, the owner agreed to finish independent development/tests/merges first and defer manual Lighthouse. No local Mac access was authorized or used. The cloud checkout can build and pass unit/RPC coverage, but the real Wrangler server fails at startup with `uv_interface_addresses returned Unknown system error 1`; changing the writable Wrangler log directory does not resolve it. Therefore no Lighthouse measurements have been performed and #37/#29 remain open for that criterion. This is a deferral, not a waiver of the ≥90 requirements.
+
 ## Parent acceptance audit boundaries
 
 #29: child implementation and green CI are evidence for functional behavior, but do not waive the explicit manual Lighthouse criterion. Production deployment is not part of #37. Existing preview/production products without images become unlisted through migration; restoring real products requires an authorized administrator to upload their actual images.

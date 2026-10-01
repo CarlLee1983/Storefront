@@ -90,6 +90,10 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.getByLabel("收件人姓名").fill("購物車測試");
   await page.getByRole("button", { name: "送出訂單" }).click();
   await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
+  // URL commitment precedes module execution. Do not abort the order page before
+  // it confirms the placed order and clears the cart; observe the completed UI.
+  await page.waitForLoadState("load");
+  await expect(page.locator("#cart-count")).toHaveText("0");
   await page.goto("/cart");
   await expect(page.getByText("購物車是空的。")).toBeVisible();
   await expect(page.getByRole("link", { name: "去逛逛商品" })).toBeVisible();

@@ -27,6 +27,7 @@ try {
     ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(800, 660, 260, 380, 0, 0, Math.PI * 2); ctx.fill();
     return canvas.toDataURL("image/png").split(",")[1]!;
   }));
+  await expect(admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）")).toBeEnabled();
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles(images.map((data, index) => ({ name: `vase-${index}.png`, mimeType: "image/png", buffer: Buffer.from(data, "base64") })));
   await admin.getByRole("button", { name: "上傳商品圖片", exact: true }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");

@@ -9,6 +9,7 @@ async function createProduct(page: Page, name: string) {
   await page.getByLabel("單價（新台幣整數元）").fill("350");
   await page.getByRole("button", { name: "新增商品", exact: true }).click();
   await page.getByRole("row").filter({ hasText: name }).getByRole("link", { name: "編輯" }).click();
+  await expect(page.getByRole("button", { name: "上傳商品圖片", exact: true })).toBeEnabled();
 }
 async function files(page: Page, count: number) {
   const pngs = await page.evaluate(count => Array.from({ length: count }, (_, index) => {
@@ -84,4 +85,43 @@ test("multi-upload retains completed files on interruption, retries remaining fi
     await page.reload(); await expect(page.locator("#product-images li")).toHaveCount(8);
     await testInfo.attach("admin-gallery-eight-images", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   } finally { await context.close(); }
+});
+
+test("upload waits for client readiness and reports failure before reconciliation completes", async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
+  const page = await context.newPage();
+  let releaseModule = () => {};
+  let releaseRead = () => {};
+  try {
+    await createProduct(page, "圖庫載入與失敗回饋商品");
+    const editPath = new URL(page.url()).pathname;
+    const moduleGate = new Promise<void>(resolve => { releaseModule = resolve; });
+    await page.route("**/_astro/_id_.astro_astro_type_script_index_0_lang.*.js", async route => { await moduleGate; await route.continue(); }, { times: 1 });
+    await page.goto(editPath, { waitUntil: "commit" });
+    const input = page.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）");
+    const upload = page.getByRole("button", { name: "上傳商品圖片", exact: true });
+    await expect(input).toBeDisabled();
+    await expect(upload).toBeDisabled();
+    releaseModule();
+    await expect(input).toBeEnabled();
+    await expect(upload).toBeEnabled();
+    await input.setInputFiles(await files(page, 1));
+    const readGate = new Promise<void>(resolve => { releaseRead = resolve; });
+    await page.route("**/admin/products/*/gallery", async route => { await readGate; await route.continue(); }, { times: 1 });
+    await page.route("**/admin/products/*/images", async route => {
+      const committed = await route.fetch(); expect(committed.status()).toBe(201);
+      await route.abort("failed");
+    }, { times: 1 });
+    await upload.click();
+    // This assertion must succeed while the reconciliation response is still held.
+    await expect(page.locator("#image-error")).toBeVisible();
+    releaseRead();
+    await expect(upload).toBeEnabled();
+    await expect(page.locator("#product-images li")).toHaveCount(1);
+    await upload.click();
+    await expect(page.locator("#image-status")).toContainText("已上傳商品圖片");
+    await expect(page.locator("#product-images li")).toHaveCount(1);
+    await page.reload();
+    await expect(page.locator("#product-images li")).toHaveCount(1);
+  } finally { releaseModule(); releaseRead(); await context.close(); }
 });
