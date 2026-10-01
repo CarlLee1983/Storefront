@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "bun test ./seed",
     "e2e": "playwright test"
   },
   "devDependencies": {
