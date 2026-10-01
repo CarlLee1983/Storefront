@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_SLUG_LENGTH } from "@storefront/app/category-slug";
 import { describeFailure } from "./failure";
 
 describe("describeFailure", () => {
@@ -52,4 +53,19 @@ describe("describeFailure", () => {
 
 it("explains why a product without images cannot be listed", () => {
   expect(describeFailure({ reason: "no_images" }, "fallback").message).toBe("請先上傳商品圖片，再上架商品");
+});
+
+// 故事 62：分類代稱「格式錯誤」與「已被使用」要各自說清楚原因
+it("invalid_slug 說明代稱的格式與長度上限", () => {
+  expect(describeFailure({ reason: "invalid_slug" }, "fallback")).toEqual({
+    message: `代稱只能使用小寫英文、數字與連字號（不可以連字號開頭或結尾），且不可超過 ${MAX_SLUG_LENGTH} 個字元`,
+    fields: {},
+  });
+});
+
+it("slug_taken 說明代稱已被使用，請換一個", () => {
+  expect(describeFailure({ reason: "slug_taken" }, "fallback")).toEqual({
+    message: "這個代稱已被使用，請換一個",
+    fields: {},
+  });
 });

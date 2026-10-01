@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
@@ -160,4 +160,53 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(page.getByText("購物車是空的。")).toBeVisible();
   await expect(page.locator("#cart-count")).toHaveText("0");
   await noAxeViolations(page);
+});
+
+// 桌機（>= 56.25rem）詳情頁購買區與購物車訂單摘要固定在畫面上方（故事 54、58）；手機維持一般流動版面。
+// sticky 只能在所屬的 grid 容器內移動：測試商品只有一張小圖、左欄比右欄矮，容器沒有多餘高度，元素無處可「黏」，
+// 所以先把左欄（圖片區、購物車品項清單）撐高，模擬圖片多的商品與品項多的購物車，再確認真的捲得動。
+const STICKY_TOP_MAX = 32; // top: var(--space-4)（16px）加上容許誤差
+
+const SCROLL_PX = 1000;
+
+/** 捲動前記下元素的文件座標，捲動 SCROLL_PX 後斷言：視窗內位置仍在頂端帶，文件座標卻大幅下移（才是被固定住，不是剛好原本就在那）。 */
+async function expectPinnedAfterScroll(page: Page, target: Locator) {
+  const before = (await target.boundingBox())!;
+  expect(before.y, "捲動前不在頂端帶").toBeGreaterThan(STICKY_TOP_MAX);
+  await page.evaluate((y) => window.scrollTo(0, y), SCROLL_PX);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(SCROLL_PX - 1);
+  await expect.poll(async () => (await target.boundingBox())!.y).toBeLessThanOrEqual(STICKY_TOP_MAX);
+  const after = (await target.boundingBox())!;
+  expect(after.y).toBeGreaterThanOrEqual(0);
+  const scrolled = await page.evaluate(() => window.scrollY);
+  // 沒有 sticky 時 y 會降到約 before.y - scrolled（很負）；固定住時文件座標跟著下移
+  expect(after.y + scrolled - before.y).toBeGreaterThan(SCROLL_PX / 2);
+}
+
+test("桌機詳情頁：捲動後商品資訊固定在畫面上方；手機不固定", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openMainDetail(page);
+  const information = page.locator(".product-information");
+  await page.locator(".product-detail > :first-child").evaluate((element) => { (element as HTMLElement).style.minHeight = "2400px"; });
+  await expectPinnedAfterScroll(page, information);
+  expect(await information.evaluate((element) => getComputedStyle(element).position)).toBe("sticky");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => information.evaluate((element) => getComputedStyle(element).position)).not.toBe("sticky");
+});
+
+test("桌機購物車：捲動後訂單摘要固定在畫面上方；手機不固定", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openMainDetail(page);
+  await page.getByRole("region", { name: "商品資訊" }).getByRole("button", { name: "加入購物車", exact: true }).click();
+  await expect(page.locator("#cart-count")).toHaveText("1");
+  await page.goto("/cart");
+  const summary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
+  await expect(summary).toBeVisible();
+  await page.locator("#cart-lines").evaluate((element) => { element.style.minHeight = "2400px"; });
+  await expectPinnedAfterScroll(page, summary);
+  expect(await summary.evaluate((element) => getComputedStyle(element).position)).toBe("sticky");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => summary.evaluate((element) => getComputedStyle(element).position)).not.toBe("sticky");
 });
