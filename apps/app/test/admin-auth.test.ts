@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
 import { setNow } from "./clock";
 import { resetDb } from "./db";
+import { imageVariants } from "./images";
 
 const NOW = Date.UTC(2030, 0, 1);
 const NOW_SECONDS = NOW / 1000;
@@ -13,6 +14,7 @@ const app = exports.default;
 
 // 每個管理 RPC 方法都必須先驗 JWT；用合法輸入呼叫，確保拒絕的原因只可能是身分
 const adminCalls = (jwt: string) => ({
+  addProductImage: () => app.addProductImage(jwt, { id: 1, uploadId: crypto.randomUUID(), variants: imageVariants() }),
   createProduct: () => app.createProduct(jwt, { name: "馬克杯", description: "", priceTwd: 320 }),
   updateProduct: () => app.updateProduct(jwt, { id: 1, name: "馬克杯", description: "", priceTwd: 320 }),
   getProductForAdmin: () => app.getProductForAdmin(jwt, { id: 1 }),

@@ -1,5 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { productImages } from "../images/schema";
+import type { ProductImage } from "../product-images";
 import { products } from "./schema";
 import { availableQuantity, reservedQuantity } from "./stock";
 
@@ -14,6 +16,8 @@ interface ProductBase {
 export interface ProductSummary extends ProductBase {
   /** 是否還能購買（可售數量 > 0）；前台不需要知道確切數量。 */
   purchasable: boolean;
+  /** 依圖片順位挑第一張；下架與舊資料可能沒有圖片。 */
+  cover: ProductImage | null;
 }
 
 export interface AdminProductSummary extends ProductBase {
@@ -24,6 +28,10 @@ export interface AdminProductSummary extends ProductBase {
   reserved: number;
   /** 可售數量（Available）= 在庫數 − 保留數。 */
   available: number;
+}
+
+export interface AdminProductDetail extends AdminProductSummary {
+  images: ProductImage[];
 }
 
 const summaryColumns = {
@@ -45,7 +53,13 @@ function toAdminSummary(row: AdminRow): AdminProductSummary {
 
 /** 前台清單：只列上架中的商品，依新增順序。 */
 export async function selectListedProducts(db: DrizzleD1Database): Promise<ProductSummary[]> {
-  const rows = await db.select(summaryColumns).from(products).where(eq(products.listed, true)).orderBy(asc(products.id));
+  // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
+  const cover = sql<ProductImage | null>`(
+    select json_object('id', cover_image.id, 'variants', json(cover_image.variants))
+    from product_images cover_image where cover_image.product_id = ${products}.id
+    order by cover_image.position, cover_image.id limit 1
+  )`.mapWith((value: string | null) => value === null ? null : JSON.parse(value) as ProductImage);
+  const rows = await db.select({ ...summaryColumns, cover }).from(products).where(eq(products.listed, true)).orderBy(asc(products.id));
   return rows.map(({ onHand, reserved, ...row }) => ({ ...row, purchasable: availableQuantity(onHand, reserved) > 0 }));
 }
 
@@ -56,7 +70,10 @@ export async function selectProductsForAdmin(db: DrizzleD1Database): Promise<Adm
 }
 
 /** 單一商品（含下架）；不存在回 null。 */
-export async function selectProductForAdmin(db: DrizzleD1Database, id: number): Promise<AdminProductSummary | null> {
+export async function selectProductForAdmin(db: DrizzleD1Database, id: number): Promise<AdminProductDetail | null> {
   const [row] = await db.select(adminColumns).from(products).where(eq(products.id, id));
-  return row ? toAdminSummary(row) : null;
+  if (!row) return null;
+  const images = await db.select({ id: productImages.id, variants: productImages.variants }).from(productImages)
+    .where(eq(productImages.productId, id)).orderBy(asc(productImages.position), asc(productImages.id));
+  return { ...toAdminSummary(row), images };
 }

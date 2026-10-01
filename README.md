@@ -87,3 +87,18 @@ bun run e2e
 部署前的檢查會在套用 migration 之前擋下缺漏的設定，見 `.github/workflows/deploy.yml`。
 
 production 尚未上線。第一次部署前，要先在 Zero Trust 為 `storefront.gravito.dev/admin` 另建一個 Access application，再把它的 AUD 填進 `apps/app/wrangler.jsonc` 的 `env.production.vars.ACCESS_AUD`；目前那裡填的還是 preview application 的 AUD。每個環境各用一個 application：一個 application 掛兩個網域時，Access 登入後可能把瀏覽器導到另一個環境的網域。
+
+## 商品圖片（ADR 0003）
+
+新增商品預設下架；先在編輯頁上傳商品圖片，才可在商品管理「重新上架」。管理員選擇 JPEG／PNG／WebP（原檔上限 20 MiB），瀏覽器產生 320／640／1280px 寬的 WebP，每個尺寸最多 2 MiB；原圖不傳送、不保存。App 驗證 Access JWT、WebP 檔案尺寸與大小後，先寫 R2，再寫 D1。每件商品最多 8 張，第一張為封面。瀏覽器對同一次選檔保留 uploadId；上傳已提交但回應遺失時，重試會回傳原圖片，不重複佔用名額。
+
+App 與 Web 都綁定 `PRODUCT_IMAGES`，Web 只呼叫 `get`。物件 key 為 `products/<商品編號>/<圖片 UUID>/<內容 SHA-256>.webp`，同一張圖片的物件有獨立所有權，失敗回滾不會刪到其他上傳的物件。公開 `/images/...` 回應一年 immutable cache；下架後已知網址仍可讀圖。
+
+部署前必須在同一 Cloudflare 帳戶建立 Standard R2 buckets：
+
+- preview：`storefront-product-images-preview`
+- production：`storefront-product-images-production`
+
+本機的 `storefront-product-images-local` 由 Wrangler／Miniflare 模擬，不需要遠端 bucket。部署流程在任何 migration 前以唯讀 `wrangler r2 bucket info` 驗證該環境的 bucket 存在，缺少時先中止。設定檔不代表遠端 bucket 已建立；R2 使用可能產生 Cloudflare 費用，需先確認部署帳戶與費用授權。
+
+Migration `0007_product_images.sql` 會新增圖片表、把商品 `listed` 預設改為 false，並把目前無商品圖片的既有商品全部下架；商品編號、庫存與既有訂單明細都保留。更新後須由管理員上傳圖片並重新上架，不會自動補圖。部署順序沿用先 migration、再 App、再 Web；遷移與 App 更新之間不要執行舊管理員新增／上架操作，舊 App 尚未具備圖片 invariant。若回滾程式，不能回滾到允許無圖上架的舊 App 而繼續營運，應保持新版 App 或先停止商品管理操作。

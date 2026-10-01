@@ -29,6 +29,7 @@
     "BETTER_AUTH_URL": "http://localhost:4321",
     "GATEWAY_BASE_URL": "http://localhost:8787"
   },
+  "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-local" }],
   "d1_databases": [
     {
       "binding": "DB",
@@ -52,6 +53,7 @@
         "BETTER_AUTH_URL": "https://storefront-preview.gravito.dev",
         "GATEWAY_BASE_URL": "https://storefront-pay-preview.gravito.dev"
       },
+      "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-preview" }],
       "d1_databases": [
         {
           "binding": "DB",
@@ -72,6 +74,7 @@
         "BETTER_AUTH_URL": "https://storefront.gravito.dev",
         "GATEWAY_BASE_URL": "https://storefront-pay.gravito.dev"
       },
+      "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-production" }],
       "d1_databases": [
         {
           "binding": "DB",

@@ -126,3 +126,7 @@ describe("describeFailure", () => {
     });
   });
 });
+
+it("explains why a product without images cannot be listed", () => {
+  expect(describeFailure({ reason: "no_images" }, "fallback").message).toBe("請先上傳商品圖片，再上架商品");
+});

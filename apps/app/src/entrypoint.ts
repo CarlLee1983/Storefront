@@ -26,7 +26,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       teamDomain: this.env.ACCESS_TEAM_DOMAIN,
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
-    });
+    }, this.env.PRODUCT_IMAGES);
   }
 
   /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */
@@ -144,6 +144,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   createProduct(jwt: string, input: unknown) {
     return this.#admin().createProduct(jwt, input);
+  }
+
+  addProductImage(jwt: string, input: unknown) {
+    return this.#admin().addProductImage(jwt, input);
   }
 
   updateProduct(jwt: string, input: unknown) {

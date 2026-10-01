@@ -15,8 +15,17 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   {
     products.ok && products.data.length > 0 && (
       <ul class="product-list">
-        {products.data.map((p) => (
+        {products.data.map((p, index) => (
           <li>
+            {p.cover && <img
+              src={`/images/${p.cover.variants[0]!.key}`}
+              srcset={p.cover.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
+              sizes="(min-width: 64rem) 22rem, (min-width: 40rem) 45vw, 90vw"
+              width={p.cover.variants.at(-1)!.width}
+              height={p.cover.variants.at(-1)!.height}
+              alt={`${p.name}的封面`}
+              loading={index === 0 ? "eager" : "lazy"}
+            />}
             <h2>{p.name}</h2>
             <p>{p.description}</p>
             <p>NT$ {priceFormat.format(p.priceTwd)}</p>

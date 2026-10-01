@@ -50,6 +50,13 @@
       "when": 1790789940586,
       "tag": "0006_payment_refund",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790838243042,
+      "tag": "0007_product_images",
+      "breakpoints": true
     }
   ]
 }

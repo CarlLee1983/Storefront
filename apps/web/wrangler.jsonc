@@ -7,7 +7,8 @@
   "preview_urls": false,
   "observability": { "enabled": true },
   "assets": { "directory": "./dist", "binding": "ASSETS" },
-  // 只經 Service Binding RPC 呼叫 App Worker；這個 Worker 沒有 D1 binding
+  // 商品圖片直接唯讀取 R2；其餘資料經 App RPC，沒有 D1 binding
+  "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-local" }],
   "services": [
     { "binding": "APP", "service": "storefront-app", "entrypoint": "AppEntrypoint" }
   ],
@@ -16,6 +17,7 @@
   // workers.dev 網址會繞過它。標示 REPLACE_WITH_ 的網域部署前必須填入。
   "env": {
     "preview": {
+      "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-preview" }],
       "workers_dev": false,
       "preview_urls": false,
       "routes": [{ "pattern": "storefront-preview.gravito.dev", "custom_domain": true }],
@@ -24,6 +26,7 @@
       ]
     },
     "production": {
+      "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-production" }],
       "workers_dev": false,
       "preview_urls": false,
       "routes": [{ "pattern": "storefront.gravito.dev", "custom_domain": true }],

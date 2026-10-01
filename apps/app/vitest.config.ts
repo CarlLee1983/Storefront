@@ -16,6 +16,7 @@ export default defineConfig({
         wrangler: { configPath: "./wrangler.jsonc" },
         // 測試專用 binding：讓 setup 檔能把 drizzle-kit 產生的 migration 套到本機 D1
         miniflare: {
+          d1Databases: ["MIGRATION_DB"],
           bindings: {
             TEST_MIGRATIONS: migrations,
             ACCESS_TEAM_DOMAIN: TEST_TEAM_DOMAIN,

@@ -8,7 +8,7 @@ const app = exports.default;
 describe("上架商品，前台看得到", () => {
   beforeEach(resetDb);
 
-  it("管理員新增商品後，出現在前台清單", async () => {
+  it("管理員新增商品後預設下架，不出現在前台清單", async () => {
     const jwt = await mintAccessJwt();
     const created = await app.createProduct(jwt, {
       name: "馬克杯",
@@ -16,11 +16,12 @@ describe("上架商品，前台看得到", () => {
       priceTwd: 320,
     });
     expect(created.ok).toBe(true);
+    expect(await app.listProductsForAdmin(jwt)).toMatchObject({ ok: true, data: [{ listed: false }] });
 
     const listed = await app.listProducts();
     expect(listed).toEqual({
       ok: true,
-      data: [expect.objectContaining({ name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320 })],
+      data: [],
     });
   });
 
@@ -65,7 +66,7 @@ describe("上架商品，前台看得到", () => {
     const listed = await app.listProductsForAdmin(jwt);
     expect(listed).toEqual({
       ok: true,
-      data: [expect.objectContaining({ name: "馬克杯", priceTwd: 320, listed: true })],
+      data: [expect.objectContaining({ name: "馬克杯", priceTwd: 320, listed: false })],
     });
   });
 

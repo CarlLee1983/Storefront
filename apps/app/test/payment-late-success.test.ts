@@ -13,6 +13,7 @@ import { forceOrderStatus, forcePaymentStatus, resetDb, seedPayment } from "./db
 import { installFakeGateway } from "./fake-gateway";
 import { orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
 import { app, PAYMENT_WINDOW_MS, placeOrderAt, PRICE, runCron, stocked, stockOf } from "./release-helpers";
+import { seedImageAndList } from "./images";
 
 const T0 = Date.now() + 60_000;
 
@@ -310,6 +311,7 @@ describe("遲到的付款成功與結帳搶最後一件並行", () => {
       const created = await app.createProduct(jwt, { name: "馬克杯", description: "說明", priceTwd: PRICE });
       if (!created.ok) throw new Error("新增商品失敗");
       const productId = created.data.id;
+      await seedImageAndList(jwt, productId);
       await app.adjustStock(jwt, { id: productId, delta: 1 });
       setNow(T0 + i);
       const placed = await orderService.checkout("alice", checkoutInput([{ productId, quantity: 1, seenUnitPriceTwd: PRICE }]));

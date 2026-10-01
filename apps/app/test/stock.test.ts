@@ -2,6 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { resetDb } from "./db";
+import { uploadAndList } from "./images";
 
 const app = exports.default;
 
@@ -9,6 +10,7 @@ const app = exports.default;
 async function createMug(jwt: string) {
   const created = await app.createProduct(jwt, { name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320 });
   if (!created.ok) throw new Error("新增商品失敗");
+  await uploadAndList(jwt, created.data.id);
   return created.data.id;
 }
 

@@ -179,3 +179,9 @@ describe("顧客 session 放進 locals", () => {
     expect(line).toMatchObject({ event: "customer_session_lookup_failed", error: "app down" });
   });
 });
+
+it("public images bypass session lookup and never set a session cookie", async () => {
+  const { response } = await run("https://storefront.example/images/products/1/image.webp", { headers: { cookie: SESSION_COOKIE } });
+  expect(app.getCustomerSession).not.toHaveBeenCalled();
+  expect(response.headers.getSetCookie()).toEqual([]);
+});

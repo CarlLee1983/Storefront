@@ -42,6 +42,38 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await productRow.getByLabel(`${PRODUCT.name}的庫存增減量`).fill("+5");
   await productRow.getByRole("button", { name: "調整庫存" }).click();
   await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
+  await expect(productRow).toContainText("已下架");
+  await productRow.getByRole("button", { name: "重新上架" }).click();
+  await expect(admin.getByRole("alert")).toContainText("請先上傳商品圖片");
+  await productRow.getByRole("link", { name: "編輯" }).click();
+  const png = await admin.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1600; canvas.height = 1000;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#174ea6"; ctx.fillRect(0, 0, 1600, 1000);
+    ctx.fillStyle = "#ffffff"; ctx.font = "160px sans-serif"; ctx.fillText("Storefront", 200, 550);
+    return canvas.toDataURL("image/png").split(",")[1]!;
+  });
+  await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "product.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  // Network/service failure keeps the selection and permits retry, without duplicates.
+  await admin.route("**/admin/products/*/images", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, reason: "image_upload_failed" }) }), { times: 1 });
+  await admin.getByRole("button", { name: "上傳商品圖片" }).click();
+  await expect(admin.getByRole("alert")).toContainText("商品圖片上傳失敗");
+  // A response lost AFTER commit must replay the same upload, not consume a second slot.
+  await admin.route("**/admin/products/*/images", async route => { const committed = await route.fetch(); expect(committed.status()).toBe(201); await route.abort("failed"); }, { times: 1 });
+  await admin.getByRole("button", { name: "上傳商品圖片" }).click();
+  await expect(admin.locator("#image-error")).toBeVisible();
+  let uploadRequests = 0;
+  admin.on("request", request => { if (request.method() === "POST" && request.url().endsWith("/images")) uploadRequests++; });
+  await admin.locator("#image-upload").evaluate(form => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+  await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
+  expect(uploadRequests).toBe(1);
+  await expect(admin.locator("#product-images img")).toHaveCount(1);
+  await admin.reload();
+  await expect(admin.locator("#product-images img")).toHaveCount(1);
+  await testInfo.attach("admin-image-upload", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
+  await admin.getByRole("link", { name: "回商品管理" }).click();
+  await admin.getByRole("row", { name: new RegExp(PRODUCT.name) }).getByRole("button", { name: "重新上架" }).click();
   await expect(admin.getByRole("row", { name: new RegExp(PRODUCT.name) })).toContainText("上架中");
 
   // 2. 顧客以直接寫入 D1 的 session 登入（ADR 0013）
@@ -50,6 +82,19 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   // 3. 加入購物車 → 購物車頁 → 結帳 → 訂單頁待付款
   await page.goto("/");
   const productItem = page.getByRole("listitem").filter({ hasText: PRODUCT.name });
+  const cover = productItem.getByRole("img", { name: `${PRODUCT.name}的封面` });
+  await expect(cover).toBeVisible();
+  await expect.poll(() => cover.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await expect(cover).toHaveAttribute("srcset", /320w.*640w.*1280w/);
+  await expect(cover).toHaveAttribute("width", "1280");
+  const imageResponse = await page.request.get((await cover.getAttribute("src"))!);
+  expect(imageResponse.headers()["cache-control"]).toContain("immutable");
+  expect(imageResponse.headers()["content-type"]).toBe("image/webp");
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await testInfo.attach(`catalog-image-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+  }
   await productItem.getByRole("button", { name: "加入購物車" }).click();
   await expect(productItem.getByRole("status")).not.toBeEmpty();
 

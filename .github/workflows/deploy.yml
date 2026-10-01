@@ -66,6 +66,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bun apps/gateway/scripts/check-gateway-deploy.ts "${DEPLOY_ENV}"
 
+      # 先唯讀確認 R2 存在，避免 migration 下架舊商品後才發現 bucket 尚未建立。
+      - name: 檢查商品圖片 R2 bucket（${{ env.DEPLOY_ENV }}）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun apps/app/scripts/check-images-deploy.ts "${DEPLOY_ENV}"
+
       - run: bun run typecheck
       - run: bun run test
 

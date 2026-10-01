@@ -3,6 +3,9 @@ import { defineMiddleware } from "astro:middleware";
 import { forwardedAuthHeaders, hasSessionCookie, isAdminPath, isAuthPath } from "./auth/customer";
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // Public immutable image reads never query or refresh customer sessions.
+  if (context.url.pathname.startsWith("/images/")) return next();
+
   // 登入、回呼、登出都由 App Worker 的 Better Auth 處理；redirect 要原樣（302 + Location）回給瀏覽器，
   // 不能在 Worker 內被追隨，所以明確設 manual。標頭經 forwardedAuthHeaders 過濾（App 的限流只認 cf-connecting-ip）
   if (isAuthPath(context.url.pathname)) {
