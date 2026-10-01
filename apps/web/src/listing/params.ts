@@ -7,6 +7,7 @@ export type ListingSort = ProductSort;
 export interface ListingState {
   sort: ListingSort;
   inStock: boolean;
+  onSale: boolean;
   page: number;
   /** 搜尋關鍵字（已去掉前後空白）；沒有或只有空白時為 undefined。長度上限由 App 驗證。 */
   q?: string;
@@ -20,6 +21,7 @@ export function parseListingParams(params: URLSearchParams): ListingState {
   return {
     sort: PRODUCT_SORTS.find((candidate) => candidate === sort) ?? DEFAULT_SORT,
     inStock: params.get("instock") === "1",
+    onSale: params.get("sale") === "1",
     page: pageNumber >= 1 && pageNumber <= MAX_PAGE ? pageNumber : 1,
     q: params.get("q")?.trim() || undefined,
   };
@@ -33,9 +35,10 @@ export function listingHref(pathname: string, current: URLSearchParams, change: 
   const state = { ...parseListingParams(current), ...change };
   const page = change.page ?? 1;
   const next = new URLSearchParams(current);
-  for (const key of ["sort", "instock", "page"]) next.delete(key);
+  for (const key of ["sort", "instock", "sale", "page"]) next.delete(key);
   if (state.sort !== DEFAULT_SORT) next.set("sort", state.sort);
   if (state.inStock) next.set("instock", "1");
+  if (state.onSale) next.set("sale", "1");
   if (page > 1) next.set("page", String(page));
   const query = next.toString();
   return query === "" ? pathname : `${pathname}?${query}`;

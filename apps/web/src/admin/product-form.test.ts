@@ -40,6 +40,18 @@ describe("productUpdateFormToInput", () => {
       priceTwd: 450,
     });
   });
+
+  it("原價欄位：有值是數字、留空是 null（清空，結束特價）、欄位不存在是 undefined（不動）", () => {
+    const base = { name: "馬克杯", description: "", priceTwd: "320" };
+    expect(productUpdateFormToInput(form({ ...base, compareAtPriceTwd: "450" }), 7).compareAtPriceTwd).toBe(450);
+    expect(productUpdateFormToInput(form({ ...base, compareAtPriceTwd: "" }), 7).compareAtPriceTwd).toBeNull();
+    expect(productUpdateFormToInput(form({ ...base, compareAtPriceTwd: "  " }), 7).compareAtPriceTwd).toBeNull();
+    expect(productUpdateFormToInput(form(base), 7).compareAtPriceTwd).toBeUndefined();
+  });
+
+  it("原價不是數字時轉成 NaN，由 App 回報欄位錯誤", () => {
+    expect(productUpdateFormToInput(form({ name: "a", description: "", priceTwd: "1", compareAtPriceTwd: "abc" }), 7).compareAtPriceTwd).toBeNaN();
+  });
 });
 
 describe("parseProductId", () => {

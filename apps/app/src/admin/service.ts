@@ -86,20 +86,34 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     },
 
     /**
-     * 修改名稱、說明、單價與分類；不動上架狀態。
+     * 修改名稱、說明、單價、原價與分類；不動上架狀態。
      * 指定的分類不存在回 `category_not_found`；上架中的商品不能把分類清成空，回 `no_category`（下架中的可以）。
+     * 原價必須高於「儲存後」的售價，否則回 `invalid_compare_at_price`：不帶原價時比對既有原價，帶 `null` 則是清空，所以同時把售價改回並清空原價是合法的。
      */
     updateProduct(jwt: unknown, input: unknown) {
       return authorized(jwt, updateProductInput, input, async (_actor, { id, ...values }) => {
         if (typeof values.categoryId === "number" && !(await categoryExists(db, values.categoryId))) return fail("category_not_found");
+        // 商品不存在優先於原價檢查：先確認存在，才有「原價不合法」可說
+        const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
+        if (!existing) return fail("product_not_found");
+        if (typeof values.compareAtPriceTwd === "number" && values.compareAtPriceTwd <= values.priceTwd) return fail("invalid_compare_at_price");
         const clearsCategory = values.categoryId === null;
-        // 「上架中不能清空分類」寫進同一句 UPDATE 的條件，不會和同時發生的上架互相穿插
+        // 不帶原價時沿用既有原價，所以「原價仍高於新售價」也寫進同一句 UPDATE 的條件
+        const keepsCompareAt = values.compareAtPriceTwd === undefined;
+        // 「上架中不能清空分類」同樣寫進條件，不會和同時發生的上架互相穿插
         const updated = await db.update(products).set(values)
-          .where(and(eq(products.id, id), clearsCategory ? eq(products.listed, false) : undefined))
+          .where(and(
+            eq(products.id, id),
+            clearsCategory ? eq(products.listed, false) : undefined,
+            keepsCompareAt ? sql`(${products.compareAtPriceTwd} is null or ${products.compareAtPriceTwd} > ${values.priceTwd})` : undefined,
+          ))
           .returning({ id: products.id });
         if (updated.length) return ok({ id });
-        const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
-        return product ? fail("no_category") : fail("product_not_found");
+        const [product] = await db.select({ compareAtPriceTwd: products.compareAtPriceTwd }).from(products).where(eq(products.id, id));
+        if (!product) return fail("product_not_found");
+        return keepsCompareAt && product.compareAtPriceTwd !== null && product.compareAtPriceTwd <= values.priceTwd
+          ? fail("invalid_compare_at_price")
+          : fail("no_category");
       });
     },
 

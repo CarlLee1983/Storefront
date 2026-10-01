@@ -7,6 +7,8 @@ export interface ProductSummary {
   description: string;
   /** 單價，新台幣整數元。 */
   priceTwd: number;
+  /** 原價，新台幣整數元；null 表示不是特價商品。 */
+  compareAtPriceTwd: number | null;
   /** 是否還能購買（可售數量 > 0）。 */
   purchasable: boolean;
   /** 依圖片順位挑第一張；下架與舊資料可能沒有圖片。 */

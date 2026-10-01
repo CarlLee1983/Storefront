@@ -29,7 +29,7 @@ it("public detail returns listed product and current ordered gallery without inv
   const reordered = [images[2]!, images[0]!, images[1]!];
   expect((await app.reorderProductImages(jwt, { id, imageIds: reordered.map(image => image.id) })).ok).toBe(true);
   expect(await app.getProduct({ id })).toEqual({ ok: true, data: {
-    id, name: "陶瓷花器", description: "手工製作\n每件紋理不同", priceTwd: 680, purchasable: true, available: 3, images: reordered, category: { slug: "default", name: "預設分類" }, related: [],
+    id, name: "陶瓷花器", description: "手工製作\n每件紋理不同", priceTwd: 680, compareAtPriceTwd: null, purchasable: true, available: 3, images: reordered, category: { slug: "default", name: "預設分類" }, related: [],
   } });
   await app.adjustStock(jwt, { id, delta: -3 });
   expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { purchasable: false, available: 0 } });
@@ -75,7 +75,7 @@ it("related 是同分類的其他上架商品：不含自己與下架、其他�
   const newer = await listedIn(jwt, living, "較新");
   expect(await relatedIds(self)).toEqual([newer, older]);
   const found = await app.getProduct({ id: self });
-  expect(found).toMatchObject({ ok: true, data: { related: [{ id: newer, name: "較新", priceTwd: 500, purchasable: false, cover: { variants: expect.any(Array) } }, { id: older }] } });
+  expect(found).toMatchObject({ ok: true, data: { related: [{ id: newer, name: "較新", priceTwd: 500, compareAtPriceTwd: null, purchasable: false, cover: { variants: expect.any(Array) } }, { id: older }] } });
 });
 it("related 最多 4 件，留下上架時間最新的", async () => {
   const jwt = await mintAccessJwt();

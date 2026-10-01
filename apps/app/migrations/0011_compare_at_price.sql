@@ -1,0 +1,2 @@
+ALTER TABLE `products` ADD `compare_at_price_twd` integer;--> statement-breakpoint
+CREATE INDEX `products_compare_at_price_idx` ON `products` (`compare_at_price_twd`) WHERE compare_at_price_twd is not null;

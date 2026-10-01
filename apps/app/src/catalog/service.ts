@@ -4,7 +4,7 @@ import { selectListedCategories, selectListedCategoryBySlug } from "../categorie
 import { parseInput } from "../shared/input";
 import { fail, ok } from "../shared/result";
 import { listProductsInput } from "./input";
-import { selectListedProduct, selectListedProducts } from "./queries";
+import { existsProductOnSale, selectListedProduct, selectListedProducts } from "./queries";
 
 /** 前台讀取，不需登入。 */
 export function createCatalogService(d1: D1Database) {
@@ -23,6 +23,11 @@ export function createCatalogService(d1: D1Database) {
       if (!parsed.ok) return parsed;
       const { items, total } = await selectListedProducts(db, parsed.data);
       return ok({ items, total, hasMore: items.length < total });
+    },
+    /** 導覽列需要的資料，一次取得：有上架商品的分類，以及目前有沒有特價商品（上架中且有原價）。 */
+    async getStorefrontNav() {
+      const [categories, hasSale] = await Promise.all([selectListedCategories(db), existsProductOnSale(db)]);
+      return ok({ categories, hasSale });
     },
     /** 至少有一件上架商品的分類，依建立順序。 */
     async listCategories() {

@@ -10,9 +10,23 @@ export function productFormToInput(form: FormData) {
   };
 }
 
-/** 修改商品表單 → RPC 輸入，含分類下拉選單的值。 */
+/**
+ * 原價欄位：有值是數字、留空是 `null`（清空原價，結束特價）、欄位不存在是 `undefined`（不動原價）。
+ * 非數字轉成 NaN，讓 App 回報錯誤。
+ */
+export function compareAtPriceFromInput(value: FormDataEntryValue | null): number | null | undefined {
+  if (value === null) return undefined;
+  return toText(value).trim() === "" ? null : toNumber(value);
+}
+
+/** 修改商品表單 → RPC 輸入，含分類下拉選單與原價欄位的值。 */
 export function productUpdateFormToInput(form: FormData, id: number) {
-  return { id, ...productFormToInput(form), categoryId: categoryIdFromSelect(form.get("categoryId")) };
+  return {
+    id,
+    ...productFormToInput(form),
+    compareAtPriceTwd: compareAtPriceFromInput(form.get("compareAtPriceTwd")),
+    categoryId: categoryIdFromSelect(form.get("categoryId")),
+  };
 }
 
 /** 庫存調整表單 → RPC 輸入；增減量（+20、-3）轉成數字，是否合法由 App 驗證。 */

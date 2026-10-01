@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "@storefront/app/category-slug";
 import { readAccessJwt } from "../../admin/access-jwt";
 import { describeFailure, type Failure } from "../../admin/failure";
+import { saleStatusText } from "../../admin/sale-status";
 import { dispatchProductForm, productFormToInput } from "../../admin/product-form";
 import { formToRecord } from "../../shared/form-values";
 import Layout from "../../layouts/Layout.astro";
@@ -89,7 +90,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           products?.ok && products.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
+                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>特價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
@@ -99,6 +100,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <td>{p.description}</td>
                     <td>{p.category?.name ?? "未分類"}</td>
                     <td>{priceFormat.format(p.priceTwd)}</td>
+                    <td>{saleStatusText(p.listed, p.compareAtPriceTwd)}</td>
                     <td>{p.onHand}</td>
                     <td>{p.reserved}</td>
                     <td>{p.available}</td>

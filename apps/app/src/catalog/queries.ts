@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, ne, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
@@ -15,6 +15,8 @@ interface ProductBase {
   description: string;
   /** 單價，新台幣整數元。 */
   priceTwd: number;
+  /** 原價，新台幣整數元；null 表示不是特價商品。 */
+  compareAtPriceTwd: number | null;
 }
 
 export type { ProductSummary };
@@ -41,6 +43,7 @@ const summaryColumns = {
   name: products.name,
   description: products.description,
   priceTwd: products.priceTwd,
+  compareAtPriceTwd: products.compareAtPriceTwd,
   onHand: products.onHand,
   reserved: reservedQuantity(sql`${products.id}`).as("reserved"),
 };
@@ -101,13 +104,14 @@ function keywordMatch(q: string): SQL {
  */
 export async function selectListedProducts(
   db: DrizzleD1Database,
-  { category, inStock, q, sort, page }: ListProductsInput,
+  { category, inStock, onSale, q, sort, page }: ListProductsInput,
 ): Promise<{ items: ProductSummary[]; total: number }> {
   const where = and(
     eq(products.listed, true),
     category === undefined ? undefined : sql`${products.categoryId} = (select id from categories where slug = ${category})`,
     inStock ? sql`${availableExpr(sql`${products.onHand}`, sql`${products.id}`)} > 0` : undefined,
     q === undefined ? undefined : keywordMatch(q),
+    onSale ? isNotNull(products.compareAtPriceTwd) : undefined,
   );
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
   // 列表與總件數放同一個 batch（隱含交易），兩者看到同一份資料，hasMore 才不會因並行寫入而矛盾。
@@ -116,6 +120,13 @@ export async function selectListedProducts(
     db.select({ total: sql<number>`count(*)`.mapWith(Number) }).from(products).where(where),
   ]);
   return { items: rows.map(toSummary), total: counted!.total };
+}
+
+/** 目前有沒有特價商品（上架中且有原價）；前台導覽列用來決定是否顯示「特價」。 */
+export async function existsProductOnSale(db: DrizzleD1Database): Promise<boolean> {
+  const [row] = await db.select({ id: products.id }).from(products)
+    .where(and(eq(products.listed, true), isNotNull(products.compareAtPriceTwd))).limit(1);
+  return row !== undefined;
 }
 
 /** 後台清單：所有商品（含下架），依新增順序。 */

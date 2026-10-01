@@ -12,24 +12,32 @@ interface Props {
   q?: string;
   /** 呼叫端已經取得的查詢結果（搜尋頁要先依結果決定狀態碼）；省略就由本元件查詢。 */
   result?: Awaited<ReturnType<typeof env.APP.listProducts>>;
+  /** 固定只列特價商品（`/sale` 頁）；此時不顯示「只看特價」開關。 */
+  onSaleOnly?: boolean;
 }
-const { category, q, result: preloaded } = Astro.props;
+const { category, q, result: preloaded, onSaleOnly = false } = Astro.props;
 
 const SORT_LABELS: Array<[ListingSort, string]> = [["new", "新上架"], ["price-asc", "價格低到高"], ["price-desc", "價格高到低"]];
 
 const { pathname, searchParams } = Astro.url;
 const state = parseListingParams(searchParams);
-const result = preloaded ?? await env.APP.listProducts({ category, q, inStock: state.inStock, sort: state.sort, page: state.page });
+const result = preloaded ?? await env.APP.listProducts({ category, q, inStock: state.inStock, onSale: onSaleOnly || state.onSale, sort: state.sort, page: state.page });
 const listing = result.ok ? result.data : null;
-// 篩選表單送出時要保留的參數：目前的排序與其他不相關的參數；instock 由 checkbox 決定，頁數不帶（回到第 1 頁）
-const hiddenParams = [...searchParams].filter(([name]) => name !== "instock" && name !== "page" && name !== "sort");
+// 篩選表單送出時要保留的參數：目前的排序與其他不相關的參數；instock 與 sale 由 checkbox 決定，頁數不帶（回到第 1 頁）
+const hiddenParams = [...searchParams].filter(([name]) => name !== "instock" && name !== "sale" && name !== "page" && name !== "sort");
 if (state.sort !== "new") hiddenParams.push(["sort", state.sort]);
-// 空結果的說明依原因而不同：搜尋沒命中、搜尋加上只看有貨、只看有貨，或店裡根本沒有商品
+// 特價頁本身就固定特價，「只看特價」不算使用者套用的篩選
+const filtered = state.inStock || (!onSaleOnly && state.onSale);
+// 空結果的說明依原因而不同：搜尋沒命中（可加上有貨、特價條件）、只看有貨或特價、特價頁沒有商品，或店裡根本沒有商品
 function emptyMessage(): string {
-  if (q !== undefined) return state.inStock ? `沒有符合「${q}」且有貨的商品` : `找不到符合「${q}」的商品`;
-  return state.inStock ? "目前沒有符合條件的商品。" : "目前沒有上架的商品。";
+  if (q !== undefined) {
+    const conditions = [state.inStock ? "有貨" : "", !onSaleOnly && state.onSale ? "特價" : ""].filter(Boolean).join("、");
+    return conditions === "" ? `找不到符合「${q}」的商品` : `沒有符合「${q}」且${conditions}的商品`;
+  }
+  if (filtered) return "目前沒有符合條件的商品。";
+  return onSaleOnly ? "目前沒有特價商品。" : "目前沒有上架的商品。";
 }
-const clearHref = listingHref(pathname, searchParams, { inStock: false });
+const clearHref = listingHref(pathname, searchParams, { inStock: false, onSale: false });
 ---
 
 <div class="listing-controls">
@@ -44,6 +52,12 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false });
       <input type="checkbox" name="instock" value="1" checked={state.inStock} />
       只看有貨
     </label>
+    {!onSaleOnly && (
+      <label class="listing-switch">
+        <input type="checkbox" name="sale" value="1" checked={state.onSale} />
+        只看特價
+      </label>
+    )}
     <noscript><button type="submit">套用</button></noscript>
   </form>
 </div>
@@ -54,7 +68,7 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false });
   ) : listing.items.length === 0 ? (
     <div class="listing-empty">
       <p>{emptyMessage()}</p>
-      {state.inStock && <p><a href={clearHref}>清除篩選</a></p>}
+      {filtered && <p><a href={clearHref}>清除篩選</a></p>}
       {q !== undefined && <p><a href="/products">前往全部商品</a></p>}
     </div>
   ) : (

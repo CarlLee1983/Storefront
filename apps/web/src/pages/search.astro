@@ -12,7 +12,7 @@ const state = parseListingParams(Astro.url.searchParams);
 const { q } = state;
 // 空白關鍵字沒有東西可搜，直接回到全部商品；排序與篩選是針對搜尋結果的，沒有關鍵字就不再有意義，所以不帶過去
 if (q === undefined) return Astro.redirect("/products", 302);
-const result = await env.APP.listProducts({ q, inStock: state.inStock, sort: state.sort, page: state.page });
+const result = await env.APP.listProducts({ q, inStock: state.inStock, onSale: state.onSale, sort: state.sort, page: state.page });
 // 關鍵字是否合法（例如長度上限）一律以 App 的驗證為準
 const queryError = !result.ok && result.reason === "invalid_input" ? result.fields.q?.[0] : undefined;
 if (queryError !== undefined) Astro.response.status = 400;

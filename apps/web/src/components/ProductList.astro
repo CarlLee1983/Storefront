@@ -1,5 +1,6 @@
 ---
 import type { ProductSummary } from "@storefront/app/catalog-types";
+import { saleDisplay } from "../sale/price";
 import CartToast from "./CartToast.astro";
 
 interface Props {
@@ -10,8 +11,10 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <ul class="product-list">
-  {products.map((p, index) => (
-    <li class:list={["product-card", { "is-sold-out": !p.purchasable }]}>
+  {products.map((p, index) => {
+    const sale = saleDisplay(p.priceTwd, p.compareAtPriceTwd);
+    return (
+    <li class:list={["product-card", { "is-sold-out": !p.purchasable, "on-sale": sale }]}>
       <a class="product-link" href={`/products/${p.id}`}>
         <span class="cover-frame">
           {p.cover
@@ -26,10 +29,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               />
             : <span class="cover-placeholder">暫無圖片</span>}
           {!p.purchasable && <span class="sold-out">已售完</span>}
+          {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
         </span>
         <h2>{p.name}</h2>
       </a>
-      <p class="price">NT$ {priceFormat.format(p.priceTwd)}</p>
+      <p class="price">
+        <span class="price-now">NT$ {priceFormat.format(p.priceTwd)}</span>
+        {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {priceFormat.format(sale.compareAtTwd)}</s>}
+      </p>
       {p.purchasable && (
         <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
           <input type="hidden" name="quantity" value="1" />
@@ -40,7 +47,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         </form>
       )}
     </li>
-  ))}
+    );
+  })}
 </ul>
 
 <script>

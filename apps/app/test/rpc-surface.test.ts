@@ -23,6 +23,7 @@ const RPC_METHODS = [
   "getOrderForAdmin",
   "getProduct",
   "getProductForAdmin",
+  "getStorefrontNav",
   "listCategories",
   "listCategoriesForAdmin",
   "listMyOrders",

@@ -6,6 +6,7 @@ import ProductGallery from "../../components/ProductGallery.astro";
 import ProductList from "../../components/ProductList.astro";
 import QuantityStepper from "../../components/QuantityStepper.astro";
 import Layout from "../../layouts/Layout.astro";
+import { saleDisplay } from "../../sale/price";
 
 export const prerender = false;
 const id = /^\d+$/.test(Astro.params.id ?? "") ? Number(Astro.params.id) : NaN;
@@ -13,6 +14,7 @@ const result = await env.APP.getProduct({ id });
 const product = result.ok ? result.data : null;
 if (!product) Astro.response.status = 404;
 const priceFormat = new Intl.NumberFormat("zh-TW");
+const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) : null;
 ---
 <Layout title={product?.name ?? "找不到頁面"} noindex={!product} hideTitle={!!product}>
   {product ? <>
@@ -28,7 +30,11 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <section class="product-information" aria-label="商品資訊">
         {product.category && <p class="eyebrow">{product.category.name}</p>}
         <h1>{product.name}</h1>
-        <p class="price">NT$ {priceFormat.format(product.priceTwd)}</p>
+        <p class:list={["price", { "on-sale": sale }]}>
+          <span class="price-now">NT$ {priceFormat.format(product.priceTwd)}</span>
+          {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {priceFormat.format(sale.compareAtTwd)}</s>}
+          {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
+        </p>
         <p class="availability">{product.purchasable ? `現貨，可售 ${product.available} 件` : "已售完"}</p>
         <p class="description">{product.description}</p>
         {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
@@ -83,6 +89,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   .eyebrow { margin: 0 0 var(--space-2); font-size: var(--text-sm); letter-spacing: .12em; }
   .product-information h1 { margin: 0 0 var(--space-3); font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1.1; }
   .price { margin: 0 0 var(--space-2); font-size: var(--text-xl); font-weight: 700; }
+  .price { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
   .availability { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-muted); }
   .description { margin: 0 0 var(--space-6); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
   .buy-form { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: end; margin-bottom: var(--space-6); }

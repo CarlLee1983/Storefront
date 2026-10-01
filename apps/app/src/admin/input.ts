@@ -29,13 +29,18 @@ const priceTwd = wholeNumber("單價")
   .positive("單價必須大於 0")
   .max(MAX_PRICE_TWD, `單價不可超過 ${MAX_PRICE_TWD}`);
 
+/** 原價：同樣是新台幣整數元的正整數；是否高於售價由 service 以儲存後的結果檢查。 */
+const compareAtPriceTwd = wholeNumber("原價")
+  .positive("原價必須大於 0")
+  .max(MAX_PRICE_TWD, `原價不可超過 ${MAX_PRICE_TWD}`);
+
 export const createProductInput = z.object({ name, description, priceTwd });
 
 /**
  * 修改商品；`categoryId` 不帶表示不動分類，帶 `null` 表示清成沒有分類
- *（上架中的商品不允許，由 service 檢查）。
+ *（上架中的商品不允許，由 service 檢查）。`compareAtPriceTwd` 不帶表示不動原價，帶 `null` 表示清空（結束特價）。
  */
-export const updateProductInput = z.object({ id: productId, name, description, priceTwd, categoryId: categoryId.nullable().optional() });
+export const updateProductInput = z.object({ id: productId, name, description, priceTwd, compareAtPriceTwd: compareAtPriceTwd.nullable().optional(), categoryId: categoryId.nullable().optional() });
 export const productIdInput = z.object({ id: productId });
 
 /** 庫存調整的增減量：非零整數（+20 補貨、-3 盤損）；沒有「設成某個數字」的輸入。 */
