@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { currentCover } from "../images/cover-query";
+import type { ProductImage } from "../product-images";
 import { user } from "../auth/schema";
 import { products } from "../catalog/schema";
 import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/stock";
@@ -104,7 +106,7 @@ export interface OrderView {
   paymentDeadline: number;
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
-  lines: { productId: number; productName: string; quantity: number; unitPriceTwd: number }[];
+  lines: { productId: number; productName: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
   /** 出貨時附的物流單號；未出貨或出貨時沒附為 null。 */
   trackingNumber: string | null;
   /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
@@ -150,6 +152,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       productName: orderLines.productName,
       quantity: orderLines.quantity,
       unitPriceTwd: orderLines.unitPriceTwd,
+      cover: currentCover(sql`${orderLines.productId}`),
     })
     .from(orders)
     // 顧客不會被刪除（Better Auth 帳號不提供刪除），訂單一定對得到顧客，所以 innerJoin 不會漏掉訂單
@@ -177,9 +180,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       };
       views.set(order.id, view);
     }
-    const { productId, productName, quantity, unitPriceTwd } = line;
+    const { productId, productName, quantity, unitPriceTwd, cover } = line;
     if (productId !== null && productName !== null && quantity !== null && unitPriceTwd !== null) {
-      view.lines.push({ productId, productName, quantity, unitPriceTwd });
+      view.lines.push({ productId, productName, quantity, unitPriceTwd, cover });
     }
   }
 

@@ -1,0 +1,14 @@
+---
+import { orderStatusLabel } from "./labels";
+interface Props { status: string }
+const { status } = Astro.props;
+---
+<strong class:list={["order-status", status]}>{orderStatusLabel(status)}</strong>
+<style>
+  .order-status { display: inline-block; padding: var(--space-1) var(--space-3); border: 1px solid currentColor; border-radius: var(--radius-sm); font-size: var(--text-sm); white-space: nowrap; }
+  .pending_payment { color: var(--color-text); background: var(--color-bg); border-width: 2px; }
+  .paid { color: var(--color-surface); background: var(--color-primary); border-color: var(--color-primary); }
+  .shipped { color: var(--color-primary); background: var(--color-surface); border-radius: 2rem; }
+  .expired { color: var(--color-error); background: var(--color-surface); border-style: dashed; }
+  .cancelled { color: var(--color-muted); background: var(--color-bg); border-style: dotted; }
+</style>

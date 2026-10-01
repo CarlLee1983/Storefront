@@ -3,7 +3,9 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel } from "../../orders/labels";
+import OrderStatus from "../../orders/OrderStatus.astro";
+import OrderLines from "../../orders/OrderLines.astro";
+import { formatDateTime } from "../../orders/labels";
 
 export const prerender = false;
 
@@ -19,25 +21,32 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <Layout title="我的訂單" noindex>
-  {orders.data.length === 0 && <p>目前沒有訂單。<a href="/">去逛逛商品</a></p>}
-  {
-    orders.data.length > 0 && (
-      <table>
-        <thead>
-          <tr><th>訂單</th><th>成立時間</th><th>訂單狀態</th><th>物流單號</th><th>總金額</th></tr>
-        </thead>
-        <tbody>
-          {orders.data.map((order) => (
-            <tr>
-              <td><a href={`/orders/${order.id}`}>#{order.id}</a></td>
-              <td>{formatDateTime(order.createdAt)}</td>
-              <td>{orderStatusLabel(order.status)}</td>
-              <td>{order.status === "shipped" ? (order.trackingNumber ?? "（未附）") : ""}</td>
-              <td>NT$ {priceFormat.format(order.totalTwd)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )
-  }
+  {orders.data.length === 0 && <div class="empty"><h2>還沒有訂單</h2><p>目前沒有訂單。<a href="/">去逛逛商品</a></p></div>}
+  <ul class="orders">
+    {orders.data.map(order => <li class="order-card">
+      <div class="heading"><h2><a href={`/orders/${order.id}`}>訂單 #{order.id}</a></h2><p>訂單狀態：<OrderStatus status={order.status} /></p></div>
+      <p class="created">成立時間：{formatDateTime(order.createdAt)}</p>
+      <OrderLines lines={order.lines} />
+      {order.status === "shipped" && <p>物流單號：{order.trackingNumber ?? "（未附）"}</p>}
+      <p class="total">總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong></p>
+      {order.status === "pending_payment" && <div class="payment">
+        <p>付款期限：<time datetime={new Date(order.paymentDeadline).toISOString()}>{formatDateTime(order.paymentDeadline)}</time>（台北時間）</p>
+        <form method="post" action={`/orders/${order.id}/pay`}><button type="submit" aria-label={`訂單 #${order.id} 前往付款`}>前往付款</button></form>
+      </div>}
+      <a class="detail" href={`/orders/${order.id}`}>查看訂單 #{order.id} 詳情</a>
+    </li>)}
+  </ul>
 </Layout>
+<style>
+  .orders { list-style: none; padding: 0; display: grid; gap: var(--space-6); }
+  .order-card, .empty { padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+  .heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+  .heading h2, .heading p { margin: 0; }
+  .created { color: var(--color-muted); font-size: var(--text-sm); }
+  .total { text-align: right; }
+  .payment { background: var(--color-bg); border-radius: var(--radius-sm); padding: var(--space-4); margin-block: var(--space-4); }
+  .payment p { margin-top: 0; }
+  .payment button { width: 100%; font-weight: 700; padding: var(--space-3) var(--space-6); }
+  .detail { display: inline-block; padding-block: var(--space-2); }
+  @media(min-width: 40rem) { .order-card { padding: var(--space-6); } .payment button { width: auto; min-width: 12rem; } }
+</style>
