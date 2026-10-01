@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import ProductList from "../../components/ProductList.astro";
+import ProductListing from "../../components/ProductListing.astro";
 import Layout from "../../layouts/Layout.astro";
 
 export const prerender = false;
@@ -16,8 +16,8 @@ if (!category) Astro.response.status = 404;
     category ? (
       <>
         <p class="category-description">{category.description}</p>
-        <p class="category-count">共 {category.products.length} 件商品</p>
-        <ProductList products={category.products} />
+        <p class="category-count">共 {category.listedProductCount} 件商品</p>
+        <ProductListing category={category.slug} />
       </>
     ) : (
       <>

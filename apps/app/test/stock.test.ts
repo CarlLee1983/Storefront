@@ -39,7 +39,7 @@ describe("庫存調整", () => {
     expect(await app.adjustStock(jwt, { id, delta: 20 })).toEqual({ ok: true, data: { onHand: 20, available: 20 } });
 
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { onHand: 20, available: 20 } });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [expect.objectContaining({ id, purchasable: true })] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [expect.objectContaining({ id, purchasable: true })], total: 1, hasMore: false } });
   });
 
   it("扣減量在庫數以內可以成功，扣到剛好 0 也可以", async () => {

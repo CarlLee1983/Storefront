@@ -54,7 +54,7 @@ describe("商品圖片 RPC", () => {
     expect((await env.PRODUCT_IMAGES.list({ prefix: `products/${id}/${added.data.image.id}/` })).objects).toHaveLength(3);
     await assignDefaultCategory(jwt, id);
     expect(await app.relistProduct(jwt, { id })).toEqual({ ok: true, data: { id } });
-    expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ id, cover: added.data.image }] });
+    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, cover: added.data.image }] } });
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { images: [added.data.image] } });
   });
 
@@ -67,10 +67,10 @@ describe("商品圖片 RPC", () => {
     expect(one.data.image.variants[0]!.key).not.toBe(two.data.image.variants[0]!.key);
     await assignDefaultCategory(jwt, id);
     await app.relistProduct(jwt, { id });
-    expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ cover: one.data.image }] });
+    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ cover: one.data.image }] } });
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { images: [one.data.image, two.data.image] } });
     await app.unlistProduct(jwt, { id });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
     expect(await env.PRODUCT_IMAGES.get(one.data.image.variants[0]!.key)).not.toBeNull();
   });
 

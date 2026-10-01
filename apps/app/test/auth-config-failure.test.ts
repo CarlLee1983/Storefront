@@ -23,7 +23,7 @@ describe("顧客登入設定缺漏時（Holdfast ADR 0008）", () => {
 
   it("catalog RPC 照常運作", async () => {
     const result = await appWith(MISSING).listProducts();
-    expect(result.ok && result.data.map((p) => p.name)).toEqual(["馬克杯"]);
+    expect(result.ok && result.data.items.map((p) => p.name)).toEqual(["馬克杯"]);
   });
 
   it("管理 RPC 照常運作", async () => {

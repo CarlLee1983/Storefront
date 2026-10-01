@@ -267,7 +267,7 @@ describe("保留（待付款訂單的訂單明細）", () => {
       issues: [{ productId: mug, kind: "insufficient_stock" }],
     });
     expect(await app.checkout(bob, checkoutInput([{ productId: mug, quantity: 1, seenUnitPriceTwd: 320 }]))).toMatchObject({ ok: true });
-    expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ id: mug, purchasable: false }] });
+    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id: mug, purchasable: false }] } });
   });
 
   it("庫存調整不能讓在庫數低於保留總和：在庫 10、保留 3，-8 被拒，-7 成功", async () => {

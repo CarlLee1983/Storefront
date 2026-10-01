@@ -53,7 +53,7 @@ describe("前台分類清單", () => {
 describe("依代稱取得前台分類", () => {
   beforeEach(resetDb);
 
-  it("回傳分類與其上架商品（沿用商品清單的商品項目，含封面），不含其他分類與下架的商品", async () => {
+  it("只回傳分類本身；其上架商品由 listProducts 依分類取得，不含其他分類與下架的商品", async () => {
     const jwt = await mintAccessJwt();
     const living = await createCategory(jwt, "living", "客廳", "沙發與燈");
     const dining = await createCategory(jwt, "dining", "餐廳", "餐桌與餐具");
@@ -70,13 +70,29 @@ describe("依代稱取得前台分類", () => {
         slug: "living",
         name: "客廳",
         description: "沙發與燈",
-        products: [{ id: sofa, name: "沙發", description: "沙發的說明", priceTwd: 500, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+        listedProductCount: 1,
       },
     });
-    // 商品項目與 listProducts 的完全相同
-    const listed = await app.listProducts();
-    if (!listed.ok || !category.ok) throw new Error("讀取失敗");
-    expect(category.data.products[0]).toEqual(listed.data.find((product) => product.id === sofa));
+    expect(await app.listProducts({ category: "living" })).toEqual({
+      ok: true,
+      data: {
+        items: [{ id: sofa, name: "沙發", description: "沙發的說明", priceTwd: 500, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+        total: 1,
+        hasMore: false,
+      },
+    });
+  });
+
+  it("listedProductCount 是分類內的上架商品數：不含下架商品，也不受 listProducts 的篩選影響", async () => {
+    const jwt = await mintAccessJwt();
+    const living = await createCategory(jwt, "living", "客廳", "沙發與燈");
+    await listedProduct(jwt, living, "沙發");
+    await listedProduct(jwt, living, "茶几");
+    await app.unlistProduct(jwt, { id: await listedProduct(jwt, living, "下架的椅子") });
+    expect(await app.getCategory({ slug: "living" })).toMatchObject({ ok: true, data: { listedProductCount: 2 } });
+    // 兩件都沒有庫存：只看有貨的列表是空的，分類的件數不變
+    expect(await app.listProducts({ category: "living", inStock: true })).toMatchObject({ ok: true, data: { total: 0 } });
+    expect(await app.getCategory({ slug: "living" })).toMatchObject({ ok: true, data: { listedProductCount: 2 } });
   });
 
   it("代稱不存在、分類沒有商品、只有下架商品，都回 not_found", async () => {

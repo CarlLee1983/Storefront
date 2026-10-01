@@ -104,8 +104,8 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#catalog().getProduct(input);
   }
 
-  listProducts() {
-    return this.#catalog().listProducts();
+  listProducts(input?: unknown) {
+    return this.#catalog().listProducts(input);
   }
 
   listCategories() {

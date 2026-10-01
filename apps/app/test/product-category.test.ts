@@ -80,7 +80,7 @@ describe("上架必須有分類", () => {
     const id = await createMug(jwt);
     await addImage(jwt, id);
     expect(await app.relistProduct(jwt, { id })).toEqual({ ok: false, reason: "no_category" });
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { listed: false } });
 
     await assignCategory(jwt, id, await createCategory(jwt));
@@ -149,9 +149,9 @@ describe("上架時間", () => {
   }
 
   const orderOf = async () => {
-    const result = await app.getCategory({ slug: "living" });
-    if (!result.ok) throw new Error(`取得分類失敗：${result.reason}`);
-    return result.data.products.map((product) => product.name);
+    const result = await app.listProducts({ category: "living" });
+    if (!result.ok) throw new Error(`取得商品列表失敗：${result.reason}`);
+    return result.data.items.map((product) => product.name);
   };
 
   it("分類頁的商品依上架時間由新到舊，不是依新增順序", async () => {

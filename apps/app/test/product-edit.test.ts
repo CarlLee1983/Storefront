@@ -26,7 +26,7 @@ describe("修改商品", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+      data: { items: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
     });
   });
 
@@ -46,7 +46,7 @@ describe("下架與重新上架", () => {
 
     expect(await app.unlistProduct(jwt, { id })).toEqual({ ok: true, data: { id } });
 
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
     expect(await app.listProductsForAdmin(jwt)).toEqual({
       ok: true,
       data: [expect.objectContaining({ id, name: "馬克杯", listed: false })],
@@ -67,7 +67,7 @@ describe("下架與重新上架", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+      data: { items: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
     });
   });
 
@@ -83,7 +83,7 @@ describe("下架與重新上架", () => {
     expect((await app.relistProduct(jwt, { id })).ok).toBe(true);
     await app.unlistProduct(jwt, { id });
     expect((await app.unlistProduct(jwt, { id })).ok).toBe(true);
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
   });
 
   it("修改已下架的商品不會讓它重新上架", async () => {
@@ -93,7 +93,7 @@ describe("下架與重新上架", () => {
 
     await app.updateProduct(jwt, { id, name: "大馬克杯", description: "", priceTwd: 450 });
 
-    expect(await app.listProducts()).toEqual({ ok: true, data: [] });
+    expect(await app.listProducts()).toEqual({ ok: true, data: { items: [], total: 0, hasMore: false } });
     expect(await app.listProductsForAdmin(jwt)).toEqual({
       ok: true,
       data: [expect.objectContaining({ id, name: "大馬克杯", priceTwd: 450, listed: false })],
@@ -172,7 +172,7 @@ describe("修改、下架、上架的守門", () => {
     });
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+      data: { items: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
     });
   });
 

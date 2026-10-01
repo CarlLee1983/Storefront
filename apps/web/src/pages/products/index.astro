@@ -1,0 +1,12 @@
+---
+import ProductListing from "../../components/ProductListing.astro";
+import Layout from "../../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 前台不需登入；只列上架中的商品，排序、篩選與頁數都在網址參數
+---
+
+<Layout title="全部商品">
+  <ProductListing />
+</Layout>

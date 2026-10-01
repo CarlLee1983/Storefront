@@ -3,7 +3,7 @@ import { MAX_QUANTITY } from "../cart/cart";
 import CartToast from "./CartToast.astro";
 
 // 商品項目的形狀就是 App `listProducts` 回傳的商品項目（含封面），首頁與分類頁共用
-type ProductSummary = Extract<Awaited<ReturnType<Env["APP"]["listProducts"]>>, { ok: true }>["data"][number];
+type ProductSummary = Extract<Awaited<ReturnType<Env["APP"]["listProducts"]>>, { ok: true }>["data"]["items"][number];
 
 interface Props {
   products: ProductSummary[];

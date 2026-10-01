@@ -9,6 +9,7 @@
     "./dev-keys": "./scripts/dev-keys.ts",
     "./payments-shared": "./src/payments/shared.ts",
     "./category-slug": "./src/categories/slug.ts",
+    "./catalog-listing": "./src/catalog/listing.ts",
     "./product-images": "./src/product-images.ts"
   },
   "scripts": {

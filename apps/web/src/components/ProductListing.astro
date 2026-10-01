@@ -1,0 +1,85 @@
+---
+import { env } from "cloudflare:workers";
+import { listingHref, parseListingParams, reachedDisplayLimit, type ListingSort } from "../listing/params";
+import ProductList from "./ProductList.astro";
+
+// 列表區塊：排序連結、只看有貨開關、商品卡、已顯示件數與載入更多。
+// 狀態全在網址（sort、instock、page），每個控制項都是一般連結，重新整理與上一頁都能還原。
+interface Props {
+  /** 只列這個分類（代稱）；省略就是全部商品。 */
+  category?: string;
+}
+const { category } = Astro.props;
+
+const SORT_LABELS: Array<[ListingSort, string]> = [["new", "新上架"], ["price-asc", "價格低到高"], ["price-desc", "價格高到低"]];
+
+const { pathname, searchParams } = Astro.url;
+const state = parseListingParams(searchParams);
+const result = await env.APP.listProducts({ category, inStock: state.inStock, sort: state.sort, page: state.page });
+const listing = result.ok ? result.data : null;
+// 篩選表單送出時要保留的參數：目前的排序與其他不相關的參數；instock 由 checkbox 決定，頁數不帶（回到第 1 頁）
+const hiddenParams = [...searchParams].filter(([name]) => name !== "instock" && name !== "page" && name !== "sort");
+if (state.sort !== "new") hiddenParams.push(["sort", state.sort]);
+const clearHref = listingHref(pathname, searchParams, { inStock: false });
+---
+
+<div class="listing-controls">
+  <nav class="listing-sort" aria-label="排序">
+    {SORT_LABELS.map(([sort, label]) => (
+      <a href={listingHref(pathname, searchParams, { sort })} aria-current={state.sort === sort ? "true" : undefined}>{label}</a>
+    ))}
+  </nav>
+  <form class="listing-filter" method="get" action={pathname}>
+    {hiddenParams.map(([name, value]) => <input type="hidden" name={name} value={value} />)}
+    <label class="listing-switch">
+      <input type="checkbox" name="instock" value="1" checked={state.inStock} />
+      只看有貨
+    </label>
+    <noscript><button type="submit">套用</button></noscript>
+  </form>
+</div>
+
+{
+  listing === null ? (
+    <p class="error" role="alert">商品列表暫時無法顯示，請稍後再試。</p>
+  ) : listing.items.length === 0 ? (
+    <div class="listing-empty">
+      <p>{state.inStock ? "目前沒有符合條件的商品。" : "目前沒有上架的商品。"}</p>
+      {state.inStock && <p><a href={clearHref}>清除篩選</a></p>}
+    </div>
+  ) : (
+    <>
+      <ProductList products={listing.items} />
+      <p class="listing-count">已顯示 {listing.items.length} / {listing.total} 件</p>
+      {reachedDisplayLimit(state.page, listing.items.length, listing.total) ? (
+        <p class="listing-limit">已達顯示上限，請用篩選或排序縮小範圍</p>
+      ) : listing.hasMore && (
+        <p><a class="load-more" href={listingHref(pathname, searchParams, { page: state.page + 1 })}>載入更多</a></p>
+      )}
+    </>
+  )
+}
+
+<script>
+  // 有 JS 時，勾選或取消就直接送出表單（沒有 JS 時由 noscript 的「套用」按鈕送出）
+  for (const checkbox of document.querySelectorAll<HTMLInputElement>(".listing-filter input[type=checkbox]")) {
+    checkbox.addEventListener("change", () => checkbox.form?.submit());
+  }
+</script>
+
+<style>
+  .listing-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-block: var(--space-4); }
+  .listing-sort { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .listing-sort a, .listing-switch, .load-more {
+    display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-4);
+    border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); color: var(--color-text); text-decoration: none;
+  }
+  .listing-sort a:hover, .listing-switch:hover, .load-more:hover { background: var(--color-panel); }
+  .listing-sort a[aria-current="true"] { background: var(--color-inverse); border-color: var(--color-inverse); color: var(--color-on-inverse); }
+  .listing-filter { display: flex; align-items: center; gap: var(--space-3); }
+  .listing-switch { margin: 0; cursor: pointer; }
+  .listing-switch input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--color-primary); }
+  .listing-count, .listing-limit { color: var(--color-muted); margin-top: var(--space-6); }
+  .load-more { justify-content: center; font-weight: 700; }
+  .listing-empty { padding-block: var(--space-8); }
+</style>

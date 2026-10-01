@@ -35,7 +35,7 @@ it("reorders a full eight-image set and changes customer/admin covers", async ()
   const reversed = [...images].reverse();
   expect(await app.reorderProductImages(jwt, { id, imageIds: reversed.map(image => image.id) })).toEqual({ ok: true, data: { id } });
   expect(await imageIds(jwt, id)).toEqual(reversed.map(image => image.id));
-  expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ cover: reversed[0] }] });
+  expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ cover: reversed[0] }] } });
   expect(await app.listProductsForAdmin(jwt)).toMatchObject({ ok: true, data: [{ cover: reversed[0] }] });
 });
 it("rejects incomplete, foreign, duplicate, malformed, and stale image sets without changing the order", async () => {
@@ -80,7 +80,7 @@ it("concurrent deletions retain the final listed image; unlisted products can ha
   expect(results.filter(result => result.ok)).toHaveLength(2);
   expect(results.filter(result => !result.ok)).toEqual([{ ok: false, reason: "last_product_image" }]);
   const [last] = await imageIds(jwt, id);
-  expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ cover: { id: last } }] });
+  expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ cover: { id: last } }] } });
   const survivor = images.find(image => image.id === last)!;
   for (const variant of survivor.variants) expect(await env.PRODUCT_IMAGES.get(variant.key)).not.toBeNull();
   await app.unlistProduct(jwt, { id });
@@ -110,7 +110,7 @@ it("R2 cleanup failures are durable and retryable, never leaving a broken refere
   const input = { id, imageId: images[0]!.id };
   expect(await service.deleteProductImage(jwt, input)).toEqual({ ok: false, reason: "image_delete_failed" });
   expect(await imageIds(jwt, id)).toEqual([images[1]!.id]);
-  expect(await app.listProducts()).toMatchObject({ ok: true, data: [{ cover: images[1] }] });
+  expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ cover: images[1] }] } });
   await cleanupDeletedProductImages(env.DB, undefined);
   await cleanupDeletedProductImages(env.DB, bucket as unknown as ProductImageBucket);
   expect((await app.deleteProductImage(jwt, input)).ok).toBe(true);
