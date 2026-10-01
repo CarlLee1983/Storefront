@@ -1,6 +1,6 @@
 ---
 import "../styles/global.css";
-import { LOGIN_PATH, loginUrl } from "../auth/customer";
+import AccountLinks from "../components/AccountLinks.astro";
 
 interface Props {
   title: string;
@@ -24,43 +24,66 @@ const customer = admin ? null : Astro.locals.customer;
   <body>
     <a class="skip-link" href="#main-content">跳到主要內容</a>
     <header class="site-header">
-    <nav aria-label={admin ? "後台導覽" : "主要導覽"}>
-      <a href="/">Storefront</a>
-      {admin && <a href="/admin">管理後台</a>}
-      {admin && <a href="/admin/orders">訂單管理</a>}
+      <a class="brand" href="/">Storefront</a>
       {
-        !admin && (
-          <a href="/cart">
-            購物車（<span id="cart-count">0</span>）
-          </a>
+        admin ? (
+          <nav aria-label="後台導覽">
+            <a href="/admin">管理後台</a>
+            <a href="/admin/orders">訂單管理</a>
+          </nav>
+        ) : (
+          <>
+            <nav class="desktop-only" aria-label="主要導覽">
+              <a href="/">全部商品</a>
+            </nav>
+            <div class="tools">
+              <div class="desktop-only account">
+                <AccountLinks customer={customer} url={Astro.url} />
+              </div>
+              <a href="/cart">
+                購物車（<span id="cart-count">0</span>）
+              </a>
+              <button type="button" class="icon-button menu-button" id="menu-button" aria-label="開啟選單" aria-haspopup="dialog">
+                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2" fill="none" /></svg>
+              </button>
+            </div>
+          </>
         )
       }
-      {
-        !admin &&
-          (customer ? (
-            <>
-              <a href="/orders">我的訂單</a>
-              <span class="customer-name">{customer.name}</span>
-              <button type="button" id="sign-out">登出</button>
-            </>
-          ) : Astro.url.pathname === LOGIN_PATH ? null : (
-            <a href={loginUrl(Astro.url)}>登入</a>
-          ))
-      }
-    </nav>
     </header>
+    {
+      !admin && (
+        <dialog id="menu-drawer" class="menu-drawer" aria-label="選單">
+          <div class="drawer-head">
+            <span class="brand">Storefront</span>
+            <button type="button" class="icon-button" id="menu-close" aria-label="關閉選單" autofocus>
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none" /></svg>
+            </button>
+          </div>
+          <nav class="drawer-nav" aria-label="行動版導覽">
+            <a href="/">全部商品</a>
+          </nav>
+          <div class="drawer-foot">
+            <AccountLinks customer={customer} url={Astro.url} />
+          </div>
+        </dialog>
+      )
+    }
     <p id="sign-out-error" class="error" role="alert" hidden></p>
     <main id="main-content" tabindex="-1">
       <h1>{title}</h1>
       <slot />
     </main>
     <footer class="site-footer">
-      <p>Storefront</p>
-      <nav aria-label="頁尾導覽">
-        <a href="/about">關於</a>
-        <a href="/faq">常見問題</a>
-        <a href="/returns">退換貨說明</a>
-      </nav>
+      <div class="site-footer-inner">
+        <p class="brand">Storefront</p>
+        <p>為日常挑選的家具與器物。</p>
+        <nav aria-label="頁尾導覽">
+          <a href="/about">關於</a>
+          <a href="/faq">常見問題</a>
+          <a href="/returns">退換貨說明</a>
+        </nav>
+      </div>
     </footer>
     <script>
       import { requestSignOut } from "../auth/client";
@@ -86,26 +109,36 @@ const customer = admin ? null : Astro.locals.customer;
       window.addEventListener(CART_CHANGED_EVENT, showCartCount);
       window.addEventListener("storage", showCartCount);
 
+      // 選單抽屜：原生 dialog 的 showModal() 負責焦點陷阱與 Esc；關閉後明確把焦點還給選單按鈕
+      const menuButton = document.querySelector<HTMLButtonElement>("#menu-button");
+      const menuDrawer = document.querySelector<HTMLDialogElement>("#menu-drawer");
+      menuButton?.addEventListener("click", () => menuDrawer?.showModal());
+      document.querySelector("#menu-close")?.addEventListener("click", () => menuDrawer?.close());
+      menuDrawer?.addEventListener("close", () => menuButton?.focus());
+
       // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
-      const signOut = document.querySelector<HTMLButtonElement>("#sign-out");
-      signOut?.addEventListener("click", async () => {
-        // 請求進行中停用按鈕，避免連點重複送出；失敗才恢復
-        signOut.disabled = true;
-        if (await requestSignOut(fetch)) {
-          location.reload();
-          return;
-        }
-        signOut.disabled = false;
-        const error = document.querySelector<HTMLElement>("#sign-out-error")!;
-        error.textContent = "登出失敗，請稍後再試。";
-        error.hidden = false;
-      });
+      // 桌機 header 與手機抽屜各有一顆登出按鈕，行為一致
+      const signOutButtons = document.querySelectorAll<HTMLButtonElement>("[data-sign-out]");
+      for (const signOut of signOutButtons) {
+        signOut.addEventListener("click", async () => {
+          // 請求進行中停用按鈕，避免連點重複送出；失敗才恢復
+          for (const button of signOutButtons) button.disabled = true;
+          if (await requestSignOut(fetch)) {
+            location.reload();
+            return;
+          }
+          for (const button of signOutButtons) button.disabled = false;
+          const error = document.querySelector<HTMLElement>("#sign-out-error")!;
+          error.textContent = "登出失敗，請稍後再試。";
+          error.hidden = false;
+        });
+      }
     </script>
   </body>
 </html>
 
 <style>
-  #cart-count { display: inline-block; min-width: 1ch; text-align: center; font-weight: 700; }
+  #cart-count { display: inline-block; min-width: 1ch; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
   .count-bump { animation: count-bump var(--duration-normal) ease-out; }
   @keyframes count-bump { 50% { transform: translateY(-.25rem) scale(1.2); } }
   @media (prefers-reduced-motion: reduce) { .count-bump { animation: none; } }
