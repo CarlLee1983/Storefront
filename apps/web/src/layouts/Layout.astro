@@ -1,4 +1,5 @@
 ---
+import "../styles/global.css";
 import { LOGIN_PATH, loginUrl } from "../auth/customer";
 
 interface Props {
@@ -18,18 +19,12 @@ const customer = admin ? null : Astro.locals.customer;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {(admin || noindex) && <meta name="robots" content="noindex" />}
     <title>{title}｜Storefront</title>
-    <style is:global>
-      body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 48rem; padding: 1rem; line-height: 1.6; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border-bottom: 1px solid #ddd; padding: 0.4rem; text-align: left; }
-      label { display: block; margin-block: 0.75rem; }
-      input, textarea { display: block; font: inherit; width: 100%; box-sizing: border-box; }
-      form.inline { display: inline; }
-      .error { color: #b00020; }
-    </style>
+
   </head>
   <body>
-    <nav>
+    <a class="skip-link" href="#main-content">跳到主要內容</a>
+    <header class="site-header">
+    <nav aria-label={admin ? "後台導覽" : "主要導覽"}>
       <a href="/">Storefront</a>
       {admin && <a href="/admin">管理後台</a>}
       {admin && <a href="/admin/orders">訂單管理</a>}
@@ -53,11 +48,20 @@ const customer = admin ? null : Astro.locals.customer;
           ))
       }
     </nav>
+    </header>
     <p id="sign-out-error" class="error" role="alert" hidden></p>
-    <main>
+    <main id="main-content" tabindex="-1">
       <h1>{title}</h1>
       <slot />
     </main>
+    <footer class="site-footer">
+      <p>Storefront</p>
+      <nav aria-label="頁尾導覽">
+        <a href="/about">關於</a>
+        <a href="/faq">常見問題</a>
+        <a href="/returns">退換貨說明</a>
+      </nav>
+    </footer>
     <script>
       import { requestSignOut } from "../auth/client";
       import { cartCount } from "../cart/cart";

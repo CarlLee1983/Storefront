@@ -67,7 +67,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           )
         }
         {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
           </thead>
@@ -81,13 +81,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
         <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
         <h2>付款嘗試</h2>
         {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
         {
           order.payments.length > 0 && (
-            <table>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
                 <tr><th>發起時間</th><th>金額</th><th>狀態</th><th>退款原因</th><th>退款時間</th></tr>
               </thead>
@@ -105,7 +105,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )
         }
         <h2>收件資訊</h2>

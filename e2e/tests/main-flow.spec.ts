@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { BASE_URL, GATEWAY_API_KEY, GATEWAY_URL, MEMBER } from "../harness/constants";
@@ -28,7 +29,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   admin,
   gatewayConsole,
   page,
-}) => {
+}, testInfo) => {
   // 1. 管理員上架商品並補貨
   await admin.goto("/admin");
   await admin.getByLabel("名稱", { exact: true }).fill(PRODUCT.name);
@@ -68,6 +69,8 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   const orderId = orderPath.split("/").pop()!;
   await expect(page.getByText("訂單狀態：待付款")).toBeVisible();
 
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
   // 4. 前往付款 → 模擬閘道付款頁 → 成功＋立即回呼 → 導回訂單頁已付款
   await page.getByRole("button", { name: "前往付款" }).click();
   await expect(page).toHaveURL(new RegExp(`^${GATEWAY_URL}/pay/`));
@@ -92,6 +95,8 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await expect(paymentSection).toContainText("payment.succeeded");
   await expect(paymentSection).toContainText("HTTP 200");
 
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
   // 5. 管理員在 /admin/orders 看到已付款 → 明細 → 出貨
   await admin.goto("/admin/orders");
   const orderRow = admin.getByRole("row", { name: new RegExp(`#${orderId}\\b`) });
@@ -109,4 +114,10 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await page.goto(orderPath);
   await expect(page.getByText("訂單狀態：已出貨")).toBeVisible();
   await expect(page.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await testInfo.attach(`order-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+  }
 });

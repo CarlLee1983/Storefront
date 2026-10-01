@@ -80,7 +80,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {products?.ok && products.data.length === 0 && <p>目前沒有商品。</p>}
         {
           products?.ok && products.data.length > 0 && (
-            <table>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
                 <tr><th>名稱</th><th>說明</th><th>單價（NT$）</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th></th></tr>
               </thead>
@@ -112,7 +112,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )
         }
         <h2>新增商品</h2>

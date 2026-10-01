@@ -14,7 +14,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   {products.ok && products.data.length === 0 && <p>目前沒有上架的商品。</p>}
   {
     products.ok && products.data.length > 0 && (
-      <ul>
+      <ul class="product-list">
         {products.data.map((p) => (
           <li>
             <h2>{p.name}</h2>
