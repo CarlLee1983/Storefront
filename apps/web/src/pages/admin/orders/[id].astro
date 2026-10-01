@@ -2,9 +2,11 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
+import OrderStatus from "../../../orders/OrderStatus.astro";
+import OrderCover from "../../../orders/OrderCover.astro";
 import Layout from "../../../layouts/Layout.astro";
 import { formToRecord } from "../../../shared/form-values";
-import { formatDateTime, orderStatusLabel, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../../orders/labels";
+import { formatDateTime, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../../orders/labels";
 
 export const prerender = false;
 
@@ -44,7 +46,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     ) : (
       <>
         {shipped && <p role="status">已標為已出貨。</p>}
-        <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
+        <p>訂單狀態：<OrderStatus status={order.status} /></p>
         <p>顧客：{order.customerEmail}</p>
         <p>成立時間：{formatDateTime(order.createdAt)}</p>
         {
@@ -74,7 +76,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           <tbody>
             {order.lines.map((line) => (
               <tr>
-                <td>{line.productName}</td>
+                <td><div class="order-product"><OrderCover cover={line.cover} name={line.productName} /><span>{line.productName}</span></div></td>
                 <td>NT$ {priceFormat.format(line.unitPriceTwd)}</td>
                 <td>{line.quantity}</td>
                 <td>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
@@ -116,3 +118,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     )
   }
 </Layout>
+
+<style>
+  .order-products { list-style: none; padding: 0; margin: 0; }
+  .order-products li, .order-product { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
+</style>

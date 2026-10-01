@@ -2,6 +2,8 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { parseStatusFilter } from "../../../admin/order-form";
+import OrderStatus from "../../../orders/OrderStatus.astro";
+import OrderCover from "../../../orders/OrderCover.astro";
 import Layout from "../../../layouts/Layout.astro";
 import { formatDateTime, ORDER_STATUS_CODES, orderStatusLabel } from "../../../orders/labels";
 
@@ -39,15 +41,16 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           orders.data.length > 0 && (
             <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>訂單</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th><th>付款</th></tr>
+                <tr><th>訂單</th><th>商品</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th><th>付款</th></tr>
               </thead>
               <tbody>
                 {orders.data.map((order) => (
                   <tr>
                     <td><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
+                    <td><ul class="order-products">{order.lines.map(line => <li><OrderCover cover={line.cover} name={line.productName} /><span>{line.productName} × {line.quantity}</span></li>)}</ul></td>
                     <td>{order.customerEmail}</td>
                     <td>{formatDateTime(order.createdAt)}</td>
-                    <td>{orderStatusLabel(order.status)}</td>
+                    <td><OrderStatus status={order.status} /></td>
                     <td>NT$ {priceFormat.format(order.totalTwd)}</td>
                     <td>{order.needsAttention ? <strong class="error">需要處理</strong> : ""}</td>
                   </tr>
@@ -60,3 +63,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     )
   }
 </Layout>
+
+<style>
+  .order-products { list-style: none; padding: 0; margin: 0; }
+  .order-products li, .order-product { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
+</style>

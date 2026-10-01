@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { signInCustomer } from "./customers";
-import { SHIPPING_INFO } from "./checkout-helpers";
+import { checkoutInput, createStockedProduct, SHIPPING_INFO } from "./checkout-helpers";
 import { forceOrderStatus, resetDb, seedPayment } from "./db";
 import { placeMugOrder } from "./payment-helpers";
 
@@ -26,11 +26,30 @@ describe("管理員訂單清單", () => {
     expect(result).toEqual({
       ok: true,
       data: [
-        { id: second.orderId, status: "pending_payment", totalTwd: 320, customerEmail: "bob@example.com", createdAt: expect.any(Number), needsAttention: false },
-        { id: first.orderId, status: "pending_payment", totalTwd: 640, customerEmail: "alice@example.com", createdAt: expect.any(Number), needsAttention: false },
+        { id: second.orderId, status: "pending_payment", totalTwd: 320, customerEmail: "bob@example.com", createdAt: expect.any(Number), needsAttention: false, lines: [expect.objectContaining({ cover: expect.objectContaining({ id: expect.any(String) }) })] },
+        { id: first.orderId, status: "pending_payment", totalTwd: 640, customerEmail: "alice@example.com", createdAt: expect.any(Number), needsAttention: false, lines: [expect.objectContaining({ cover: expect.objectContaining({ id: expect.any(String) }) })] },
       ],
     });
   });
+
+  it("最新 200 筆都有明細與封面，超過 100 張仍可讀取且較舊訂單不混入", async () => {
+    const cookie = await signInCustomer("alice");
+    const productId = await createStockedProduct("大量訂單商品", 100, 201);
+    const ids: number[] = [];
+    for (let index = 0; index < 201; index++) {
+      const placed = await app.checkout(cookie, checkoutInput([{ productId, quantity: 1, seenUnitPriceTwd: 100 }]));
+      if (!placed.ok) throw new Error(`結帳失敗：${placed.reason}`);
+      ids.push(placed.data.orderId);
+    }
+    const result = await app.listOrdersForAdmin(await mintAccessJwt(), {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.map(order => order.id)).toEqual(ids.slice(1).reverse());
+    for (const order of result.data) {
+      expect(order.lines).toEqual([{ productId, productName: "大量訂單商品", quantity: 1, unitPriceTwd: 100,
+        cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }]);
+    }
+  }, 15_000);
 
   it("依訂單狀態篩選；狀態值無效回 invalid_input", async () => {
     const alice = await signInCustomer("alice");
@@ -71,7 +90,7 @@ describe("管理員訂單明細", () => {
         shippingInfo: SHIPPING_INFO,
         paymentDeadline: expect.any(Number),
         createdAt: expect.any(Number),
-        lines: [{ productId, productName: "馬克杯", quantity: 2, unitPriceTwd: 320 }],
+        lines: [{ productId, productName: "馬克杯", quantity: 2, unitPriceTwd: 320, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
         payments: [
           { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, refundReason: null, refundAt: null, needsAttention: false },
           // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄

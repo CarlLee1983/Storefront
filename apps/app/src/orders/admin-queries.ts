@@ -1,8 +1,10 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { currentCover } from "../images/cover-query";
+import type { OrderView } from "./queries";
 import { user } from "../auth/schema";
 import { paymentNeedsAttentionSql } from "../payments/attention";
-import { orders, type OrderStatus } from "./schema";
+import { orderLines, orders, type OrderStatus } from "./schema";
 
 export interface AdminOrderSummary {
   id: number;
@@ -14,6 +16,7 @@ export interface AdminOrderSummary {
   createdAt: number;
   /** 有付款成功但未處理（見 `payments/attention.ts`）；清單上標「需要處理」。 */
   needsAttention: boolean;
+  lines: OrderView["lines"];
 }
 
 /**
@@ -24,7 +27,7 @@ export const ADMIN_ORDER_LIST_LIMIT = 200;
 
 /** 所有顧客的訂單，新的在前，最多 `ADMIN_ORDER_LIST_LIMIT` 筆；`status` 給了就只列該狀態。 */
 export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: OrderStatus): Promise<AdminOrderSummary[]> {
-  return db
+  const summaries = await db
     .select({
       id: orders.id,
       status: orders.status,
@@ -39,4 +42,18 @@ export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: Order
     .where(status === undefined ? undefined : eq(orders.status, status))
     .orderBy(desc(orders.id))
     .limit(ADMIN_ORDER_LIST_LIMIT);
+  if (summaries.length === 0) return [];
+  // One bounded query for all returned orders, rather than one query per order or line.
+  const lines = await db.select({
+    orderId: orderLines.orderId, productId: orderLines.productId, productName: orderLines.productName,
+    quantity: orderLines.quantity, unitPriceTwd: orderLines.unitPriceTwd,
+    cover: currentCover(sql`${orderLines.productId}`),
+  }).from(orderLines).where(sql`${orderLines.orderId} IN (SELECT value FROM json_each(${JSON.stringify(summaries.map(order => order.id))}))`).orderBy(asc(orderLines.id));
+  const grouped = new Map<number, OrderView["lines"]>();
+  for (const { orderId, ...line } of lines) {
+    const group = grouped.get(orderId) ?? [];
+    group.push(line);
+    grouped.set(orderId, group);
+  }
+  return summaries.map(order => ({ ...order, lines: grouped.get(order.id) ?? [] }));
 }
