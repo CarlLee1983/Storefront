@@ -50,10 +50,12 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await product.getByRole("button", { name: "加入購物車" }).click();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await page.goto("/cart");
-  const row = page.getByRole("row").filter({ hasText: name });
+  const row = page.getByRole("listitem").filter({ hasText: name });
   await expect(row.getByRole("img")).toHaveAttribute("src", source!);
   await row.getByLabel(`${name} 數量`).fill("2");
   await row.getByLabel(`${name} 數量`).press("Tab");
+  await expect(row.getByRole("button", { name: `增加${name}數量` })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(row.getByRole("button", { name: "移除" })).toBeFocused();
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   await page.reload();

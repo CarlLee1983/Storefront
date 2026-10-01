@@ -1,9 +1,8 @@
 ---
-import { MAX_QUANTITY } from "../cart/cart";
 import CartToast from "./CartToast.astro";
 
-// 商品項目的形狀就是 App `listProducts` 回傳的商品項目（含封面），首頁與分類頁共用
-type ProductSummary = Extract<Awaited<ReturnType<Env["APP"]["listProducts"]>>, { ok: true }>["data"]["items"][number];
+// 商品項目的形狀與 App 前台商品項目（含封面）相同；詳情頁的 related、首頁與分類頁共用
+type ProductSummary = Extract<Awaited<ReturnType<Env["APP"]["getProduct"]>>, { ok: true }>["data"]["related"][number];
 
 interface Props {
   products: ProductSummary[];
@@ -16,27 +15,29 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   {products.map((p, index) => (
     <li class:list={["product-card", { "is-sold-out": !p.purchasable }]}>
       <a class="product-link" href={`/products/${p.id}`}>
-      {p.cover && <img
-        src={`/images/${p.cover.variants[0]!.key}`}
-        srcset={p.cover.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
-        sizes="(min-width: 64rem) 22rem, (min-width: 40rem) 45vw, 90vw"
-        width={p.cover.variants.at(-1)!.width}
-        height={p.cover.variants.at(-1)!.height}
-        alt={`${p.name}的封面`}
-        loading={index === 0 ? "eager" : "lazy"}
-      />}
-      <h2>{p.name}</h2>
+        <span class="cover-frame">
+          {p.cover
+            ? <img
+                src={`/images/${p.cover.variants[0]!.key}`}
+                srcset={p.cover.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
+                sizes="(min-width: 56.25rem) 18rem, 50vw"
+                width={p.cover.variants.at(-1)!.width}
+                height={p.cover.variants.at(-1)!.height}
+                alt={`${p.name}的封面`}
+                loading={index === 0 ? "eager" : "lazy"}
+              />
+            : <span class="cover-placeholder">暫無圖片</span>}
+          {!p.purchasable && <span class="sold-out">已售完</span>}
+        </span>
+        <h2>{p.name}</h2>
       </a>
-      <p class="description">{p.description}</p>
       <p class="price">NT$ {priceFormat.format(p.priceTwd)}</p>
-      <p class:list={["availability", { "sold-out": !p.purchasable }]}>{p.purchasable ? "可購買" : "已售完"}</p>
       {p.purchasable && (
         <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
-          <label>
-            數量
-            <input type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" required />
-          </label>
-          <button type="submit">加入購物車</button>
+          <input type="hidden" name="quantity" value="1" />
+          <button type="submit" class="add-button" aria-label={`加入購物車：${p.name}`}>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 4h2l2.4 11h11.2L21 7H7" fill="none" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="19" r="1.5" fill="currentColor" /><circle cx="17" cy="19" r="1.5" fill="currentColor" /></svg>
+          </button>
           <CartToast />
         </form>
       )}
@@ -71,16 +72,20 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 </script>
 
 <style>
-  .product-card { display: flex; flex-direction: column; gap: var(--space-2); }
-  .product-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-sm); background: var(--color-bg); }
-  .product-card h2 { margin-block: var(--space-2) 0; }
-  .product-card p { margin: 0; }
-  .description { color: var(--color-muted); }
-  .price { font-size: var(--text-lg); font-weight: 700; }
-  .availability { font-size: var(--text-sm); color: var(--color-muted); }
-  .sold-out { align-self: start; padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); background: var(--color-bg); border: 1px solid var(--color-border); font-weight: 700; }
-  .is-sold-out img { filter: grayscale(1); }
-  .add-to-cart { margin-top: auto; display: grid; grid-template-columns: minmax(4rem, 1fr) auto; gap: var(--space-3); align-items: end; }
-  .add-to-cart label { margin: 0; }
-  .add-to-cart button { min-height: 44px; }
+  /* 1px 格線拼貼：相鄰卡片的 1px 邊框以負邊距疊合；最後一排不滿時，空格不會露出底色 */
+  .product-list { list-style: none; margin: 0; padding: 0 1px 1px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (min-width: 56.25rem) { .product-list { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .product-card { position: relative; min-width: 0; display: flex; flex-direction: column; margin: 0 -1px -1px 0; background: var(--color-surface); border: 1px solid var(--color-border); }
+  .product-link { color: var(--color-text); text-decoration: none; }
+  .product-link:hover h2 { text-decoration: underline; text-underline-offset: .2em; }
+  .cover-frame { position: relative; display: block; aspect-ratio: 1; background: var(--color-panel); }
+  .cover-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .cover-placeholder { display: grid; place-items: center; width: 100%; height: 100%; font-size: var(--text-sm); color: var(--color-muted); }
+  .is-sold-out img { opacity: .55; }
+  .sold-out { position: absolute; top: var(--space-3); left: var(--space-3); padding: var(--space-1) var(--space-2); font-size: var(--text-sm); font-weight: 700; line-height: 1.4; color: var(--color-on-inverse); background: var(--color-inverse); }
+  .product-card h2 { margin: var(--space-3) var(--space-3) 0; font-size: var(--text-base); font-weight: 400; line-height: 1.4; }
+  .price { margin: var(--space-1) var(--space-3) var(--space-4); padding-right: calc(44px + var(--space-3)); font-weight: 700; }
+  .add-to-cart { margin: 0; }
+  .add-button { position: absolute; right: var(--space-3); bottom: var(--space-3); display: grid; place-items: center; width: 44px; padding: 0; color: var(--color-text); background: var(--color-panel); border-color: var(--color-control-border); }
+  .add-button:hover { color: var(--color-on-inverse); background: var(--color-inverse); border-color: var(--color-inverse); }
 </style>

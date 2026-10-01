@@ -9,8 +9,10 @@ interface Props {
   title: string;
   admin?: boolean;
   noindex?: boolean;
+  /** 頁面自己在版面中放置 h1（`title` 仍用於 <title>）。 */
+  hideTitle?: boolean;
 }
-const { title, admin = false, noindex = false } = Astro.props;
+const { title, admin = false, noindex = false, hideTitle = false } = Astro.props;
 // 管理後台由 Cloudflare Access 保護，與顧客登入無關，不顯示登入狀態
 const customer = admin ? null : Astro.locals.customer;
 // 後台頁不查分類；顧客頁的分類 RPC 失敗時當作沒有分類
@@ -79,7 +81,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
     }
     <p id="sign-out-error" class="error" role="alert" hidden></p>
     <main id="main-content" tabindex="-1">
-      <h1>{title}</h1>
+      {!hideTitle && <h1>{title}</h1>}
       <slot />
     </main>
     <footer class="site-footer">

@@ -147,17 +147,18 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await page.keyboard.press("Home");
   await expect(thumbs.first()).toHaveAttribute("aria-current", "true");
   await audit(page, testInfo, "populated-detail-mobile");
-  const add = page.getByRole("button", { name: "加入購物車", exact: true });
+  const information = page.getByRole("region", { name: "商品資訊" });
+  const add = information.getByRole("button", { name: "加入購物車", exact: true });
   await tabTo(page, add);
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  await expect(information.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
   await expect(add).toBeFocused();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await testInfo.attach("keyboard-add-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 
   await page.goto("/cart");
-  await expect(page.getByRole("row", { name: new RegExp(PRODUCT.name) })).toBeVisible();
-  await expect(page.getByText(/總金額：NT\$ 1,200/)).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: PRODUCT.name })).toBeVisible();
+  await expect(page.locator("#cart-total")).toHaveText("1,200");
   await expect(page.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("src", coverSrc);
   await audit(page, testInfo, "populated-cart-mobile");
   await page.getByRole("link", { name: "前往結帳" }).click();

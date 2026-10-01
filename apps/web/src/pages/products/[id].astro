@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { MAX_QUANTITY } from "../../cart/cart";
 import CartToast from "../../components/CartToast.astro";
 import ProductGallery from "../../components/ProductGallery.astro";
+import ProductList from "../../components/ProductList.astro";
 import Layout from "../../layouts/Layout.astro";
 
 export const prerender = false;
@@ -12,22 +13,40 @@ const product = result.ok ? result.data : null;
 if (!product) Astro.response.status = 404;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
-<Layout title={product?.name ?? "找不到頁面"} noindex={!product}>
+<Layout title={product?.name ?? "找不到頁面"} noindex={!product} hideTitle={!!product}>
   {product ? <>
-    <p><a href="/">回商品列表</a></p>
+    <nav class="breadcrumb" aria-label="麵包屑">
+      <ol>
+        <li><a href="/products">全部商品</a></li>
+        {product.category && <li><a href={`/categories/${product.category.slug}`}>{product.category.name}</a></li>}
+        <li><span aria-current="page">{product.name}</span></li>
+      </ol>
+    </nav>
     <div class="product-detail">
       <ProductGallery name={product.name} images={product.images} />
       <section class="product-information" aria-label="商品資訊">
-        <p class="description">{product.description}</p>
+        {product.category && <p class="eyebrow">{product.category.name}</p>}
+        <h1>{product.name}</h1>
         <p class="price">NT$ {priceFormat.format(product.priceTwd)}</p>
-        <p class="availability">{product.purchasable ? "可購買" : "已售完"}</p>
-        {product.purchasable && <form class="add-to-cart" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
-          <label>數量<input type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" required /></label>
-          <button type="submit">加入購物車</button>
+        <p class="availability">{product.purchasable ? "現貨供應中" : "已售完"}</p>
+        <p class="description">{product.description}</p>
+        {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)} data-max-quantity={MAX_QUANTITY}>
+          <label for="buy-quantity">數量</label>
+          <div class="stepper">
+            <button type="button" class="stepper-button" data-step="-1" aria-label="減少數量">−</button>
+            <input id="buy-quantity" type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" inputmode="numeric" required />
+            <button type="button" class="stepper-button" data-step="1" aria-label="增加數量">＋</button>
+          </div>
+          <button type="submit" class="buy-button">加入購物車<span aria-hidden="true"> →</span></button>
           <CartToast />
         </form>}
+        <p class="policy">含稅、免運。付款後無法自行取消，商品問題請聯繫客服。</p>
       </section>
     </div>
+    {product.related.length > 0 && <section class="related" aria-labelledby="related-heading">
+      <h2 id="related-heading">同分類的其他商品</h2>
+      <ProductList products={product.related} />
+    </section>}
   </> : <><p>這個商品不存在，或已經下架。</p><p><a href="/">回首頁</a></p></>}
 </Layout>
 <script>
@@ -37,23 +56,53 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   import { addFeedback } from "../../cart/feedback";
   import { storageOf } from "../../cart/storage";
   import { updateCart } from "../../cart/store";
-  const form = document.querySelector<HTMLFormElement>("form.add-to-cart");
-  form?.addEventListener("submit", event => {
-    event.preventDefault();
-    const item = { productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
-    const quantity = Number(new FormData(form).get("quantity"));
-    showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
-      updateCart(storageOf(window), window, current => addToCart(current, item, quantity))));
-  });
+  const form = document.querySelector<HTMLFormElement>("form.buy-form");
+  if (form) {
+    const input = form.querySelector<HTMLInputElement>("input[name=quantity]")!;
+    const maxQuantity = Number(form.dataset.maxQuantity);
+    // 加減按鈕只在 1 到上限之間調整；輸入框內容無效（空白、小數）時從 1 起算
+    for (const button of form.querySelectorAll<HTMLButtonElement>("[data-step]")) {
+      button.addEventListener("click", () => {
+        const current = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 1;
+        input.value = String(Math.min(maxQuantity, Math.max(1, current + Number(button.dataset.step))));
+      });
+    }
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const item = { productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
+      const quantity = Number(new FormData(form).get("quantity"));
+      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
+        updateCart(storageOf(window), window, current => addToCart(current, item, quantity))));
+    });
+  }
 </script>
 <style>
-  .product-detail { display: grid; gap: var(--space-6); }
+  .breadcrumb { margin-bottom: var(--space-4); font-size: var(--text-sm); }
+  .breadcrumb ol { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .breadcrumb li + li::before { content: "/"; margin-right: var(--space-2); color: var(--color-muted); }
+  .breadcrumb a, .breadcrumb [aria-current] { color: var(--color-muted); }
+  .breadcrumb [aria-current] { text-decoration: none; }
+  .product-detail { display: grid; gap: var(--space-6); align-items: start; }
   .product-information { min-width: 0; }
-  .description { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .price { font-size: var(--text-xl); font-weight: 700; }
-  .availability { color: var(--color-muted); }
-  .add-to-cart { display: grid; grid-template-columns: minmax(4rem, 1fr) auto; gap: var(--space-3); align-items: end; }
-  .add-to-cart label { margin: 0; }
-  .add-to-cart button { min-height: 44px; }
-  @media (min-width: 64rem) { .product-detail { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-8); } }
+  .eyebrow { margin: 0 0 var(--space-2); font-size: var(--text-sm); letter-spacing: .12em; }
+  .product-information h1 { margin: 0 0 var(--space-3); font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1.1; }
+  .price { margin: 0 0 var(--space-2); font-size: var(--text-xl); font-weight: 700; }
+  .availability { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-muted); }
+  .description { margin: 0 0 var(--space-6); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+  .buy-form { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: end; margin-bottom: var(--space-6); }
+  .buy-form label { grid-column: 1 / -1; margin: 0; font-size: var(--text-sm); font-weight: 700; }
+  .stepper { display: flex; border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); }
+  .stepper button, .stepper input { min-height: 48px; border: 0; border-radius: 0; }
+  .stepper-button { width: 44px; padding: 0; color: var(--color-text); background: none; font-size: var(--text-lg); }
+  .stepper-button:hover { background: var(--color-panel); }
+  .stepper input { width: 3.5rem; padding: 0; text-align: center; font-weight: 700; appearance: textfield; -moz-appearance: textfield; }
+  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+  .buy-button { min-height: 48px; font-weight: 700; }
+  .policy { margin: 0; font-size: var(--text-sm); color: var(--color-muted); }
+  .related { margin-top: var(--space-8); }
+  .related h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); letter-spacing: -.02em; }
+  @media (min-width: 56.25rem) {
+    .product-detail { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-8); }
+    .product-information { position: sticky; top: var(--space-4); }
+  }
 </style>
