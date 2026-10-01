@@ -1,0 +1,12 @@
+---
+import ProductListing from "../components/ProductListing.astro";
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = false;
+
+// 特價頁：固定只列上架中且有原價的商品；沒有特價商品時是空狀態（200），不是 404
+---
+
+<Layout title="特價">
+  <ProductListing onSaleOnly />
+</Layout>

@@ -23,6 +23,13 @@ describe("describeFailure", () => {
     });
   });
 
+  it("invalid_compare_at_price 說明原價必須高於售價", () => {
+    expect(describeFailure({ reason: "invalid_compare_at_price" }, "操作失敗")).toEqual({
+      message: "原價必須高於這次儲存後的售價；要結束特價請清空原價",
+      fields: {},
+    });
+  });
+
   it("category_not_empty 說明分類底下還有商品，要先移走", () => {
     expect(describeFailure({ reason: "category_not_empty" }, "操作失敗")).toEqual({
       message: "這個分類底下還有商品（不分上架與否），請先把商品移到其他分類再刪除",

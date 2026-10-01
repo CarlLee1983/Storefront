@@ -33,6 +33,7 @@ const values = {
   name: product?.name ?? "",
   description: product?.description ?? "",
   priceTwd: String(product?.priceTwd ?? ""),
+  compareAtPriceTwd: String(product?.compareAtPriceTwd ?? ""),
   categoryId: product?.category ? String(product.category.id) : "",
   ...submitted,
 };
@@ -63,6 +64,12 @@ const values = {
             <input name="priceTwd" type="number" min="1" step="1" value={values.priceTwd} required />
             {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
           </label>
+          <label>
+            原價（選填）
+            <input name="compareAtPriceTwd" type="number" min="1" step="1" value={values.compareAtPriceTwd} aria-describedby="compare-at-hint" />
+            {failure?.fields.compareAtPriceTwd?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <p id="compare-at-hint"><small>填寫後商品以特價呈現，必須高於售價；清空即結束特價。</small></p>
           {/* 標籤文字用 for 關聯：巢狀在 label 裡的話，所有選項文字都會變成它的名稱 */}
           <label for="category-id">分類</label>
           <select id="category-id" name="categoryId">

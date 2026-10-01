@@ -5,7 +5,7 @@ import AccountLinks from "../components/AccountLinks.astro";
 import CategoryLinks from "../components/CategoryLinks.astro";
 import SearchDialog from "../components/SearchDialog.astro";
 import SearchForm from "../components/SearchForm.astro";
-import { categorySlugFromPath, loadNavCategories } from "../categories/nav";
+import { categorySlugFromPath, loadStorefrontNav } from "../categories/nav";
 
 interface Props {
   title: string;
@@ -17,8 +17,8 @@ interface Props {
 const { title, admin = false, noindex = false, hideTitle = false } = Astro.props;
 // 管理後台由 Cloudflare Access 保護，與顧客登入無關，不顯示登入狀態
 const customer = admin ? null : Astro.locals.customer;
-// 後台頁不查分類；顧客頁的分類 RPC 失敗時當作沒有分類
-const categories = admin ? [] : await loadNavCategories(env.APP);
+// 後台頁不查分類與特價；顧客頁一次 RPC 取得，失敗時當作沒有分類、沒有特價
+const { categories, hasSale } = admin ? { categories: [], hasSale: false } : await loadStorefrontNav(env.APP);
 const currentCategory = categorySlugFromPath(Astro.url.pathname);
 ---
 
@@ -47,6 +47,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
             <nav class="desktop-only" aria-label="主要導覽">
               <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
               <CategoryLinks categories={categories} current={currentCategory} />
+              {hasSale && <a class="sale-link" href="/sale" aria-current={Astro.url.pathname === "/sale" ? "page" : undefined}>特價</a>}
             </nav>
             <div class="tools">
               <SearchDialog />
@@ -79,6 +80,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
           <nav class="drawer-nav" aria-label="行動版導覽">
             <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
             <CategoryLinks categories={categories} current={currentCategory} showDescription />
+            {hasSale && <a class="sale-link" href="/sale" aria-current={Astro.url.pathname === "/sale" ? "page" : undefined}>特價</a>}
           </nav>
           <div class="drawer-foot">
             <AccountLinks customer={customer} url={Astro.url} />

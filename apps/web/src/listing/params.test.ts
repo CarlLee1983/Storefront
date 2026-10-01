@@ -5,11 +5,11 @@ const parse = (query: string) => parseListingParams(new URLSearchParams(query));
 
 describe("parseListingParams", () => {
   it("沒有參數時是預設值：新上架、不篩選、第 1 頁", () => {
-    expect(parse("")).toEqual({ sort: "new", inStock: false, page: 1 });
+    expect(parse("")).toEqual({ sort: "new", inStock: false, onSale: false, page: 1 });
   });
 
   it("解析合法的排序、只看有貨與頁數", () => {
-    expect(parse("sort=price-asc&instock=1&page=3")).toEqual({ sort: "price-asc", inStock: true, page: 3 });
+    expect(parse("sort=price-asc&instock=1&page=3")).toEqual({ sort: "price-asc", inStock: true, onSale: false, page: 3 });
     expect(parse("sort=price-desc")).toMatchObject({ sort: "price-desc" });
     expect(parse("page=20")).toMatchObject({ page: 20 });
   });
@@ -20,6 +20,14 @@ describe("parseListingParams", () => {
 
   it.each(["0", "1", "true", "yes", ""])("只有 instock=1 才算開啟，%j 不算", (value) => {
     expect(parse(`instock=${value}`).inStock).toBe(value === "1");
+  });
+
+  it.each(["0", "1", "true", "yes", ""])("只有 sale=1 才算只看特價，%j 不算", (value) => {
+    expect(parse(`sale=${value}`).onSale).toBe(value === "1");
+  });
+
+  it("解析只看特價並與其他條件並存", () => {
+    expect(parse("sale=1&instock=1&sort=price-desc")).toEqual({ sort: "price-desc", inStock: true, onSale: true, page: 1 });
   });
 
   it.each(["0", "-1", "21", "1.5", "abc", "", "2x", "1e1"])("非法的頁數 %j 回第 1 頁", (page) => {
@@ -54,6 +62,17 @@ describe("listingHref", () => {
   it("切換只看有貨：寫入或移除 instock 並重置頁數", () => {
     expect(listingHref("/products", params("page=2"), { inStock: true })).toBe("/products?instock=1");
     expect(listingHref("/products", params("instock=1&page=2"), { inStock: false })).toBe("/products");
+  });
+
+  it("切換只看特價：寫入或移除 sale 並重置頁數", () => {
+    expect(listingHref("/products", params("page=2"), { onSale: true })).toBe("/products?sale=1");
+    expect(listingHref("/products", params("sale=1&page=2"), { onSale: false })).toBe("/products");
+  });
+
+  it("切換排序、只看有貨與載入更多時保留目前的只看特價", () => {
+    expect(listingHref("/products", params("sale=1"), { sort: "price-desc" })).toBe("/products?sort=price-desc&sale=1");
+    expect(listingHref("/products", params("sale=1"), { inStock: true })).toBe("/products?instock=1&sale=1");
+    expect(listingHref("/products", params("sale=1&instock=1"), { page: 2 })).toBe("/products?instock=1&sale=1&page=2");
   });
 
   it("切換排序時保留目前的只看有貨，切換只看有貨時保留目前的排序", () => {

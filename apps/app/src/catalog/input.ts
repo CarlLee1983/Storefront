@@ -10,6 +10,7 @@ export const listProductsInput = z.object({
   // 先去掉前後空白再檢查長度；空字串視同沒有帶
   q: z.string({ error: "搜尋關鍵字必須是文字" }).trim().max(MAX_QUERY_LENGTH, `搜尋關鍵字不可超過 ${MAX_QUERY_LENGTH} 字`)
     .transform((value) => value === "" ? undefined : value).optional(),
+  onSale: z.boolean({ error: "只看特價必須是布林值" }).optional(),
   sort: z.enum(PRODUCT_SORTS, { error: "排序方式不正確" }).default(DEFAULT_SORT),
   page: wholeNumber("頁數").min(1, "頁數至少為 1").max(MAX_PAGE, `頁數不可超過 ${MAX_PAGE}`).default(1),
 });

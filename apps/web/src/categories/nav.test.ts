@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { categorySlugFromPath, loadNavCategories } from "./nav";
+import { categorySlugFromPath, loadStorefrontNav } from "./nav";
 
 describe("categorySlugFromPath", () => {
   it.each([
@@ -15,16 +15,17 @@ describe("categorySlugFromPath", () => {
   });
 });
 
-describe("loadNavCategories", () => {
+describe("loadStorefrontNav", () => {
   const living = { id: 1, slug: "living", name: "客廳", description: "沙發" };
 
-  it("RPC 成功時回傳分類", async () => {
-    expect(await loadNavCategories({ listCategories: async () => ({ ok: true, data: [living] }) })).toEqual([living]);
+  it("RPC 成功時回傳分類與特價入口", async () => {
+    expect(await loadStorefrontNav({ getStorefrontNav: async () => ({ ok: true, data: { categories: [living], hasSale: true } }) }))
+      .toEqual({ categories: [living], hasSale: true });
   });
 
-  it("RPC 丟出例外時當作沒有分類，不讓頁面失敗", async () => {
+  it("RPC 丟出例外時當作沒有分類、沒有特價，不讓頁面失敗", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await loadNavCategories({ listCategories: async () => { throw new Error("binding down"); } })).toEqual([]);
+    expect(await loadStorefrontNav({ getStorefrontNav: async () => { throw new Error("binding down"); } })).toEqual({ categories: [], hasSale: false });
     expect(error).toHaveBeenCalledOnce();
     error.mockRestore();
   });

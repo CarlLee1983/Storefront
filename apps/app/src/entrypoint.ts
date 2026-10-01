@@ -108,6 +108,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#catalog().listProducts(input);
   }
 
+  getStorefrontNav() {
+    return this.#catalog().getStorefrontNav();
+  }
+
   listCategories() {
     return this.#catalog().listCategories();
   }
