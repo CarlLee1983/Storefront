@@ -160,6 +160,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().createCategory(jwt, input);
   }
 
+  updateCategory(jwt: string, input: unknown) {
+    return this.#admin().updateCategory(jwt, input);
+  }
+
+  setCategoryImage(jwt: string, input: unknown) {
+    return this.#admin().setCategoryImage(jwt, input);
+  }
+
+  deleteCategory(jwt: string, input: unknown) {
+    return this.#admin().deleteCategory(jwt, input);
+  }
+
   listCategoriesForAdmin(jwt: string) {
     return this.#admin().listCategoriesForAdmin(jwt);
   }

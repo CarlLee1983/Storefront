@@ -72,7 +72,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await nav.getByRole("link", { name: LIVING.name }).click();
   await expect(page).toHaveURL(/\/categories\/e2e-living$/);
   await expect(page.getByRole("heading", { level: 1, name: LIVING.name })).toBeVisible();
-  await expect(page.getByText(LIVING.description)).toBeVisible();
+  await expect(page.getByRole("main").getByText(LIVING.description)).toBeVisible();
   await expect(page.getByText("共 1 件商品")).toBeVisible();
   await expect(page.getByText("已顯示 1 / 1 件")).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();

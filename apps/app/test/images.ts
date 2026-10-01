@@ -1,4 +1,6 @@
 import { env, exports } from "cloudflare:workers";
+import { vi } from "vitest";
+import type { ProductImageBucket } from "../src/images/upload";
 import { assignDefaultCategory } from "./categories";
 
 /** Real, static 4:3 WebP fixtures generated with Pillow. */
@@ -36,4 +38,14 @@ export async function seedImageAndList(id: number) {
     env.DB.prepare("INSERT OR IGNORE INTO categories (slug, name, description) VALUES ('seed', '種子分類', '測試用')"),
     env.DB.prepare("UPDATE products SET listed = 1, listed_at = 0, category_id = (SELECT id FROM categories WHERE slug = 'seed') WHERE id = ?").bind(id),
   ]);
+}
+
+/** 記憶體內的假 R2：記下每次寫入與刪除，給需要驗證 R2 行為（清理、失敗）的測試用。 */
+export function fakeBucket() {
+  const objects = new Map<string, Uint8Array>();
+  const bucket = {
+    put: vi.fn(async (key: string, bytes: Uint8Array) => { objects.set(key, bytes); return {}; }),
+    delete: vi.fn(async (keys: string | string[]) => { for (const key of typeof keys === "string" ? [keys] : keys) objects.delete(key); }),
+  };
+  return { objects, bucket, serviceBucket: bucket as unknown as ProductImageBucket };
 }

@@ -64,6 +64,7 @@ button.icon-button:hover { background: var(--color-panel); }
 .menu-drawer::backdrop { background: rgb(20 20 20 / .4); }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); }
 .drawer-nav { display: grid; }
+.drawer-nav .category-description { display: block; margin-top: var(--space-1); font-size: var(--text-sm); font-weight: 400; letter-spacing: 0; color: var(--color-muted); }
 .drawer-nav a { padding: var(--space-4); border-bottom: 1px solid var(--color-border); font-size: var(--text-xl); font-weight: 800; letter-spacing: -.01em; text-decoration: none; }
 .drawer-foot { padding: var(--space-4); }
 .site-footer { margin-top: auto; color: var(--color-on-inverse); background: var(--color-inverse); }

@@ -13,6 +13,7 @@ const RPC_METHODS = [
   "confirmPayment",
   "createCategory",
   "createProduct",
+  "deleteCategory",
   "deleteProductImage",
   "fetch",
   "getCategory",
@@ -30,9 +31,11 @@ const RPC_METHODS = [
   "relistProduct",
   "reorderProductImages",
   "scheduled",
+  "setCategoryImage",
   "shipOrder",
   "startPayment",
   "unlistProduct",
+  "updateCategory",
   "updateProduct",
 ];
 

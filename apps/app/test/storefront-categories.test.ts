@@ -34,8 +34,8 @@ describe("前台分類清單", () => {
     expect(await app.listCategories()).toEqual({
       ok: true,
       data: [
-        { id: living, slug: "living", name: "客廳", description: "沙發與燈" },
-        { id: dining, slug: "dining", name: "餐廳", description: "餐桌與餐具" },
+        { id: living, slug: "living", name: "客廳", description: "沙發與燈", image: null },
+        { id: dining, slug: "dining", name: "餐廳", description: "餐桌與餐具", image: null },
       ],
     });
   });

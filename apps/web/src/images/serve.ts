@@ -2,7 +2,7 @@
 export interface ImageBucket {
   get(key: string): Promise<{ body: ReadableStream<Uint8Array>; httpEtag: string; size: number } | null>;
 }
-export const IMAGE_KEY = /^products\/[1-9][0-9]*\/[0-9a-f-]{36}\/[0-9a-f]{64}\.webp$/;
+export const IMAGE_KEY = /^(?:products|categories)\/[1-9][0-9]*\/[0-9a-f-]{36}\/[0-9a-f]{64}\.webp$/;
 export async function serveImage(bucket: ImageBucket, key: string | undefined): Promise<Response> {
   if (!key || !IMAGE_KEY.test(key)) return new Response("Not Found", { status: 404 });
   const image = await bucket.get(key);

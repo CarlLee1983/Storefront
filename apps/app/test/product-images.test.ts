@@ -7,7 +7,7 @@ import type { ProductImageBucket } from "../src/images/upload";
 import { mintAccessJwt } from "./access";
 import { assignDefaultCategory } from "./categories";
 import { resetDb } from "./db";
-import { imageVariants } from "./images";
+import { fakeBucket, imageVariants } from "./images";
 
 const app = exports.default;
 const access = () => ({ teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON });
@@ -15,14 +15,6 @@ async function createProduct(jwt: string) {
   const result = await app.createProduct(jwt, { name: "商品圖片測試", description: "", priceTwd: 100 });
   if (!result.ok) throw new Error("create failed");
   return result.data.id;
-}
-function fakeBucket() {
-  const objects = new Map<string, Uint8Array>();
-  const bucket = {
-    put: vi.fn(async (key: string, bytes: Uint8Array) => { objects.set(key, bytes); return {}; }),
-    delete: vi.fn(async (keys: string | string[]) => { for (const key of typeof keys === "string" ? [keys] : keys) objects.delete(key); }),
-  };
-  return { objects, bucket, serviceBucket: bucket as unknown as ProductImageBucket };
 }
 function failInsert() {
   return { prepare: vi.fn((sql: string) => sql.includes("INSERT INTO product_images")

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryFormToInput, categoryIdFromSelect } from "./category-form";
+import { categoryFormToInput, categoryIdFromSelect, categoryUpdateFormToInput, parseCategoryId } from "./category-form";
 
 const form = (values: Record<string, string>) => {
   const data = new FormData();
@@ -33,5 +33,26 @@ describe("categoryIdFromSelect", () => {
 
   it("不是數字的值轉成 NaN，由 App 回報錯誤而不是默默清空", () => {
     expect(categoryIdFromSelect("abc")).toBeNaN();
+  });
+});
+
+describe("categoryUpdateFormToInput", () => {
+  it("只帶編號、名稱與說明；表單裡的代稱欄位不會被轉進輸入", () => {
+    expect(categoryUpdateFormToInput(form({ categoryName: "起居室", categoryDescription: "沙發", categorySlug: "hacked" }), 3)).toEqual({
+      id: 3,
+      name: "起居室",
+      description: "沙發",
+    });
+  });
+
+  it("缺少的欄位是空字串，由 App 回報錯誤", () => {
+    expect(categoryUpdateFormToInput(form({}), 3)).toEqual({ id: 3, name: "", description: "" });
+  });
+});
+
+describe("parseCategoryId", () => {
+  it("正整數字串轉數字，其餘回傳 null", () => {
+    expect(parseCategoryId("12")).toBe(12);
+    for (const value of [undefined, "", "0", "-1", "1.5", "abc", "01"]) expect(parseCategoryId(value)).toBeNull();
   });
 });

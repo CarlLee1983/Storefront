@@ -119,6 +119,13 @@ describe("describeFailure", () => {
     });
   });
 
+  it("category_not_empty 說明分類底下還有商品，要先移走", () => {
+    expect(describeFailure({ reason: "category_not_empty" }, "操作失敗")).toEqual({
+      message: "這個分類底下還有商品（不分上架與否），請先把商品移到其他分類再刪除",
+      fields: {},
+    });
+  });
+
   it("其他原因使用呼叫端給的預設訊息，欄位為空", () => {
     expect(describeFailure({ reason: "boom" }, "新增商品失敗，請稍後再試")).toEqual({
       message: "新增商品失敗，請稍後再試",

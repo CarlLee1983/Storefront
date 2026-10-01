@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 
-/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：付款、訂單明細、訂單先於商品與顧客，商品先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
+/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：付款、訂單明細、訂單先於商品與顧客，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
 export async function resetDb(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM payment_events"),
@@ -10,6 +10,7 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM product_images"),
     env.DB.prepare("DELETE FROM product_image_deletions"),
     env.DB.prepare("DELETE FROM products"),
+    env.DB.prepare("DELETE FROM category_images"),
     env.DB.prepare("DELETE FROM categories"),
     env.DB.prepare('DELETE FROM "user"'),
     env.DB.prepare("DELETE FROM verification"),

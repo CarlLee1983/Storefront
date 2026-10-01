@@ -1,12 +1,16 @@
 ---
 interface Props {
-  categories: Array<{ slug: string; name: string }>;
+  categories: Array<{ slug: string; name: string; description: string }>;
   /** 目前所在分類的代稱；不在分類頁為 null。 */
   current: string | null;
+  /** 在名稱下方顯示一行說明（手機抽屜）；桌機導覽列只顯示名稱。 */
+  showDescription?: boolean;
 }
-const { categories, current } = Astro.props;
+const { categories, current, showDescription = false } = Astro.props;
 ---
 
 {categories.map((category) => (
-  <a href={`/categories/${category.slug}`} aria-current={category.slug === current ? "page" : undefined}>{category.name}</a>
+  <a href={`/categories/${category.slug}`} aria-current={category.slug === current ? "page" : undefined}>
+    {showDescription ? <><span>{category.name}</span><small class="category-description">{category.description}</small></> : category.name}
+  </a>
 ))}

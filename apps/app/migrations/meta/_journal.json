@@ -71,6 +71,13 @@
       "when": 1790851334388,
       "tag": "0009_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790852870061,
+      "tag": "0010_free_centennial",
+      "breakpoints": true
     }
   ]
 }

@@ -129,6 +129,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           )
         }
         <h2>分類</h2>
+        <p><a href="/admin/categories">管理分類</a>（修改名稱與說明、分類圖片、刪除）</p>
         {categories?.ok && categories.data.length === 0 && <p>目前沒有分類。商品需要先有分類才能上架。</p>}
         {
           categories?.ok && categories.data.length > 0 && (

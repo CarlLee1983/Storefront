@@ -76,6 +76,7 @@ export function describeFailure(
     image_upload_failed: "商品圖片上傳失敗，請稍後再試",
     no_category: "請先選擇商品分類：上架與重新上架都需要分類，上架中的商品也不能改成未分類",
     category_not_found: "找不到這個分類",
+    category_not_empty: "這個分類底下還有商品（不分上架與否），請先把商品移到其他分類再刪除",
     invalid_slug: `代稱只能使用小寫英文、數字與連字號（不可以連字號開頭或結尾），且不可超過 ${MAX_SLUG_LENGTH} 個字元`,
     slug_taken: "這個代稱已被使用，請換一個",
     insufficient_stock: "庫存不足：調整後的可售數量不可為負",
