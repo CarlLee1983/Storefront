@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
-import { featureProduct } from "../harness/admin-featured";
+import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { BASE_URL } from "../harness/constants";
 
 async function createProduct(admin: Page, name: string, stock: number) {
@@ -40,6 +40,7 @@ async function createProduct(admin: Page, name: string, stock: number) {
 
 test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效果", async ({ browser, page }, testInfo) => {
   test.setTimeout(90_000);
+  expectFeaturedWithinBudget("toast", 2);
   const adminContext = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await adminContext.newPage();

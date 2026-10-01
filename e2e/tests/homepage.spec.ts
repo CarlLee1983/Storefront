@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { featureProduct } from "../harness/admin-featured";
+import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { featureProducts, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 
@@ -13,9 +13,10 @@ const SEED_PREFIXES = ["首頁精選", "首頁補位"];
 
 // 精選與「最新上架」都是全域狀態。這個 spec 與 homepage-toast.spec.ts 在獨立的 home project 裡、等其他 spec 跑完才執行
 //（見 playwright.config.ts）：它們上架的商品會擠掉 /products 第一頁，不能與找該頁商品的 spec 並行。
-// 兩支 spec 合計只標 4 件精選（甲、乙與 toast 的兩件），首頁精選區恰好放得下，所以不論兩支並行與否，斷言都以自己建立的商品為準。
+// 精選名額由 harness/admin-featured.ts 的 FEATURED_BUDGET 固定（兩支 spec 合計不超過首頁的 4 件），所以不論兩支並行與否，斷言都以自己標的商品為準。
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
+  expectFeaturedWithinBudget("homepage", [ALPHA, BETA].length);
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const [alpha] = await seedListedProducts(context, HOME, [ALPHA, BETA, FILLER]);
@@ -77,10 +78,11 @@ test("精選卡片可以直接加入購物車，顯示 toast 並更新件數", a
 
 test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；可用鍵盤切換與暫停", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  await page.clock.install();
   await page.goto("/");
   const carousel = hero(page);
   await expect(carousel).toHaveAttribute("aria-roledescription", "carousel");
-  const slides = carousel.getByRole("group");
+  const slides = carousel.locator("[aria-roledescription=slide]");
   await expect(slides).toHaveCount(3);
   await expect(slides.first()).toHaveAttribute("aria-roledescription", "slide");
   await expect(slides.nth(1)).toHaveAttribute("aria-label", "第 2 張，共 3 張");
@@ -96,9 +98,15 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await expect(carousel.getByRole("link", { name: "開始選購" }).first()).toHaveAttribute("href", "/products");
 
   await expect(heroStatus(page)).toHaveText("1 / 3");
+  // 只有目前這張可聚焦；軌道本身不是 tab stop；切換後 inert 跟著換
+  await expect(slides.nth(0)).not.toHaveJSProperty("inert", true);
+  await expect(slides.nth(1)).toHaveJSProperty("inert", true);
+  await expect(carousel.locator("#hero-track")).not.toHaveAttribute("tabindex", /.*/);
   await carousel.getByRole("button", { name: "下一張" }).focus();
   await page.keyboard.press("Enter");
   await expect(heroStatus(page)).toHaveText("2 / 3");
+  await expect(slides.nth(0)).toHaveJSProperty("inert", true);
+  await expect(slides.nth(1)).not.toHaveJSProperty("inert", true);
   await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => Math.round(track.scrollLeft / track.clientWidth))).toBe(1);
   await carousel.getByRole("button", { name: "上一張" }).focus();
   await page.keyboard.press("Enter");
@@ -113,7 +121,7 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await expect(carousel.getByRole("button", { name: "播放自動輪播" })).toBeVisible();
   await page.mouse.move(5, 5);
   await page.locator("#main-content").focus();
-  await page.waitForTimeout(7000);
+  await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("3 / 3");
 
   // 播放：焦點與滑鼠都離開輪播後，6 秒內自動換到下一張（第 3 張接回第 1 張）
@@ -121,29 +129,32 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await page.keyboard.press("Enter");
   await expect(carousel.getByRole("button", { name: "暫停自動輪播" })).toBeVisible();
   await page.locator("#main-content").focus();
-  await expect(heroStatus(page)).toHaveText("1 / 3", { timeout: 9000 });
+  await page.clock.fastForward(6000);
+  await expect(heroStatus(page)).toHaveText("1 / 3");
 });
 
 test("主視覺：焦點或滑鼠在輪播內時暫停自動輪播", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  await page.clock.install();
   await page.goto("/");
   const carousel = hero(page);
   await carousel.getByRole("button", { name: "下一張" }).focus();
-  await page.waitForTimeout(7000);
+  await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("1 / 3");
   await page.locator("#main-content").focus();
   const box = (await carousel.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
-  await page.waitForTimeout(7000);
+  await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("1 / 3");
 });
 
 test("減少動態效果時主視覺不自動輪播、不顯示暫停按鈕", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.install();
   await page.goto("/");
   const carousel = hero(page);
   await expect(heroStatus(page)).toHaveText("1 / 3");
-  await page.waitForTimeout(7000);
+  await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("1 / 3");
   expect(await carousel.locator("#hero-track").evaluate((track) => track.scrollLeft)).toBe(0);
   await expect(carousel.getByRole("button", { name: /自動輪播/ })).toBeHidden();
@@ -160,6 +171,12 @@ test.describe("沒有 JavaScript", () => {
     await page.goto("/");
     const carousel = hero(page);
     await expect(carousel.locator("#hero-controls")).toBeHidden();
+    // 軌道可用鍵盤聚焦捲動，有名稱
+    const track = carousel.getByRole("group", { name: "主視覺投影片" });
+    await expect(track).toHaveAttribute("tabindex", "0");
+    await track.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => track.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
     await expect(carousel.getByRole("heading", { level: 2 }).first()).toBeVisible();
     expect(await carousel.locator("#hero-track").evaluate((track) => track.scrollWidth > track.clientWidth)).toBe(true);
   });

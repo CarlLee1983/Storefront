@@ -39,6 +39,10 @@ export function parseProductId(value: string | undefined): number | null {
   return value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) : null;
 }
 
+/** 清單上精選切換表單的 intent；後台頁面的表單與儲存後的提示也用同一組值。 */
+export const FEATURE_INTENT = "feature";
+export const UNFEATURE_INTENT = "unfeature";
+
 export type ListingAction = "unlist" | "relist";
 
 export type ProductFormDispatch =
@@ -60,7 +64,7 @@ export function dispatchProductForm(form: FormData): ProductFormDispatch {
   const id = parseProductId(toText(form.get("id")));
   if (id === null) return { kind: "invalid" };
   if (intent === "adjust-stock") return { kind: "stock", input: stockAdjustFormToInput(form, id) };
-  if (intent === "feature" || intent === "unfeature") return { kind: "featured", featured: intent === "feature", id };
+  if (intent === FEATURE_INTENT || intent === UNFEATURE_INTENT) return { kind: "featured", featured: intent === FEATURE_INTENT, id };
   if (intent !== "unlist" && intent !== "relist") return { kind: "invalid" };
   return { kind: "listing", action: intent, id };
 }

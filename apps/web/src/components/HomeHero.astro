@@ -2,12 +2,13 @@
 import { HERO_SLIDES, imageSrc, imageSrcset } from "../home/content";
 
 // 主視覺輪播（WAI-ARIA carousel 模式）。沒有 JS 時是一條可捲動的橫向軌道，顯示第一張；
-// 控制列（上一張、下一張、暫停、張數）由腳本啟用後才出現。
+// 控制列（上一張、下一張、暫停、張數）由腳本啟用後才出現；沒有 JS 時軌道本身可聚焦，用方向鍵捲動，
+// 啟用後改由按鈕切換，軌道就不再是 tab stop。
 const count = HERO_SLIDES.length;
 ---
 
 <section class="hero" id="hero" aria-roledescription="carousel" aria-label="主視覺">
-  <div class="hero-track" id="hero-track">
+  <div class="hero-track" id="hero-track" role="group" aria-label="主視覺投影片" tabindex="0">
     {HERO_SLIDES.map((slide, index) => (
       <div class="hero-slide" role="group" aria-roledescription="slide" aria-label={`第 ${index + 1} 張，共 ${count} 張`}>
         <div class="hero-copy">
@@ -59,18 +60,36 @@ const count = HERO_SLIDES.length;
     let timer: number | undefined;
     let settle: number | undefined;
 
+    const slides = [...track.children] as HTMLElement[];
+    let navigation = 0;
+
     root.classList.add("is-enhanced");
     controls.hidden = false;
+    track.removeAttribute("tabindex");
 
+    // 提前載入並解碼某一張的圖片，切過去時才不會先看到空白
+    const warm = (slideIndex: number) => {
+      const image = slides[slideIndex]?.querySelector("img");
+      if (!image) return Promise.resolve();
+      image.loading = "eager";
+      return image.decode().catch(() => undefined);
+    };
+
+    // 只有目前這張可以聚焦與被讀到；其餘投影片的連結不會被 Tab 到
     const showIndex = (next: number) => {
       index = next;
       status.textContent = `${index + 1} / ${count}`;
+      slides.forEach((slide, slideIndex) => { slide.inert = slideIndex !== index; });
     };
 
-    const goTo = (next: number) => {
+    const goTo = async (next: number) => {
+      const ticket = ++navigation;
       showIndex(next);
-      track.scrollTo({ left: next * track.clientWidth, behavior: reduced.matches ? "auto" : "smooth" });
       sync();
+      // 圖片最多等 1.5 秒，網路太慢時寧可先切過去
+      await Promise.race([warm(next), new Promise((resolve) => window.setTimeout(resolve, 1500))]);
+      if (ticket !== navigation) return;
+      track.scrollTo({ left: next * track.clientWidth, behavior: reduced.matches ? "auto" : "smooth" });
     };
 
     // 自動輪播只在：沒被使用者暫停、滑鼠與焦點都不在輪播內、沒有要求減少動態效果、分頁可見時進行
@@ -112,6 +131,7 @@ const count = HERO_SLIDES.length;
     // 視窗寬度改變時，軌道要停在同一張
     window.addEventListener("resize", () => track.scrollTo({ left: index * track.clientWidth, behavior: "auto" }));
 
+    showIndex(0);
     sync();
   }
 </script>
