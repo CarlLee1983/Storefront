@@ -100,7 +100,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await page.setViewportSize({ width: 1440, height: 1000 });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach("product-detail-desktop-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await page.getByRole("link", { name: /購物車（4）/ }).click();
+    await page.getByRole("link", { name: /購物車（\s*4\s*）/ }).click();
     await expect(page.getByRole("img", { name: `${name}的封面`, exact: true })).toHaveAttribute("src", coverSrc!);
     await page.goBack();
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
