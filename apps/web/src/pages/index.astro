@@ -32,7 +32,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <p class="price">NT$ {priceFormat.format(p.priceTwd)}</p>
             <p class:list={["availability", { "sold-out": !p.purchasable }]}>{p.purchasable ? "可購買" : "已售完"}</p>
             {p.purchasable && (
-              <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd}>
+              <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
                 <label>
                   數量
                   <input type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" required />
@@ -49,6 +49,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 </Layout>
 
 <script>
+  import { parseCartCover } from "../cart/cover";
   import { showCartToast } from "../cart/toast";
   import { addToCart } from "../cart/cart";
   import { addFeedback } from "../cart/feedback";
@@ -63,6 +64,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         productId: Number(form.dataset.productId),
         name: form.dataset.name ?? "",
         unitPriceTwd: Number(form.dataset.price),
+        cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")),
       };
       const quantity = Number(new FormData(form).get("quantity"));
       showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
