@@ -1,11 +1,21 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { assignSharedCategory } from "../harness/admin-categories";
+import { assignCategory, createCategory } from "../harness/admin-categories";
+import { featureProduct } from "../harness/admin-featured";
+import { seedListedProductsInCategory } from "../harness/admin-seed";
 import { BASE_URL, GATEWAY_API_KEY, GATEWAY_URL, MEMBER } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
-const PRODUCT = { name: "E2E 測試商品", description: "E2E 流程用的商品", priceTwd: "1200" };
+const PRODUCT = { name: "E2E 測試商品", description: "E2E 流程用的商品", priceTwd: "1200", compareAtPriceTwd: "1500" };
+/** 主流程自己的分類。名稱刻意很短，導覽列才不會換行。 */
+const CATEGORY = { slug: "e2e-main", name: "主流程", description: "E2E 主流程的分類" };
+/**
+ * 同分類的陪襯商品：24 件都比主流程商品貴，加上主流程商品共 25 件，超過一頁（24 件）才有「載入更多」。
+ * 每 6 件有一件售完，「只看有貨」剩 21 件；陪襯商品都沒有原價，「只看特價」只剩主流程商品。
+ */
+const FILLERS = Array.from({ length: 24 }, (_, index) => ({ name: `主流程陪襯 ${String(index + 1).padStart(2, "0")}`, priceTwd: 2000 + index, stock: index % 6 === 0 ? 0 : 3 }));
+const IN_STOCK_COUNT = 1 + FILLERS.filter(({ stock }) => stock > 0).length;
 const TRACKING_NUMBER = "E2E-TRACK-0001";
 
 // Navigate by real Tab presses, rather than programmatically focusing the target.
@@ -15,6 +25,20 @@ async function tabTo(page: Page, target: Locator) {
     await page.keyboard.press("Tab");
   }
   await expect(target).toBeFocused();
+}
+
+const cards = (page: Page) => page.locator(".product-card");
+const productCard = (page: Page) => cards(page).filter({ has: page.getByRole("heading", { level: 2, name: PRODUCT.name, exact: true }) });
+const sortLink = (page: Page, label: string) => page.getByRole("navigation", { name: "排序" }).getByRole("link", { name: label });
+
+const twd = (amount: string) => `NT$ ${Number(amount).toLocaleString("en-US")}`;
+const DISCOUNT_PERCENT = Math.round((1 - Number(PRODUCT.priceTwd) / Number(PRODUCT.compareAtPriceTwd)) * 100);
+
+/** 商品卡顯示特價：強調色售價、帶「原價」朗讀文字的劃線價與折扣標籤。 */
+async function expectSaleCard(card: Locator) {
+  await expect(card).toContainText(twd(PRODUCT.priceTwd));
+  await expect(card.locator("s")).toHaveText(new RegExp(`原價\\s*${twd(PRODUCT.compareAtPriceTwd).replace("$", "\\$")}`));
+  await expect(card.locator(".sale-tag")).toContainText(`−${DISCOUNT_PERCENT}%`);
 }
 
 async function audit(page: Page, testInfo: TestInfo, name: string) {
@@ -41,20 +65,37 @@ const test = base.extend<{ admin: Page; gatewayConsole: Page }>({
   },
 });
 
-test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道付款成功（真實 webhook 與導回）→ 管理員出貨 → 顧客看到已出貨", async ({
+test("主流程：管理員建立分類、上架補貨、標原價與精選 → 顧客從首頁與導覽進入分類、排序篩選載入更多、搜尋、特價頁 → 購物車與結帳 → 閘道付款成功（真實 webhook 與導回）→ 管理員出貨 → 顧客看到已出貨", async ({
   admin,
   gatewayConsole,
   page,
 }, testInfo) => {
-  test.setTimeout(180_000);
-  // 1. 管理員上傳多張圖片、上架商品並補貨
+  test.setTimeout(240_000);
+  // 1. 管理員建立分類並上傳分類圖片；同分類先上架陪襯商品，主流程商品之後上架，才會是最新上架
+  await createCategory(admin, CATEGORY);
+  await expect(admin.getByRole("status")).toHaveText("已建立分類。");
+  await admin.goto("/admin/categories");
+  await admin.getByRole("row", { name: new RegExp(CATEGORY.slug) }).getByRole("link", { name: /修改/ }).click();
+  const categoryPng = await admin.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1500; canvas.height = 1000;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#c4321c"; ctx.fillRect(0, 0, 1500, 1000);
+    return canvas.toDataURL("image/png").split(",")[1]!;
+  });
+  await admin.getByLabel("分類圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "category.png", mimeType: "image/png", buffer: Buffer.from(categoryPng, "base64") });
+  await admin.getByRole("button", { name: "上傳分類圖片", exact: true }).click();
+  await expect(admin.locator("#image-status")).toHaveText("已儲存分類圖片。");
+  await seedListedProductsInCategory(admin.context(), CATEGORY.name, FILLERS);
+
+  // 2. 管理員新增商品、選分類、上傳多張圖片、補貨、標原價後上架並標為精選
   await admin.goto("/admin");
   await admin.getByLabel("名稱", { exact: true }).fill(PRODUCT.name);
   await admin.getByLabel("說明", { exact: true }).fill(PRODUCT.description);
   await admin.getByLabel("單價（新台幣整數元）").fill(PRODUCT.priceTwd);
   await admin.getByRole("button", { name: "新增商品" }).click();
   await expect(admin.getByRole("status")).toHaveText("已新增商品。");
-  await assignSharedCategory(admin, PRODUCT.name);
+  await assignCategory(admin, PRODUCT.name, CATEGORY.name);
 
   const productRow = admin.getByRole("row", { name: new RegExp(PRODUCT.name) });
   await productRow.getByLabel(`${PRODUCT.name}的庫存增減量`).fill("+5");
@@ -105,14 +146,84 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await expect(admin.locator("#product-images img")).toHaveCount(3);
   const coverSrc = (await admin.locator("#product-images img").first().getAttribute("src"))!;
   await testInfo.attach("admin-image-upload", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
-  await admin.getByRole("link", { name: "回商品管理" }).click();
+  // 儲存原價後回到商品管理
+  await admin.getByLabel("原價（選填）").fill(PRODUCT.compareAtPriceTwd);
+  await admin.getByRole("button", { name: "儲存", exact: true }).click();
+  await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
   await admin.getByRole("row", { name: new RegExp(PRODUCT.name) }).getByRole("button", { name: "重新上架" }).click();
   await expect(admin.getByRole("row", { name: new RegExp(PRODUCT.name) })).toContainText("上架中");
+  await featureProduct(admin, PRODUCT.name);
 
-  // 2. 顧客以直接寫入 D1 的 session 登入（ADR 0013）
+  // 3. 顧客從首頁精選、分類方塊與導覽列都能進入分類頁（桌機）
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const categoryUrl = new RegExp(`/categories/${CATEGORY.slug}$`);
+  await page.goto("/");
+  const featured = page.getByRole("region", { name: "精選商品" }).getByRole("listitem").filter({ hasText: PRODUCT.name });
+  await expectSaleCard(featured);
+  await featured.getByRole("link").filter({ has: page.getByRole("heading", { name: PRODUCT.name, exact: true }) }).click();
+  await expect(page.getByRole("heading", { level: 1, name: PRODUCT.name })).toBeVisible();
+  await page.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: CATEGORY.name }).click();
+  await expect(page).toHaveURL(categoryUrl);
+  await page.goto("/");
+  const tile = page.getByRole("region", { name: "選購分類" }).getByRole("link", { name: new RegExp(CATEGORY.name) });
+  // 分類圖片是裝飾性的（alt=""），沒有 img 角色
+  await expect(tile.locator("img")).toBeVisible();
+  await tile.click();
+  await expect(page).toHaveURL(categoryUrl);
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: CATEGORY.name, exact: true }).click();
+  await expect(page).toHaveURL(categoryUrl);
+
+  // 4. 分類頁：排序、載入更多、重新整理還原、只看有貨、只看特價
+  await expect(page.getByRole("heading", { level: 1, name: CATEGORY.name })).toBeVisible();
+  await expect(page.getByText(`共 ${FILLERS.length + 1} 件商品`)).toBeVisible();
+  await expect(cards(page).first()).toContainText(PRODUCT.name);
+  await sortLink(page, "價格高到低").click();
+  await expect(page).toHaveURL(/\?sort=price-desc$/);
+  await expect(productCard(page)).toHaveCount(0);
+  await page.getByRole("link", { name: "載入更多" }).click();
+  await expect(page).toHaveURL(/\?sort=price-desc&page=2$/);
+  await expect(page.getByText(`已顯示 ${FILLERS.length + 1} / ${FILLERS.length + 1} 件`)).toBeVisible();
+  await expect(cards(page).last()).toContainText(PRODUCT.name);
+  await page.reload();
+  await expect(sortLink(page, "價格高到低")).toHaveAttribute("aria-current", "true");
+  await expect(cards(page)).toHaveCount(FILLERS.length + 1);
+  await expectSaleCard(productCard(page));
+  await page.getByRole("checkbox", { name: "只看有貨" }).click();
+  await expect(page).toHaveURL(/\?sort=price-desc&instock=1$/);
+  await expect(page.getByText(`已顯示 ${IN_STOCK_COUNT} / ${IN_STOCK_COUNT} 件`)).toBeVisible();
+  await expect(page.getByText("已售完")).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "只看特價" }).click();
+  await expect(page).toHaveURL(/\?sort=price-desc&instock=1&sale=1$/);
+  await expect(cards(page)).toHaveCount(1);
+  await expectSaleCard(productCard(page));
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "只看有貨" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "只看特價" })).toBeChecked();
+  await expect(cards(page)).toHaveCount(1);
+  await audit(page, testInfo, "category-filtered-desktop");
+
+  // 5. 搜尋（不分大小寫）並從結果進入詳情頁
+  await page.getByRole("banner").getByRole("button", { name: "搜尋", exact: true }).click();
+  await page.getByRole("dialog", { name: "搜尋" }).getByRole("searchbox", { name: "搜尋商品" }).fill("e2e 測試商品");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/search\?q=/);
+  await expect(page.getByRole("heading", { level: 1, name: "搜尋：e2e 測試商品" })).toBeVisible();
+  await expectSaleCard(productCard(page));
+  await audit(page, testInfo, "search-results-desktop");
+  await productCard(page).getByRole("link").first().click();
+  await expect(page.getByRole("heading", { level: 1, name: PRODUCT.name })).toBeVisible();
+
+  // 6. 導覽列的特價頁看得到這件商品
+  await page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: "特價", exact: true }).click();
+  await expect(page).toHaveURL(/\/sale$/);
+  await expectSaleCard(productCard(page));
+  await audit(page, testInfo, "sale-desktop");
+
+  // 7. 顧客以直接寫入 D1 的 session 登入（ADR 0013）
   await page.context().addCookies([memberSessionCookie()]);
 
-  // 3. 加入購物車 → 購物車頁 → 結帳 → 訂單頁待付款
+  // 8. 從全部商品進入詳情、圖庫、加入購物車 → 購物車頁 → 結帳 → 訂單頁待付款
   await page.goto("/products");
   const productItem = page.getByRole("listitem").filter({ hasText: PRODUCT.name });
   const cover = productItem.getByRole("img", { name: `${PRODUCT.name}的封面` });
@@ -130,7 +241,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
     await testInfo.attach(`catalog-image-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await audit(page, testInfo, "populated-home-mobile");
+  await audit(page, testInfo, "populated-products-mobile");
   const detailLink = productItem.getByRole("link").filter({ has: page.getByRole("heading", { name: PRODUCT.name, exact: true }) });
   await tabTo(page, detailLink);
   await page.keyboard.press("Enter");
@@ -179,7 +290,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
 
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-  // 4. 前往付款 → 模擬閘道付款頁 → 成功＋立即回呼 → 導回訂單頁已付款
+  // 9. 前往付款 → 模擬閘道付款頁 → 成功＋立即回呼 → 導回訂單頁已付款
   await page.getByRole("button", { name: "前往付款" }).click();
   await expect(page).toHaveURL(new RegExp(`^${GATEWAY_URL}/pay/`));
   const paymentId = new URL(page.url()).pathname.split("/").pop()!;
@@ -205,7 +316,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
 
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-  // 5. 管理員在 /admin/orders 看到已付款 → 明細 → 出貨
+  // 10. 管理員在 /admin/orders 看到已付款 → 明細 → 出貨
   await admin.goto("/admin/orders");
   const orderRow = admin.getByRole("row", { name: new RegExp(`#${orderId}\\b`) });
   await expect(orderRow).toContainText(MEMBER.email);
@@ -218,7 +329,7 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
   await expect(admin.getByRole("status")).toHaveText("已標為已出貨。");
   await expect(admin.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
 
-  // 6. 顧客訂單列表與詳情都顯示目前封面、已出貨狀態及物流單號
+  // 11. 顧客訂單列表與詳情都顯示目前封面、已出貨狀態及物流單號
   await page.goto("/orders");
   const customerOrder = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(`#${orderId}\\b`) }) });
   await expect(customerOrder).toContainText("已出貨");

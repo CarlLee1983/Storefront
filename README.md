@@ -63,7 +63,7 @@ Webhook：`POST <webhookUrl>`，本文 `{ eventId, type, paymentId, merchantRefe
 
 ## E2E
 
-`e2e/`（`@storefront/e2e`）用 Playwright 跑一條關鍵流程，確認三個 Worker 真正串在一起：管理員（Access JWT）上架並補貨 → 顧客登入、加入購物車、結帳 → 在模擬閘道付款頁選成功與立即回呼 → 閘道送出真的簽章 webhook 並導回、訂單頁顯示已付款 → 管理員在 `/admin/orders` 出貨 → 顧客看到已出貨與物流單號。webhook 驗簽與導回查詢都不 mock。
+`e2e/`（`@storefront/e2e`）用 Playwright 跑一條關鍵流程，確認三個 Worker 真正串在一起：管理員（Access JWT）建立分類與分類圖片、上架並補貨、標原價與精選 → 顧客從首頁精選、分類方塊與導覽列進入分類頁，排序、篩選、載入更多、搜尋、看特價頁 → 顧客登入、加入購物車、結帳 → 在模擬閘道付款頁選成功與立即回呼 → 閘道送出真的簽章 webhook 並導回、訂單頁顯示已付款 → 管理員在 `/admin/orders` 出貨 → 顧客看到已出貨與物流單號。webhook 驗簽與導回查詢都不 mock。
 
 ```sh
 bunx playwright install chromium   # 第一次執行前安裝瀏覽器
