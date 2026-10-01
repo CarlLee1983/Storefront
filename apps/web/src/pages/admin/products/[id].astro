@@ -75,13 +75,13 @@ const values = { name: product?.name ?? "", description: product?.description ??
           </ul>
           <noscript><p>上傳與排序商品圖片需要啟用 JavaScript。</p></noscript>
           <form id="image-upload" action={`/admin/products/${id}/images`} data-product-name={product?.name}>
-            <label>商品圖片（JPEG、PNG 或 WebP，20 MB 以內）<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" multiple required /></label>
+            <label>商品圖片（JPEG、PNG 或 WebP，20 MB 以內）<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" multiple required disabled /></label>
             <p>可一次選取多張。圖片會在瀏覽器縮放成 WebP，不保存原圖。</p>
-            <button type="submit">上傳商品圖片</button>
+            <button type="submit" disabled>上傳商品圖片</button>
           </form>
           <p id="image-status" role="status" aria-live="polite"></p>
           <p id="image-error" class="error" role="alert" hidden></p>
-          <button type="button" id="gallery-refresh">重新載入商品圖片</button>
+          <button type="button" id="gallery-refresh" disabled>重新載入商品圖片</button>
           <p><a href="/admin">回商品管理</a></p>
         </section>
       </>
@@ -112,8 +112,10 @@ const values = { name: product?.name ?? "", description: product?.description ??
     let busy = false;
     let draggedId: string | undefined;
     // Keep each file's identity and completed progress across partial/lost-response retries.
-    let pending: Array<{ file: File; uploadId: string }> = [];
-    input.addEventListener("change", () => { pending = Array.from(input.files ?? []).map(file => ({ file, uploadId: crypto.randomUUID() })); });
+    const selection = () => Array.from(input.files ?? []).map(file => ({ file, uploadId: crypto.randomUUID() }));
+    // Retain even a selection populated before this module finished loading.
+    let pending: Array<{ file: File; uploadId: string }> = selection();
+    input.addEventListener("change", () => { pending = selection(); });
     function setBusy(value: boolean) {
       busy = value;
       uploadButton.disabled = input.disabled = refreshButton.disabled = value;
@@ -135,13 +137,15 @@ const values = { name: product?.name ?? "", description: product?.description ??
       if (busy) return;
       setBusy(true); error.hidden = true;
       try { await action(); } catch (cause) {
+        // Report the original failure immediately, even when the follow-up read stalls.
+        showError(cause);
         // A response may be lost after a commit; D1 also commits before R2 cleanup.
-        // Reconcile displayed order/cover without discarding unfinished upload identities.
+        // Bound reconciliation while keeping one mutation at a time and preserving
+        // unfinished upload identities. Retry still replays the same committed image.
         try {
-          const data = await resultOf<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!));
+          const data = await resultOf<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!, { signal: AbortSignal.timeout(3000) }));
           images = data.images; render();
         } catch { /* Keep the last known gallery and the original useful error. */ }
-        showError(cause);
       }
       finally { setBusy(false); }
     }
@@ -213,5 +217,7 @@ const values = { name: product?.name ?? "", description: product?.description ??
       });
     });
     render();
+    // SSR controls stay disabled until every event listener and retry state is ready.
+    setBusy(false);
   }
 </script>

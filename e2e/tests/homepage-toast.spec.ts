@@ -51,6 +51,8 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   await card.getByRole("button", { name: "加入購物車" }).focus();
   await page.keyboard.press("Enter");
   await expect(card.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  // Entry motion must never fade the live-region text below its AA contrast.
+  expect(await card.getByRole("status").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
   await expect(card.getByRole("button", { name: "加入購物車" })).toBeFocused();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await expect(page.locator("#cart-count")).toHaveClass("count-bump");
