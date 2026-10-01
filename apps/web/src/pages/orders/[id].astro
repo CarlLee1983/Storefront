@@ -2,8 +2,10 @@
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
+import OrderStatus from "../../orders/OrderStatus.astro";
+import OrderLines from "../../orders/OrderLines.astro";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusLabel, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../orders/labels";
+import { formatDateTime, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
@@ -53,41 +55,20 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
         {paymentUnconfirmed && <p role="status">付款結果暫時無法確認，請稍後重新整理本頁；結果確認後訂單狀態會自動更新。</p>}
         {order.status === "paid" && <p role="status">已收到付款，訂單已付款。</p>}
-        <p>訂單狀態：<strong>{orderStatusLabel(order.status)}</strong></p>
+        <p>訂單狀態：<OrderStatus status={order.status} /></p>
         {statusNote && <p>{statusNote}</p>}
         {
           order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
         }
-        {order.status === "pending_payment" && <p>付款期限：{formatDateTime(order.paymentDeadline)}（逾期未付，保留的商品會釋放）</p>}
-        {
-          order.status === "pending_payment" && (
-            <>
-              <form method="post" action={`/orders/${order.id}/pay`}>
-                <button type="submit">前往付款</button>
-              </form>
-              <form method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
-                <p>取消後無法恢復。</p>
-                <button type="submit">取消訂單</button>
-              </form>
-            </>
-          )
-        }
+        {order.status === "pending_payment" && <section class="payment-callout" aria-label="完成付款">
+          <h2>完成付款，準備迎接你的商品</h2>
+          <p>付款期限：<time datetime={new Date(order.paymentDeadline).toISOString()}>{formatDateTime(order.paymentDeadline)}</time>（台北時間）</p>
+          <p>逾期未付，保留的商品會釋放。付款期限前 2 分鐘內無法再發起付款，請儘早完成。</p>
+          <form method="post" action={`/orders/${order.id}/pay`}><button class="pay" type="submit">前往付款</button></form>
+        </section>}
         <p>成立時間：{formatDateTime(order.createdAt)}</p>
-        <table>
-          <thead>
-            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
-          </thead>
-          <tbody>
-            {order.lines.map((line) => (
-              <tr>
-                <td>{line.productName}</td>
-                <td>NT$ {priceFormat.format(line.unitPriceTwd)}</td>
-                <td>{line.quantity}</td>
-                <td>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <h2>訂單明細</h2>
+        <OrderLines lines={order.lines} />
         <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
         {
           order.payments.length > 0 && (
@@ -116,6 +97,9 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         <h2>收件資訊</h2>
         <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
         <p>{order.shippingInfo.address}</p>
+        {order.status === "pending_payment" && <form class="cancel" method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
+          <p>取消後無法恢復。</p><button type="submit">取消訂單</button>
+        </form>}
         <p><a href="/orders">回我的訂單</a></p>
       </>
     )
@@ -140,3 +124,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     }
   }
 </script>
+
+<style>
+  .payment-callout { padding: var(--space-6); border: 2px solid var(--color-primary); border-radius: var(--radius-lg); background: var(--color-surface); margin-block: var(--space-6); box-shadow: var(--shadow-card); }
+  .payment-callout h2 { margin-top: 0; }
+  .pay { width: 100%; padding: var(--space-4) var(--space-6); font-weight: 700; font-size: var(--text-lg); }
+  .cancel { margin-block: var(--space-8); border-top: 1px solid var(--color-border); }
+  .cancel button { color: var(--color-muted); background: var(--color-surface); border-color: var(--color-border); }
+  .cancel button:hover { background: var(--color-bg); }
+  @media(min-width: 40rem) { .pay { width: auto; min-width: 16rem; } }
+</style>

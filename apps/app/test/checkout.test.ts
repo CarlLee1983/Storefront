@@ -59,8 +59,8 @@ describe("結帳成功", () => {
         paymentDeadline: now + PAYMENT_WINDOW_MS,
         createdAt: now,
         lines: [
-          { productId: mug, productName: "馬克杯", quantity: 2, unitPriceTwd: 320 },
-          { productId: pen, productName: "原子筆", quantity: 3, unitPriceTwd: 45 },
+          { productId: mug, productName: "馬克杯", quantity: 2, unitPriceTwd: 320, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
+          { productId: pen, productName: "原子筆", quantity: 3, unitPriceTwd: 45, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
         ],
         payments: [],
         trackingNumber: null,
