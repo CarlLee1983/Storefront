@@ -1,0 +1,615 @@
+{
+  "note": "示範資料（#50）。圖片由 Codex CLI image generation 生成；prompt 前段的共同風格見 style。seed（#59）只寫入本機與 preview。",
+  "style": {
+    "product": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。",
+    "lifestyle": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。"
+  },
+  "categories": [
+    {
+      "slug": "living",
+      "name": "客廳",
+      "blurb": "沙發、邊几、收納",
+      "image": {
+        "file": "images/category-living.jpg",
+        "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。明亮的客廳一角：淺灰布面三人座沙發、圓形木質邊几、陶土花器插著一枝綠葉，窗光斜照。橫向 3:2，1536×1024。"
+      }
+    },
+    {
+      "slug": "dining",
+      "name": "餐廳",
+      "blurb": "餐椅、餐桌、器皿",
+      "image": {
+        "file": "images/category-dining.jpg",
+        "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。簡潔的餐廳：圓形實木餐桌搭配兩張曲木餐椅，桌上一只陶碗與玻璃水瓶，上方一盞黑色吊燈。橫向 3:2，1536×1024。"
+      }
+    },
+    {
+      "slug": "bedroom",
+      "name": "臥室",
+      "blurb": "床架、床邊几、寢具",
+      "image": {
+        "file": "images/category-bedroom.jpg",
+        "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。安靜的臥室：低矮木質床架鋪著淺灰亞麻寢具，床邊小几上一盞小檯燈與一本書，清晨柔光。橫向 3:2，1536×1024。"
+      }
+    },
+    {
+      "slug": "workspace",
+      "name": "工作區",
+      "blurb": "書桌、檯燈、整理",
+      "image": {
+        "file": "images/category-workspace.jpg",
+        "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。整齊的工作區：淺色木書桌、黑色半球檯燈、一張木椅、牆上一層開放層架，下午窗光。橫向 3:2，1536×1024。"
+      }
+    }
+  ],
+  "products": [
+    {
+      "key": "luma-lounge-chair",
+      "name": "Luma 弧形單椅",
+      "description": "Luma 弧形單椅。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 21800,
+      "onHand": 6,
+      "featured": true,
+      "images": [
+        {
+          "file": "images/product-luma-lounge-chair-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張胡桃木弧形殼體單椅，黑色皮革坐墊，四支斜腳木腳。正面視角。"
+        },
+        {
+          "file": "images/product-luma-lounge-chair-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張胡桃木弧形殼體單椅，黑色皮革坐墊，四支斜腳木腳。45 度側面視角，展示側面輪廓與厚度。"
+        },
+        {
+          "file": "images/product-luma-lounge-chair-3.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張胡桃木弧形殼體單椅，黑色皮革坐墊，四支斜腳木腳。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "fold-sofa",
+      "name": "Fold 三人座沙發",
+      "description": "Fold 三人座沙發。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 48800,
+      "onHand": 3,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-fold-sofa-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張淺灰色布面三人座沙發，方正低背、細黑色金屬腳。正面視角。"
+        },
+        {
+          "file": "images/product-fold-sofa-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張淺灰色布面三人座沙發，方正低背、細黑色金屬腳。45 度側面視角，展示側面輪廓與厚度。"
+        }
+      ]
+    },
+    {
+      "key": "slab-coffee-table",
+      "name": "Slab 茶几",
+      "description": "Slab 茶几。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 9800,
+      "compareAtPriceTwd": 12800,
+      "onHand": 7,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-slab-coffee-table-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張低矮長方形淺色橡木茶几，厚實桌面與方形實木腳。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "halo-mirror",
+      "name": "Halo 圓鏡",
+      "description": "Halo 圓鏡。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 5800,
+      "compareAtPriceTwd": 7200,
+      "onHand": 5,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-halo-mirror-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一面細黑色金屬框的大圓鏡，靠牆立放在地面。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "twin-cabinet",
+      "name": "Twin 收納櫃",
+      "description": "Twin 收納櫃。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 18800,
+      "onHand": 2,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-twin-cabinet-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座低矮雙門胡桃木收納櫃，細長黑色金屬把手。正面視角。"
+        },
+        {
+          "file": "images/product-twin-cabinet-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座低矮雙門胡桃木收納櫃，細長黑色金屬把手。45 度側面視角，展示側面輪廓與厚度。"
+        }
+      ]
+    },
+    {
+      "key": "stone-vase",
+      "name": "Stone 陶土花器",
+      "description": "Stone 陶土花器。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 1680,
+      "compareAtPriceTwd": 2280,
+      "onHand": 30,
+      "featured": true,
+      "images": [
+        {
+          "file": "images/product-stone-vase-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只米白色粗陶花器，瓶身微鼓，插著一枝橄欖枝。正面視角。"
+        },
+        {
+          "file": "images/product-stone-vase-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只米白色粗陶花器，瓶身微鼓，插著一枝橄欖枝。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "ash-bowl",
+      "name": "Ash 木質淺缽",
+      "description": "Ash 木質淺缽。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 980,
+      "onHand": 0,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-ash-bowl-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只白蠟木車製的淺缽，木紋明顯。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "peg-stool",
+      "name": "Peg 圓凳",
+      "description": "Peg 圓凳。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "living",
+      "priceTwd": 3280,
+      "onHand": 18,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-peg-stool-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張三腳實木圓凳，圓形座面，淺色橡木。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "nora-dining-table",
+      "name": "Nora 圓形餐桌",
+      "description": "Nora 圓形餐桌。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 26800,
+      "onHand": 2,
+      "featured": true,
+      "images": [
+        {
+          "file": "images/product-nora-dining-table-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張直徑 110 公分的圓形實木餐桌，淺色橡木桌面與三支錐形腳。正面視角。"
+        },
+        {
+          "file": "images/product-nora-dining-table-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張直徑 110 公分的圓形實木餐桌，淺色橡木桌面與三支錐形腳。45 度側面視角，展示側面輪廓與厚度。"
+        },
+        {
+          "file": "images/product-nora-dining-table-3.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張直徑 110 公分的圓形實木餐桌，淺色橡木桌面與三支錐形腳。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "kei-dining-chair",
+      "name": "Kei 曲木餐椅",
+      "description": "Kei 曲木餐椅。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 6800,
+      "onHand": 12,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-kei-dining-chair-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張曲木餐椅，深色胡桃木，弧形椅背與編織紙繩座面。正面視角。"
+        },
+        {
+          "file": "images/product-kei-dining-chair-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張曲木餐椅，深色胡桃木，弧形椅背與編織紙繩座面。45 度側面視角，展示側面輪廓與厚度。"
+        }
+      ]
+    },
+    {
+      "key": "bench-oak",
+      "name": "Oak 長凳",
+      "description": "Oak 長凳。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 8600,
+      "compareAtPriceTwd": 10800,
+      "onHand": 4,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-bench-oak-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張簡潔的實木長凳，淺色橡木，方形腳。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "dome-pendant",
+      "name": "Dome 吊燈",
+      "description": "Dome 吊燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 5600,
+      "onHand": 9,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-dome-pendant-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一盞黑色鋁製半球吊燈，懸掛於細黑色電線。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "rin-bowl-set",
+      "name": "Rin 陶碗組",
+      "description": "Rin 陶碗組。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 1480,
+      "onHand": 25,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-rin-bowl-set-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：三只疊放的手作陶碗，米白釉色與自然邊緣。正面視角。"
+        },
+        {
+          "file": "images/product-rin-bowl-set-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：三只疊放的手作陶碗，米白釉色與自然邊緣。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "clear-carafe",
+      "name": "Clear 玻璃水瓶",
+      "description": "Clear 玻璃水瓶。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 880,
+      "compareAtPriceTwd": 1180,
+      "onHand": 0,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-clear-carafe-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只極簡透明玻璃水瓶搭配倒扣的玻璃杯。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "linen-runner",
+      "name": "Linen 亞麻桌巾",
+      "description": "Linen 亞麻桌巾。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 1280,
+      "onHand": 20,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-linen-runner-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一條折疊整齊的淺灰亞麻桌巾，布料紋理清晰。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "serve-tray",
+      "name": "Serve 木托盤",
+      "description": "Serve 木托盤。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "dining",
+      "priceTwd": 1580,
+      "onHand": 14,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-serve-tray-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只長方形胡桃木托盤，兩端有挖空把手。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "low-bed-frame",
+      "name": "Low 床架",
+      "description": "Low 床架。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 32800,
+      "onHand": 2,
+      "featured": true,
+      "images": [
+        {
+          "file": "images/product-low-bed-frame-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座低矮的雙人實木床架，淺色橡木與簡潔床頭板，鋪著淺灰亞麻寢具。正面視角。"
+        },
+        {
+          "file": "images/product-low-bed-frame-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座低矮的雙人實木床架，淺色橡木與簡潔床頭板，鋪著淺灰亞麻寢具。45 度側面視角，展示側面輪廓與厚度。"
+        },
+        {
+          "file": "images/product-low-bed-frame-3.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座低矮的雙人實木床架，淺色橡木與簡潔床頭板，鋪著淺灰亞麻寢具。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "nest-nightstand",
+      "name": "Nest 床邊几",
+      "description": "Nest 床邊几。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 5200,
+      "onHand": 8,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-nest-nightstand-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一個附單抽屜的小型床邊几，淺色橡木。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "calm-bedding",
+      "name": "Calm 亞麻寢具組",
+      "description": "Calm 亞麻寢具組。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 4980,
+      "compareAtPriceTwd": 5980,
+      "onHand": 11,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-calm-bedding-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一組折疊堆疊的淺灰亞麻被套與枕套。正面視角。"
+        },
+        {
+          "file": "images/product-calm-bedding-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一組折疊堆疊的淺灰亞麻被套與枕套。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "mini-lamp",
+      "name": "Mini 床頭燈",
+      "description": "Mini 床頭燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 2480,
+      "onHand": 16,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-mini-lamp-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一盞白色陶瓷小檯燈，圓潤燈罩。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "wool-throw",
+      "name": "Wool 羊毛毯",
+      "description": "Wool 羊毛毯。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 3600,
+      "onHand": 0,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-wool-throw-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一條折疊的米白色粗織羊毛毯，帶流蘇。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "hang-rack",
+      "name": "Hang 掛衣架",
+      "description": "Hang 掛衣架。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 4200,
+      "compareAtPriceTwd": 5200,
+      "onHand": 6,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-hang-rack-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座黑色細鋼管的落地掛衣架，掛著一件淺色亞麻襯衫。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "mirror-oval",
+      "name": "Oval 立鏡",
+      "description": "Oval 立鏡。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 6900,
+      "onHand": 3,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-mirror-oval-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一面胡桃木框的橢圓落地立鏡。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "cube-ottoman",
+      "name": "Cube 腳凳",
+      "description": "Cube 腳凳。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "bedroom",
+      "priceTwd": 3980,
+      "onHand": 7,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-cube-ottoman-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一個淺灰布面的方形軟墊腳凳。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "astra-desk-lamp",
+      "name": "Astra 半球檯燈",
+      "description": "Astra 半球檯燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 3980,
+      "compareAtPriceTwd": 4980,
+      "onHand": 12,
+      "featured": true,
+      "images": [
+        {
+          "file": "images/product-astra-desk-lamp-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一盞黑色粉體烤漆半球檯燈，鑄鐵圓形底座。正面視角。"
+        },
+        {
+          "file": "images/product-astra-desk-lamp-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一盞黑色粉體烤漆半球檯燈，鑄鐵圓形底座。45 度側面視角，展示側面輪廓與厚度。"
+        },
+        {
+          "file": "images/product-astra-desk-lamp-3.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一盞黑色粉體烤漆半球檯燈，鑄鐵圓形底座。近距離細節特寫，聚焦材質與接合處，商品局部入鏡即可。"
+        }
+      ]
+    },
+    {
+      "key": "frame-desk",
+      "name": "Frame 書桌",
+      "description": "Frame 書桌。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 16800,
+      "onHand": 4,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-frame-desk-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張淺色橡木桌面搭配黑色細鋼框的書桌。正面視角。"
+        },
+        {
+          "file": "images/product-frame-desk-2.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張淺色橡木桌面搭配黑色細鋼框的書桌。45 度側面視角，展示側面輪廓與厚度。"
+        }
+      ]
+    },
+    {
+      "key": "task-chair",
+      "name": "Task 木椅",
+      "description": "Task 木椅。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 7800,
+      "onHand": 6,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-task-chair-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一張實木工作椅，淺色橡木，微弧椅背。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "open-shelf",
+      "name": "Open 開放層架",
+      "description": "Open 開放層架。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 12800,
+      "compareAtPriceTwd": 15800,
+      "onHand": 3,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-open-shelf-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一座黑色鋼框搭配橡木層板的四層開放層架，放著幾本書與一只花器。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "arc-floor-lamp",
+      "name": "Arc 落地燈",
+      "description": "Arc 落地燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 8900,
+      "compareAtPriceTwd": 10800,
+      "onHand": 4,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-arc-floor-lamp-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一盞朱紅色（#C4321C）燈罩的弧形落地燈，黑色細桿。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "file-box",
+      "name": "File 收納盒",
+      "description": "File 收納盒。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 1280,
+      "onHand": 22,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-file-box-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：兩只疊放的淺灰硬紙板收納盒，金屬標籤框。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "pen-tray",
+      "name": "Pen 筆盤",
+      "description": "Pen 筆盤。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 680,
+      "onHand": 40,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-pen-tray-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只黃銅與胡桃木組成的長形筆盤，放著一支黑色鋼筆。正面視角。"
+        }
+      ]
+    },
+    {
+      "key": "clock-wall",
+      "name": "Tick 掛鐘",
+      "description": "Tick 掛鐘。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "category": "workspace",
+      "priceTwd": 2380,
+      "onHand": 0,
+      "featured": false,
+      "images": [
+        {
+          "file": "images/product-clock-wall-1.jpg",
+          "prompt": "商品棚拍照，模板 product-commerce-visual 搭配 realistic-photography。單一商品置中，完整入鏡、四周留白約 15%，淺灰色無縫背景（#ECECEA），地面與背景無接縫，柔和大面積側上方柔光箱光線，商品下方有自然柔和的接觸陰影。85mm 鏡頭、略高於商品的視角、真實材質細節（木紋、金屬烤漆、陶土顆粒、布料織紋）。正方形 1:1 構圖，1024×1024。禁止：任何文字、標誌、浮水印、價格標籤、多餘道具、人物、手、反光過強、背景漸層或彩色背景。主體：一只白色錶面、黑色細指針的極簡圓形掛鐘，無數字刻度。正面視角。"
+        }
+      ]
+    }
+  ],
+  "hero": [
+    {
+      "file": "images/hero-1.jpg",
+      "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。寬敞明亮的客廳：胡桃木弧形單椅放在畫面右側，左側大面積留白的白牆，地面淺色木地板，窗光從左上斜射。超寬 16:9，1792×1024，主體偏右、左半部留給標題。"
+    },
+    {
+      "file": "images/hero-2.jpg",
+      "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。餐廳一角：圓形橡木餐桌與兩張曲木餐椅位於畫面右側，左側留白，上方一盞黑色半球吊燈。超寬 16:9，1792×1024，主體偏右。"
+    },
+    {
+      "file": "images/hero-3.jpg",
+      "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。工作區：淺色木書桌上一盞朱紅色檯燈與幾本書位於畫面右側，左側留白的淺灰牆面。超寬 16:9，1792×1024，主體偏右。"
+    }
+  ],
+  "banner": {
+    "file": "images/banner.jpg",
+    "prompt": "家居生活情境照，模板 architecture-space 搭配 realistic-photography。瑞士極簡室內：白牆或淺灰牆、淺色木地板、自然窗光從畫面一側斜射、低彩度的米白、淺灰、木色與少量黑色金屬，偶爾一點朱紅（#C4321C）點綴。35mm 鏡頭、與視線同高、構圖乾淨有大量留白，像高級家居品牌型錄。禁止：任何文字、標誌、浮水印、人物、雜亂擺設、過飽和色彩、HDR 感。一只粗陶花器插著綠葉，放在兩本疊放的布面精裝書上，木質桌面，柔和側光，背景淺灰牆。直式 4:5，1024×1280，主體置中偏下。"
+  }
+}
