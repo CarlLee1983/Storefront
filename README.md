@@ -76,3 +76,14 @@ bun run e2e
 - 管理員以 `Cf-Access-Jwt-Assertion` header 帶 harness 簽的 Access JWT（與 Cloudflare Access 相同），App 以內嵌 JWKS 驗簽；E2E 跑的是 production 建置，Web 不讀 `ACCESS_DEV_JWT`。
 - 失敗時 trace 與報告在 `e2e/test-results/`、`e2e/playwright-report/`（已 gitignore），CI 會上傳成 artifact。
 - 需要 8790、8791 與 9330、9331 埠空閒。
+
+## 部署
+
+| 環境 | 網址 | 何時部署 |
+| --- | --- | --- |
+| preview | https://storefront-preview.gravito.dev（模擬閘道 https://storefront-pay-preview.gravito.dev） | push 到 main 自動部署；也可在 Actions 手動觸發 Deploy 並選 `preview`（任何分支） |
+| production | https://storefront.gravito.dev（模擬閘道 https://storefront-pay.gravito.dev） | 只能手動觸發 Deploy 並選 `production`，而且限 main 分支 |
+
+部署前的檢查會在套用 migration 之前擋下缺漏的設定，見 `.github/workflows/deploy.yml`。
+
+production 尚未上線。第一次部署前，要先在 Zero Trust 為 `storefront.gravito.dev/admin` 另建一個 Access application，再把它的 AUD 填進 `apps/app/wrangler.jsonc` 的 `env.production.vars.ACCESS_AUD`；目前那裡填的還是 preview application 的 AUD。每個環境各用一個 application：一個 application 掛兩個網域時，Access 登入後可能把瀏覽器導到另一個環境的網域。
