@@ -43,7 +43,17 @@ Local synthetic fixtures exercise actual production-built routes and delivery th
 
 ## Current measurement status
 
-On 2026-10-01, the owner agreed to finish independent development/tests/merges first and defer manual Lighthouse. No local Mac access was authorized or used. The cloud checkout can build and pass unit/RPC coverage, but the real Wrangler server fails at startup with `uv_interface_addresses returned Unknown system error 1`; changing the writable Wrangler log directory does not resolve it. Therefore no Lighthouse measurements have been performed and #37/#29 remain open for that criterion. This is a deferral, not a waiver of the ≥90 requirements.
+Measured on 2026-10-01T08:40Z (UTC) at commit `b372b48559085e084f82d94ec4d7e25d7119aaf8` (main), on the owner's MacBook Air M4 (macOS 26), as a **local production-build** result: `bun harness/serve.ts` with isolated local D1/R2, fixture created through the real admin UI and browser resize pipeline (one stocked product, three PNG images, one item in the customer's localStorage cart).
+
+Google Chrome 154.0.8037.92, Lighthouse 13.5.0, Navigation mode, mobile form factor, default simulated throttling, categories Performance + Accessibility, storage reset disabled (`--disable-storage-reset`). Deviation from step 4: Lighthouse ran as the CLI attached via `--port` to the same Chrome profile that built the fixture (a persistent Playwright context, so Lighthouse's tab shares the populated localStorage), rather than from the DevTools panel. The settings are the same as the guide's. One run per route, no reruns, and none discarded. Each report's final URL and final screenshot were checked: the home page shows the product card, the detail page shows the 1/3 gallery with three thumbnails, and the cart shows one item with its cover.
+
+| Route | Final URL | Performance | Accessibility | Reports |
+| --- | --- | --- | --- | --- |
+| home | `http://localhost:8790/` | 95 | 100 | [HTML](lighthouse-37/home.report.html) / [JSON](lighthouse-37/home.report.json) |
+| detail (three images) | `http://localhost:8790/products/1` | 100 | 100 | [HTML](lighthouse-37/detail.report.html) / [JSON](lighthouse-37/detail.report.json) |
+| cart (one item + cover) | `http://localhost:8790/cart` | 100 | 100 | [HTML](lighthouse-37/cart.report.html) / [JSON](lighthouse-37/cart.report.json) |
+
+All routes meet the ≥90 thresholds. These do not measure deployed network latency; any deployed measurement should be reported separately.
 
 ## Parent acceptance audit boundaries
 
