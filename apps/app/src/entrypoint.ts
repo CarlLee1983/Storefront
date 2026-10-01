@@ -8,6 +8,7 @@ import { createCatalogService } from "./catalog/service";
 import { createOrderService } from "./orders/service";
 import { readPaymentConfig } from "./payments/config";
 import { createPaymentService } from "./payments/service";
+import { cleanupDeletedProductImages } from "./images/manage";
 import { systemClock } from "./shared/clock";
 
 /**
@@ -96,6 +97,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   /** 每分鐘的 Cron（wrangler.jsonc 的 triggers）：把超過付款期限的待付款訂單轉為已逾期，釋放保留。冪等。 */
   async scheduled(_controller: ScheduledController): Promise<void> {
     await this.#orders().expireOverdueOrders();
+    await cleanupDeletedProductImages(this.env.DB, this.env.PRODUCT_IMAGES);
   }
 
   listProducts() {
@@ -148,6 +150,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   addProductImage(jwt: string, input: unknown) {
     return this.#admin().addProductImage(jwt, input);
+  }
+
+  reorderProductImages(jwt: string, input: unknown) {
+    return this.#admin().reorderProductImages(jwt, input);
+  }
+
+  deleteProductImage(jwt: string, input: unknown) {
+    return this.#admin().deleteProductImage(jwt, input);
   }
 
   updateProduct(jwt: string, input: unknown) {

@@ -21,6 +21,7 @@ export interface ProductSummary extends ProductBase {
 }
 
 export interface AdminProductSummary extends ProductBase {
+  cover: ProductImage | null;
   listed: boolean;
   /** 在庫數（On Hand）。 */
   onHand: number;
@@ -43,7 +44,13 @@ const summaryColumns = {
   reserved: reservedQuantity(sql`${products.id}`).as("reserved"),
 };
 
-const adminColumns = { ...summaryColumns, listed: products.listed };
+const cover = sql<ProductImage | null>`(
+    select json_object('id', cover_image.id, 'variants', json(cover_image.variants))
+    from product_images cover_image where cover_image.product_id = ${products}.id
+    order by cover_image.position, cover_image.id limit 1
+  )`.mapWith((value: string | null) => value === null ? null : JSON.parse(value) as ProductImage);
+
+const adminColumns = { ...summaryColumns, listed: products.listed, cover };
 
 type AdminRow = Omit<AdminProductSummary, "available">;
 
@@ -54,11 +61,7 @@ function toAdminSummary(row: AdminRow): AdminProductSummary {
 /** 前台清單：只列上架中的商品，依新增順序。 */
 export async function selectListedProducts(db: DrizzleD1Database): Promise<ProductSummary[]> {
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
-  const cover = sql<ProductImage | null>`(
-    select json_object('id', cover_image.id, 'variants', json(cover_image.variants))
-    from product_images cover_image where cover_image.product_id = ${products}.id
-    order by cover_image.position, cover_image.id limit 1
-  )`.mapWith((value: string | null) => value === null ? null : JSON.parse(value) as ProductImage);
+
   const rows = await db.select({ ...summaryColumns, cover }).from(products).where(eq(products.listed, true)).orderBy(asc(products.id));
   return rows.map(({ onHand, reserved, ...row }) => ({ ...row, purchasable: availableQuantity(onHand, reserved) > 0 }));
 }

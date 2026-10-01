@@ -66,16 +66,22 @@ const values = { name: product?.name ?? "", description: product?.description ??
         <section aria-labelledby="image-heading">
           <h2 id="image-heading">商品圖片</h2>
           <p>先上傳商品圖片才能上架。每件商品最多 8 張，第一張是封面。</p>
-          <ul id="product-images">
-            {product?.images.map(image => <li><img src={`/images/${image.variants[0]!.key}`} width={image.variants[0]!.width} height={image.variants[0]!.height} alt={`${product.name}的商品圖片`} loading="lazy" /></li>)}
+          <p id="gallery-help">拖曳商品圖片，或使用「上移」「下移」按鈕調整順序，排第一張即為封面。排序會立即儲存。</p>
+          <ul id="product-images" aria-describedby="gallery-help" data-images={JSON.stringify(product?.images ?? [])} data-product-name={product?.name} data-endpoint={`/admin/products/${id}/gallery`}>
+            {product?.images.map((image, index) => <li data-image-id={image.id}>
+              <img src={`/images/${image.variants[0]!.key}`} width={image.variants[0]!.width} height={image.variants[0]!.height} alt={`${product.name}的商品圖片 ${index + 1}`} loading="lazy" />
+              <span>{index === 0 ? "封面" : `商品圖片 ${index + 1}`}</span>
+            </li>)}
           </ul>
+          <noscript><p>上傳與排序商品圖片需要啟用 JavaScript。</p></noscript>
           <form id="image-upload" action={`/admin/products/${id}/images`} data-product-name={product?.name}>
-            <label>商品圖片（JPEG、PNG 或 WebP，20 MB 以內）<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required /></label>
-            <p>圖片會在瀏覽器縮放成 WebP，不保存原圖。</p>
+            <label>商品圖片（JPEG、PNG 或 WebP，20 MB 以內）<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" multiple required /></label>
+            <p>可一次選取多張。圖片會在瀏覽器縮放成 WebP，不保存原圖。</p>
             <button type="submit">上傳商品圖片</button>
-            <p id="image-status" role="status"></p>
-            <p id="image-error" class="error" role="alert" hidden></p>
           </form>
+          <p id="image-status" role="status" aria-live="polite"></p>
+          <p id="image-error" class="error" role="alert" hidden></p>
+          <button type="button" id="gallery-refresh">重新載入商品圖片</button>
           <p><a href="/admin">回商品管理</a></p>
         </section>
       </>
@@ -83,57 +89,129 @@ const values = { name: product?.name ?? "", description: product?.description ??
   }
 </Layout>
 
+<style>
+  #product-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; padding: 0; list-style: none; }
+  #product-images :global(li) { padding: 0.75rem; border: 1px solid var(--color-border, #888); border-radius: 0.5rem; min-width: 0; }
+  #product-images :global(img) { display: block; width: 100%; height: 9rem; object-fit: contain; margin-bottom: 0.5rem; }
+  #product-images :global(.image-actions) { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+  #product-images :global(.drag-over) { outline: 3px solid currentColor; }
+</style>
 <script>
   import { resizeProductImage } from "../../../images/resize";
   import { describeFailure } from "../../../admin/product-form";
   import type { ProductImage } from "@storefront/app/product-images";
   const form = document.querySelector<HTMLFormElement>("#image-upload");
   if (form) {
+    const list = document.querySelector<HTMLUListElement>("#product-images")!;
     const input = form.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const button = form.querySelector<HTMLButtonElement>("button")!;
+    const uploadButton = form.querySelector<HTMLButtonElement>("button")!;
+    const refreshButton = document.querySelector<HTMLButtonElement>("#gallery-refresh")!;
     const status = document.querySelector<HTMLElement>("#image-status")!;
     const error = document.querySelector<HTMLElement>("#image-error")!;
+    let images: ProductImage[] = JSON.parse(list.dataset.images!);
     let busy = false;
-    let selectedFile: File | undefined;
-    let uploadId: string;
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
+    let draggedId: string | undefined;
+    // Keep each file's identity and completed progress across partial/lost-response retries.
+    let pending: Array<{ file: File; uploadId: string }> = [];
+    input.addEventListener("change", () => { pending = Array.from(input.files ?? []).map(file => ({ file, uploadId: crypto.randomUUID() })); });
+    function setBusy(value: boolean) {
+      busy = value;
+      uploadButton.disabled = input.disabled = refreshButton.disabled = value;
+      list.setAttribute("aria-busy", String(value));
+      list.querySelectorAll<HTMLButtonElement>("button").forEach(button => { button.disabled = value || button.dataset.boundary === "true"; });
+      list.querySelectorAll<HTMLLIElement>("li").forEach(item => { item.draggable = !value; });
+    }
+    function showError(cause: unknown) {
+      status.textContent = "";
+      error.textContent = cause instanceof Error && /^[\u4e00-\u9fff]/.test(cause.message) ? cause.message : "商品圖片操作失敗，請稍後再試。";
+      error.hidden = false;
+    }
+    async function resultOf<T>(response: Response): Promise<T> {
+      const result = await response.json() as { ok: boolean; reason: string; data: T };
+      if (!response.ok || !result.ok) throw new Error(result.reason === "unauthorized" ? "沒有權限，請重新通過 Cloudflare Access 登入後再試。" : describeFailure(result, "商品圖片操作失敗，請稍後再試").message);
+      return result.data;
+    }
+    async function run(action: () => Promise<void>) {
       if (busy) return;
-      const file = input.files?.[0];
-      if (!file) return;
-      if (file !== selectedFile) { selectedFile = file; uploadId = crypto.randomUUID(); }
-      busy = true;
-      button.disabled = input.disabled = true;
-      error.hidden = true;
-      status.textContent = "正在縮放並上傳商品圖片…";
-      try {
-        const body = await resizeProductImage(file);
-        body.set("uploadId", uploadId);
-        const response = await fetch(form.action, { method: "POST", body });
-        const result = await response.json() as { ok: boolean; reason?: string; data?: { image: ProductImage } };
-        if (!response.ok || !result.ok || !result.data) {
-          throw new Error(result.reason === "unauthorized" ? "沒有權限，請重新通過 Cloudflare Access 登入後再試。" : describeFailure({ reason: result.reason ?? "" }, "商品圖片上傳失敗，請稍後再試").message);
-        }
-        const variant = result.data.image.variants[0]!;
-        const image = document.createElement("img");
-        image.src = `/images/${variant.key}`;
-        image.width = variant.width;
-        image.height = variant.height;
-        image.alt = `${form.dataset.productName}的商品圖片`;
-        const item = document.createElement("li");
-        item.appendChild(image);
-        document.querySelector("#product-images")!.appendChild(item);
-        input.value = "";
-        selectedFile = undefined;
-        status.textContent = "已上傳商品圖片。可以回商品管理上架。";
-      } catch (cause) {
-        status.textContent = "";
-        error.textContent = cause instanceof Error && /^[\u4e00-\u9fff]/.test(cause.message) ? cause.message : "商品圖片上傳失敗，請稍後再試。";
-        error.hidden = false;
-      } finally {
-        busy = false;
-        button.disabled = input.disabled = false;
+      setBusy(true); error.hidden = true;
+      try { await action(); } catch (cause) {
+        // A response may be lost after a commit; D1 also commits before R2 cleanup.
+        // Reconcile displayed order/cover without discarding unfinished upload identities.
+        try {
+          const data = await resultOf<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!));
+          images = data.images; render();
+        } catch { /* Keep the last known gallery and the original useful error. */ }
+        showError(cause);
       }
+      finally { setBusy(false); }
+    }
+    async function mutate(method: string, body: unknown) {
+      return resultOf(await fetch(list.dataset.endpoint!, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+    }
+    function render(focusId?: string, focusAction?: string) {
+      list.replaceChildren(...images.map((image, index) => {
+        const item = document.createElement("li"); item.dataset.imageId = image.id; item.draggable = !busy;
+        const photo = document.createElement("img"); const variant = image.variants[0]!;
+        photo.src = `/images/${variant.key}`; photo.width = variant.width; photo.height = variant.height;
+        photo.alt = `${list.dataset.productName}的商品圖片 ${index + 1}`;
+        const label = document.createElement("span"); label.textContent = index === 0 ? "封面" : `商品圖片 ${index + 1}`;
+        const actions = document.createElement("div"); actions.className = "image-actions";
+        for (const [action, text, boundary] of [["up", "上移", index === 0], ["down", "下移", index === images.length - 1], ["delete", "刪除", false]] as const) {
+          const button = document.createElement("button"); button.type = "button"; button.textContent = text; button.dataset.action = action;
+          button.dataset.boundary = String(boundary); button.disabled = busy || boundary;
+          button.setAttribute("aria-label", `${text}商品圖片 ${index + 1}`);
+          button.addEventListener("click", () => {
+            if (action === "delete") {
+              if (busy || !confirm(`確定刪除商品圖片 ${index + 1}？`)) return;
+              void run(async () => {
+                await mutate("DELETE", { imageId: image.id }); images = images.filter(value => value.id !== image.id);
+                render(images[Math.min(index, images.length - 1)]?.id, "delete"); status.textContent = "已刪除商品圖片。";
+              });
+            } else void move(image.id, index + (action === "up" ? -1 : 1), action);
+          });
+          actions.appendChild(button);
+        }
+        item.addEventListener("dragstart", event => { if (busy) { event.preventDefault(); return; } draggedId = image.id; event.dataTransfer?.setData("text/plain", image.id); });
+        item.addEventListener("dragover", event => { if (!busy && draggedId) { event.preventDefault(); item.classList.add("drag-over"); } });
+        item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+        item.addEventListener("drop", event => { event.preventDefault(); item.classList.remove("drag-over"); if (draggedId) void move(draggedId, index, "down"); draggedId = undefined; });
+        item.addEventListener("dragend", () => { draggedId = undefined; list.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over")); });
+        item.appendChild(photo); item.appendChild(label); item.appendChild(actions); return item;
+      }));
+      if (!images.length && focusAction) requestAnimationFrame(() => uploadButton.focus());
+      if (focusId) requestAnimationFrame(() => {
+        const item = Array.from(list.children).find(item => (item as HTMLElement).dataset.imageId === focusId);
+        const preferred = item?.querySelector<HTMLButtonElement>(`button[data-action="${focusAction}"]`);
+        (preferred && !preferred.disabled ? preferred : item?.querySelector<HTMLButtonElement>("button:not(:disabled)"))?.focus();
+      });
+    }
+    async function move(imageId: string, target: number, focusAction: string) {
+      const from = images.findIndex(image => image.id === imageId);
+      if (from < 0 || target < 0 || target >= images.length || from === target) return;
+      await run(async () => {
+        const reordered = [...images]; reordered.splice(target, 0, reordered.splice(from, 1)[0]!);
+        await mutate("PUT", { imageIds: reordered.map(image => image.id) });
+        images = reordered; render(imageId, focusAction); status.textContent = `已儲存商品圖片順序，第 1 張為封面。`;
+      });
+    }
+    refreshButton.addEventListener("click", () => void run(async () => {
+      const data = await resultOf<{ images: ProductImage[] }>(await fetch(list.dataset.endpoint!)); images = data.images; render(); status.textContent = "已重新載入商品圖片。";
+    }));
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      void run(async () => {
+        if (!pending.length) return;
+        while (pending.length) {
+          const next = pending[0]!;
+          status.textContent = `正在縮放並上傳商品圖片（剩餘 ${pending.length} 張）…`;
+          const body = await resizeProductImage(next.file); body.set("uploadId", next.uploadId);
+          const data = await resultOf<{ image: ProductImage }>(await fetch(form.action, { method: "POST", body }));
+          if (!images.some(image => image.id === data.image.id)) images.push(data.image);
+          pending.shift(); render();
+        }
+        input.value = ""; status.textContent = "已上傳商品圖片。可以回商品管理上架。";
+      });
     });
+    render();
   }
 </script>
