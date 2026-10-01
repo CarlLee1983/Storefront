@@ -158,7 +158,9 @@ test("主流程：管理員上架補貨 → 顧客購物車與結帳 → 閘道�
 
   await page.goto("/cart");
   await expect(page.getByRole("listitem").filter({ hasText: PRODUCT.name })).toBeVisible();
-  await expect(page.locator("#cart-total")).toHaveText("1,200");
+  const cartSummary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
+  await expect(cartSummary).toContainText(/總金額\s*NT\$ 1,200/);
+  for (const text of ["新台幣", "含稅", "免運"]) await expect(cartSummary).toContainText(text);
   await expect(page.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("src", coverSrc);
   await audit(page, testInfo, "populated-cart-mobile");
   await page.getByRole("link", { name: "前往結帳" }).click();

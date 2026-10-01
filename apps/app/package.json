@@ -10,7 +10,8 @@
     "./payments-shared": "./src/payments/shared.ts",
     "./category-slug": "./src/categories/slug.ts",
     "./catalog-listing": "./src/catalog/listing.ts",
-    "./product-images": "./src/product-images.ts"
+    "./product-images": "./src/product-images.ts",
+    "./catalog-types": "./src/catalog/types.ts"
   },
   "scripts": {
     "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

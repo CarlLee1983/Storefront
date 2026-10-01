@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CART_VERSION, MAX_QUANTITY, addToCart, cartCount, cartTotal, deserializeCart, emptyCart, lineSubtotal, removeFromCart, serializeCart, setQuantity } from "./cart";
+import { CART_VERSION, MAX_QUANTITY, addToCart, clampQuantity, cartCount, cartTotal, deserializeCart, emptyCart, lineSubtotal, removeFromCart, serializeCart, setQuantity } from "./cart";
 
 const mug = { productId: 1, name: "馬克杯", unitPriceTwd: 320 };
 
@@ -150,5 +150,14 @@ describe("serializeCart / deserializeCart", () => {
   it("多餘的欄位被丟棄，只留已知欄位", () => {
     const raw = JSON.stringify({ version: CART_VERSION, lines: [{ ...line, evil: "x" }] });
     expect(deserializeCart(raw).lines).toEqual([line]);
+  });
+});
+
+describe("clampQuantity", () => {
+  it("夾在 1 到上限之間，給加減按鈕共用", () => {
+    expect(clampQuantity(0)).toBe(1);
+    expect(clampQuantity(-3)).toBe(1);
+    expect(clampQuantity(5)).toBe(5);
+    expect(clampQuantity(MAX_QUANTITY + 1)).toBe(MAX_QUANTITY);
   });
 });

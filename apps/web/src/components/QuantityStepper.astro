@@ -1,0 +1,29 @@
+---
+// 數量加減：詳情頁直接使用；購物車的清單列由腳本產生，從 <template> 複製這份標記再填入各列的值與標籤
+interface Props {
+  decreaseLabel: string;
+  increaseLabel: string;
+  max: number;
+  value?: number;
+  /** 有對應的 <label for> 時給 id；沒有時由 inputLabel 提供名稱。 */
+  id?: string;
+  inputLabel?: string;
+  name?: string;
+}
+const { decreaseLabel, increaseLabel, max, value = 1, id, inputLabel, name = "quantity" } = Astro.props;
+---
+
+<div class="stepper">
+  <button type="button" class="stepper-button" data-step="-1" data-action="decrease" aria-label={decreaseLabel}>−</button>
+  <input id={id} type="number" name={name} value={value} min="1" max={max} step="1" inputmode="numeric" data-action="quantity" aria-label={inputLabel} required />
+  <button type="button" class="stepper-button" data-step="1" data-action="increase" aria-label={increaseLabel}>＋</button>
+</div>
+
+<style>
+  .stepper { display: flex; border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); }
+  .stepper button, .stepper input { min-height: 44px; border: 0; border-radius: 0; }
+  .stepper-button { width: 44px; padding: 0; color: var(--color-text); background: none; font-size: var(--text-lg); }
+  .stepper-button:hover { background: var(--color-panel); }
+  .stepper input { width: 3.5rem; padding: 0; text-align: center; font-weight: 700; appearance: textfield; -moz-appearance: textfield; }
+  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+</style>

@@ -1,8 +1,6 @@
 ---
+import type { ProductSummary } from "@storefront/app/catalog-types";
 import CartToast from "./CartToast.astro";
-
-// 商品項目的形狀與 App 前台商品項目（含封面）相同；詳情頁的 related、首頁與分類頁共用
-type ProductSummary = Extract<Awaited<ReturnType<Env["APP"]["getProduct"]>>, { ok: true }>["data"]["related"][number];
 
 interface Props {
   products: ProductSummary[];
@@ -76,6 +74,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   .product-list { list-style: none; margin: 0; padding: 0 1px 1px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   @media (min-width: 56.25rem) { .product-list { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .product-card { position: relative; min-width: 0; display: flex; flex-direction: column; margin: 0 -1px -1px 0; background: var(--color-surface); border: 1px solid var(--color-border); }
+  /* 相鄰卡片的邊框是疊合的，焦點外框要浮在鄰居上面 */
+  .product-card:focus-within { z-index: 1; }
   .product-link { color: var(--color-text); text-decoration: none; }
   .product-link:hover h2 { text-decoration: underline; text-underline-offset: .2em; }
   .cover-frame { position: relative; display: block; aspect-ratio: 1; background: var(--color-panel); }

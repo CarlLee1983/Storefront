@@ -6,6 +6,7 @@ import type { ProductImage } from "../product-images";
 import { products } from "./schema";
 import type { ListProductsInput } from "./input";
 import { PAGE_SIZE, type ProductSort } from "./listing";
+import type { ProductSummary } from "./types";
 import { availableExpr, availableQuantity, reservedQuantity } from "./stock";
 
 interface ProductBase {
@@ -16,12 +17,7 @@ interface ProductBase {
   priceTwd: number;
 }
 
-export interface ProductSummary extends ProductBase {
-  /** 是否還能購買（可售數量 > 0）；前台不需要知道確切數量。 */
-  purchasable: boolean;
-  /** 依圖片順位挑第一張；下架與舊資料可能沒有圖片。 */
-  cover: ProductImage | null;
-}
+export type { ProductSummary };
 
 export interface AdminProductSummary extends ProductBase {
   cover: ProductImage | null;
@@ -126,6 +122,8 @@ export async function selectProductForAdmin(db: DrizzleD1Database, id: number): 
 
 export interface ProductDetail extends ProductBase {
   purchasable: boolean;
+  /** 可售數量（在庫數減保留），最小為 0。 */
+  available: number;
   images: ProductImage[];
   /** 所屬分類的代稱與名稱；上架中的商品一定有。 */
   category: { slug: string; name: string } | null;
@@ -157,9 +155,11 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
     .where(and(eq(products.id, id), eq(products.listed, true)));
   if (!row) return null;
   const { onHand, reserved, categoryId, categorySlug, categoryName, ...product } = row;
+  const available = Math.max(0, availableQuantity(onHand, reserved));
   return {
     ...product,
-    purchasable: availableQuantity(onHand, reserved) > 0,
+    purchasable: available > 0,
+    available,
     category: categorySlug === null ? null : { slug: categorySlug, name: categoryName! },
     related: categoryId === null ? [] : await selectRelatedProducts(db, categoryId, id),
   };

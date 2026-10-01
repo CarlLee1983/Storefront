@@ -1,5 +1,6 @@
 ---
 import { MAX_QUANTITY } from "../cart/cart";
+import QuantityStepper from "../components/QuantityStepper.astro";
 import Layout from "../layouts/Layout.astro";
 
 export const prerender = false;
@@ -9,7 +10,7 @@ export const prerender = false;
   <h1 class="cart-title">購物車</h1>
   <p id="cart-empty" hidden>購物車是空的。<a href="/">去逛逛商品</a></p>
   <p id="cart-error" class="error" role="alert" hidden></p>
-  <div id="cart-content" class="cart-layout" hidden data-max-quantity={MAX_QUANTITY}>
+  <div id="cart-content" class="cart-layout" hidden>
     <ul id="cart-lines" class="cart-lines" aria-label="購物車商品"></ul>
     <aside class="cart-summary" aria-labelledby="cart-summary-heading">
       <h2 id="cart-summary-heading">訂單摘要</h2>
@@ -18,15 +19,17 @@ export const prerender = false;
         <div><dt>運費</dt><dd>免運</dd></div>
       </dl>
       <p class="cart-total"><span>總金額</span><strong>NT$ <span id="cart-total">0</span></strong></p>
+      <p class="cart-currency">金額為新台幣，含稅、免運。</p>
       <a class="checkout-link" href="/checkout">前往結帳</a>
       <p class="cart-note">單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。</p>
     </aside>
   </div>
+  <template id="stepper-template"><QuantityStepper max={MAX_QUANTITY} decreaseLabel="" increaseLabel="" /></template>
 </Layout>
 
 <script>
   import { createCartCover } from "../cart/cover";
-  import { cartTotal, lineSubtotal, removeFromCart, setQuantity, type Cart, type CartLine } from "../cart/cart";
+  import { cartTotal, clampQuantity, lineSubtotal, removeFromCart, setQuantity, type Cart, type CartLine } from "../cart/cart";
   import { loadCart, storageOf } from "../cart/storage";
   import { SAVE_FAILED_MESSAGE } from "../cart/feedback";
   import { updateCart } from "../cart/store";
@@ -35,7 +38,7 @@ export const prerender = false;
   const money = (amount: number) => `NT$ ${priceFormat.format(amount)}`;
   const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
   const content = $("#cart-content");
-  const maxQuantity = Number(content.dataset.maxQuantity);
+  const stepperTemplate = $<HTMLTemplateElement>("#stepper-template");
 
   function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
     const created = document.createElement(tag);
@@ -50,42 +53,27 @@ export const prerender = false;
     make("span", "line-subtotal-amount", money(lineSubtotal(line))),
   ];
 
-  function stepperButton(action: "decrease" | "increase", label: string, symbol: string, onClick: () => void) {
-    const button = make("button", "stepper-button", symbol);
-    button.type = "button";
-    button.dataset.action = action;
-    button.setAttribute("aria-label", label);
-    button.addEventListener("click", onClick);
-    return button;
-  }
-
   // 商品名稱來自 localStorage，一律用 textContent，不當 HTML
   function renderLine(line: CartLine) {
     const item = make("li", "cart-line");
     item.dataset.productId = String(line.productId);
     const cover = createCartCover(line.cover, line.name);
     cover.classList.add("line-cover");
-    const input = make("input");
-    input.type = "number";
-    input.inputMode = "numeric";
-    input.dataset.action = "quantity";
-    input.min = "1";
-    input.max = String(maxQuantity);
-    input.step = "1";
+    const stepper = stepperTemplate.content.firstElementChild!.cloneNode(true) as HTMLElement;
+    const input = stepper.querySelector<HTMLInputElement>("input")!;
     input.value = String(line.quantity);
     input.setAttribute("aria-label", `${line.name} 數量`);
     input.addEventListener("change", () => change((c) => setQuantity(c, line.productId, Number(input.value)), input));
-    // 以最新的購物車內容加減；已在下限或上限時 setQuantity 會維持原狀
+    // 以最新的購物車內容加減；已在下限或上限時數量不變
     const stepBy = (delta: number) => (cart: Cart) => {
       const current = cart.lines.find((l) => l.productId === line.productId);
-      return current ? setQuantity(cart, line.productId, current.quantity + delta) : cart;
+      return current ? setQuantity(cart, line.productId, clampQuantity(current.quantity + delta)) : cart;
     };
-    const stepper = make("div", "stepper");
-    stepper.replaceChildren(
-      stepperButton("decrease", `減少${line.name}數量`, "−", () => change(stepBy(-1))),
-      input,
-      stepperButton("increase", `增加${line.name}數量`, "＋", () => change(stepBy(1))),
-    );
+    for (const button of stepper.querySelectorAll<HTMLButtonElement>("[data-step]")) {
+      const delta = Number(button.dataset.step);
+      button.setAttribute("aria-label", `${delta < 0 ? "減少" : "增加"}${line.name}數量`);
+      button.addEventListener("click", () => change(stepBy(delta)));
+    }
     const remove = make("button", "line-remove", "移除");
     remove.type = "button";
     remove.dataset.action = "remove";
@@ -102,8 +90,9 @@ export const prerender = false;
   }
 
   function renderTotals(cart: Cart) {
-    $("#cart-subtotal").textContent = priceFormat.format(cartTotal(cart));
-    $("#cart-total").textContent = priceFormat.format(cartTotal(cart));
+    const total = priceFormat.format(cartTotal(cart));
+    $("#cart-subtotal").textContent = total;
+    $("#cart-total").textContent = total;
   }
 
   function render(cart: Cart) {
@@ -164,6 +153,7 @@ export const prerender = false;
   .cart-total strong { font-size: var(--text-xl); }
   .checkout-link { display: flex; justify-content: center; align-items: center; min-height: 52px; background: var(--color-primary); color: var(--color-surface); font-weight: 700; text-decoration: none; }
   .checkout-link:hover { background: var(--color-primary-hover); color: var(--color-surface); }
+  .cart-currency { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-muted); }
   .cart-note { margin: var(--space-4) 0 0; font-size: var(--text-sm); color: var(--color-muted); }
   :global(#cart-lines .cart-line) { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--space-1) var(--space-4); padding-block: var(--space-4); border-bottom: 1px solid var(--color-border); }
   :global(#cart-lines .line-cover) { display: grid; place-items: center; grid-row: 1 / span 2; width: 100%; aspect-ratio: 1; background: var(--color-panel); overflow: hidden; }
@@ -174,12 +164,6 @@ export const prerender = false;
   :global(#cart-lines .line-price) { margin: var(--space-1) 0 var(--space-2); font-size: var(--text-sm); color: var(--color-muted); }
   :global(#cart-lines .line-actions) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
   :global(#cart-lines .line-subtotal) { grid-column: 2; margin: 0; font-size: var(--text-lg); font-weight: 700; }
-  :global(#cart-lines .stepper) { display: flex; border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); }
-  :global(#cart-lines .stepper button), :global(#cart-lines .stepper input) { min-height: 44px; border: 0; border-radius: 0; }
-  :global(#cart-lines .stepper-button) { width: 40px; padding: 0; color: var(--color-text); background: none; }
-  :global(#cart-lines .stepper-button:hover) { background: var(--color-panel); }
-  :global(#cart-lines .stepper input) { width: 3.25rem; padding: 0; text-align: center; font-weight: 700; appearance: textfield; -moz-appearance: textfield; }
-  :global(#cart-lines .stepper input::-webkit-inner-spin-button), :global(#cart-lines .stepper input::-webkit-outer-spin-button) { appearance: none; margin: 0; }
   :global(#cart-lines .line-remove) { padding-inline: var(--space-2); color: var(--color-text); background: none; border: 0; text-decoration: underline; text-underline-offset: .2em; }
   :global(#cart-lines .line-remove:hover) { background: none; color: var(--color-primary); }
   @media (min-width: 56.25rem) {

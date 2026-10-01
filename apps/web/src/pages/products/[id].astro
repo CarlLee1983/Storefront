@@ -4,6 +4,7 @@ import { MAX_QUANTITY } from "../../cart/cart";
 import CartToast from "../../components/CartToast.astro";
 import ProductGallery from "../../components/ProductGallery.astro";
 import ProductList from "../../components/ProductList.astro";
+import QuantityStepper from "../../components/QuantityStepper.astro";
 import Layout from "../../layouts/Layout.astro";
 
 export const prerender = false;
@@ -28,15 +29,11 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {product.category && <p class="eyebrow">{product.category.name}</p>}
         <h1>{product.name}</h1>
         <p class="price">NT$ {priceFormat.format(product.priceTwd)}</p>
-        <p class="availability">{product.purchasable ? "現貨供應中" : "已售完"}</p>
+        <p class="availability">{product.purchasable ? `現貨，可售 ${product.available} 件` : "已售完"}</p>
         <p class="description">{product.description}</p>
-        {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)} data-max-quantity={MAX_QUANTITY}>
+        {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
           <label for="buy-quantity">數量</label>
-          <div class="stepper">
-            <button type="button" class="stepper-button" data-step="-1" aria-label="減少數量">−</button>
-            <input id="buy-quantity" type="number" name="quantity" value="1" min="1" max={MAX_QUANTITY} step="1" inputmode="numeric" required />
-            <button type="button" class="stepper-button" data-step="1" aria-label="增加數量">＋</button>
-          </div>
+          <QuantityStepper id="buy-quantity" max={MAX_QUANTITY} decreaseLabel="減少數量" increaseLabel="增加數量" />
           <button type="submit" class="buy-button">加入購物車<span aria-hidden="true"> →</span></button>
           <CartToast />
         </form>}
@@ -52,19 +49,18 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 <script>
   import { parseCartCover } from "../../cart/cover";
   import { showCartToast } from "../../cart/toast";
-  import { addToCart } from "../../cart/cart";
+  import { addToCart, clampQuantity } from "../../cart/cart";
   import { addFeedback } from "../../cart/feedback";
   import { storageOf } from "../../cart/storage";
   import { updateCart } from "../../cart/store";
   const form = document.querySelector<HTMLFormElement>("form.buy-form");
   if (form) {
     const input = form.querySelector<HTMLInputElement>("input[name=quantity]")!;
-    const maxQuantity = Number(form.dataset.maxQuantity);
     // 加減按鈕只在 1 到上限之間調整；輸入框內容無效（空白、小數）時從 1 起算
     for (const button of form.querySelectorAll<HTMLButtonElement>("[data-step]")) {
       button.addEventListener("click", () => {
         const current = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 1;
-        input.value = String(Math.min(maxQuantity, Math.max(1, current + Number(button.dataset.step))));
+        input.value = String(clampQuantity(current + Number(button.dataset.step)));
       });
     }
     form.addEventListener("submit", event => {
@@ -91,12 +87,6 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   .description { margin: 0 0 var(--space-6); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
   .buy-form { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: end; margin-bottom: var(--space-6); }
   .buy-form label { grid-column: 1 / -1; margin: 0; font-size: var(--text-sm); font-weight: 700; }
-  .stepper { display: flex; border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); }
-  .stepper button, .stepper input { min-height: 48px; border: 0; border-radius: 0; }
-  .stepper-button { width: 44px; padding: 0; color: var(--color-text); background: none; font-size: var(--text-lg); }
-  .stepper-button:hover { background: var(--color-panel); }
-  .stepper input { width: 3.5rem; padding: 0; text-align: center; font-weight: 700; appearance: textfield; -moz-appearance: textfield; }
-  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
   .buy-button { min-height: 48px; font-weight: 700; }
   .policy { margin: 0; font-size: var(--text-sm); color: var(--color-muted); }
   .related { margin-top: var(--space-8); }
