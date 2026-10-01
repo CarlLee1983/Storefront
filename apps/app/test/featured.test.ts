@@ -96,8 +96,21 @@ describe("首頁精選商品", () => {
     await feature(jwt, id, 2000);
     expect(await app.getFeaturedProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "沙發", description: "沙發的說明", priceTwd: 500, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+      data: [{ id, name: "沙發", description: "沙發的說明", priceTwd: 500, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
     });
+  });
+
+  it("特價商品帶出原價，精選與補位都一樣", async () => {
+    const jwt = await mintAccessJwt();
+    const featured = await listedProduct(jwt, "精選特價", 1000);
+    const filler = await listedProduct(jwt, "補位特價", 2000);
+    for (const id of [featured, filler]) {
+      const updated = await app.updateProduct(jwt, { id, name: id === featured ? "精選特價" : "補位特價", description: "說明", priceTwd: 500, compareAtPriceTwd: 800 });
+      if (!updated.ok) throw new Error(`設定原價失敗：${updated.reason}`);
+    }
+    await feature(jwt, featured, 3000);
+    const result = await app.getFeaturedProducts();
+    expect(result).toMatchObject({ ok: true, data: [{ name: "精選特價", compareAtPriceTwd: 800 }, { name: "補位特價", compareAtPriceTwd: 800 }] });
   });
 
   it("依精選時間由新到舊，最多 4 件", async () => {
