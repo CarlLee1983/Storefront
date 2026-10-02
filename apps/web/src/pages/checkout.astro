@@ -216,10 +216,18 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     );
     form.querySelector<HTMLInputElement>("input[name=lines]")!.value = JSON.stringify(lines);
     form.querySelector<HTMLInputElement>("input[name=idempotencyKey]")!.value = key;
-    $<HTMLButtonElement>("#checkout-submit").disabled = true;
+    const submitBtn = $<HTMLButtonElement>("#checkout-submit");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "訂單成立中，請稍候...";
+    submitBtn.classList.add("is-submitting");
   });
   // 從瀏覽器的上一頁回來時恢復按鈕
-  window.addEventListener("pageshow", () => ($<HTMLButtonElement>("#checkout-submit").disabled = false));
+  window.addEventListener("pageshow", () => {
+    const submitBtn = $<HTMLButtonElement>("#checkout-submit");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "送出訂單";
+    submitBtn.classList.remove("is-submitting");
+  });
 
   render(loadCart(storageOf(window)));
   window.addEventListener("storage", () => render(loadCart(storageOf(window))));

@@ -54,6 +54,22 @@
   font-size: var(--text-base);
   font-weight: 700;
 }
+.admin-shell .admin-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-6);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+  color: var(--color-muted);
+}
+.admin-shell .admin-empty-state p {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-base);
+}
 .admin-shell .admin-toolbar {
   display: flex;
   align-items: center;

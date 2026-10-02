@@ -77,7 +77,12 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         </div>
         {savedMessage && <p role="status">{savedMessage}</p>}
         {listingError && <p id="listing-error" class="error" role="alert">{listingError}</p>}
-        {products?.ok && products.data.length === 0 && <p>目前沒有商品。</p>}
+        {products?.ok && products.data.length === 0 && (
+          <div class="admin-empty-state">
+            <p>目前還沒有任何商品。</p>
+            <a class="button-create" href="/admin/products/new">＋ 建立第一件商品</a>
+          </div>
+        )}
         {
           products?.ok && products.data.length > 0 && (
             <div class="table-scroll admin-products" tabindex="0" role="region" aria-label="管理資料表"><table>

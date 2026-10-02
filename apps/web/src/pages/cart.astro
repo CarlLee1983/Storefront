@@ -8,7 +8,18 @@ export const prerender = false;
 
 <Layout title="購物車" noindex hideTitle>
   <h1 class="cart-title">購物車</h1>
-  <p id="cart-empty" hidden>購物車目前是空的。<a href="/products">全部商品</a></p>
+  <div id="cart-empty" class="cart-empty-panel" hidden>
+    <div class="empty-icon-wrap" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+        <path d="M3 6h18" />
+        <path d="M16 10a4 4 0 0 1-8 0" />
+      </svg>
+    </div>
+    <h2>購物車目前是空的</h2>
+    <p>挑選一件陪伴日常的器物，為生活空間帶來沈靜而舒適的秩序。</p>
+    <a class="button-link" href="/products">挑選商品</a>
+  </div>
   <p id="cart-error" class="error" role="alert" hidden></p>
   <div id="cart-content" class="cart-layout" hidden>
     <ul id="cart-lines" class="cart-lines" aria-label="購物車商品"></ul>
@@ -143,6 +154,65 @@ export const prerender = false;
   .cart-title { margin: 0 0 var(--space-6); font-size: var(--text-display-page); line-height: 1.1; letter-spacing: -0.02em; }
   .cart-layout { display: grid; gap: var(--space-6); }
   .cart-layout[hidden] { display: none; }
+  .cart-empty-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: var(--space-12) var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-subtle);
+    max-width: 32rem;
+    margin: var(--space-8) auto;
+  }
+  .cart-empty-panel[hidden] { display: none; }
+  .empty-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 5rem;
+    height: 5rem;
+    border-radius: var(--radius-full);
+    background: var(--color-panel);
+    color: var(--color-subtle);
+    margin-bottom: var(--space-4);
+  }
+  .cart-empty-panel h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .cart-empty-panel p {
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-base);
+    color: var(--color-muted);
+    line-height: 1.6;
+    max-width: 24em;
+  }
+  .button-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--control-height);
+    padding: var(--space-2) var(--space-8);
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--color-on-inverse);
+    background: var(--color-primary);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 1px 3px rgba(158, 61, 44, 0.2);
+    transition: all var(--duration-fast) var(--ease-spring);
+  }
+  .button-link:hover {
+    color: var(--color-on-inverse);
+    background: var(--color-primary-hover);
+    box-shadow: 0 4px 14px rgba(158, 61, 44, 0.3);
+    transform: translateY(-1px);
+  }
   .cart-lines { min-width: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--color-border); }
   .cart-summary {
     min-width: 0;

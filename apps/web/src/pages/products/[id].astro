@@ -37,7 +37,9 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
           {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {priceFormat.format(sale.compareAtTwd)}</s>}
           {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
         </p>
-        <p class="availability">{product.purchasable ? `現貨，可售 ${product.available} 件` : "已售完"}</p>
+        <p class:list={["availability", { "is-low-stock": product.purchasable && product.available > 0 && product.available <= 5 }]}>
+          {product.purchasable ? (product.available <= 5 ? `僅剩 ${product.available} 件現貨` : `現貨，可售 ${product.available} 件`) : "已售完"}
+        </p>
         <p class="description">{product.description}</p>
         {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
           <label for="buy-quantity">數量</label>
@@ -71,12 +73,23 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
         input.value = String(clampQuantity(current + Number(button.dataset.step)));
       });
     }
+    const buyBtn = form.querySelector<HTMLButtonElement>(".buy-button");
     form.addEventListener("submit", event => {
       event.preventDefault();
       const item = { productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
       const quantity = Number(new FormData(form).get("quantity"));
       showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
         updateCart(storageOf(window), window, current => addToCart(current, item, quantity))));
+
+      if (buyBtn) {
+        const originalText = buyBtn.innerHTML;
+        buyBtn.innerHTML = '已加入購物車 <span aria-hidden="true">✓</span>';
+        buyBtn.classList.add("is-added");
+        window.setTimeout(() => {
+          buyBtn.innerHTML = originalText;
+          buyBtn.classList.remove("is-added");
+        }, 1500);
+      }
     });
   }
 </script>
@@ -118,6 +131,12 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
     border-radius: var(--radius-full);
     color: var(--color-text);
   }
+  .availability.is-low-stock {
+    background: var(--color-primary-light);
+    border-color: rgba(158, 61, 44, 0.25);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
   .description { margin: 0 0 var(--space-6); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; color: var(--color-text); }
   .buy-form {
     display: grid;
@@ -133,6 +152,11 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
     min-height: 44px;
     font-weight: 600;
     border-radius: var(--radius-sm);
+    transition: all var(--duration-fast) var(--ease-spring);
+  }
+  .buy-button.is-added {
+    background: #2b593f;
+    box-shadow: 0 4px 14px rgba(43, 89, 63, 0.3);
   }
   .policy {
     margin: 0;
