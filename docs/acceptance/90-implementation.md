@@ -11,6 +11,9 @@
 - `bun run --filter @storefront/web typecheck`：通過，0 errors、0 warnings（1 個既有 hint）。
 - `bun run --filter @storefront/e2e typecheck`：通過。
 - `bun run --filter @storefront/web build`：通過。
-- 覆蓋率與 production-build E2E：待共用 CPU／固定埠時段執行。新增 375／1280 商品圖庫幾何、水平溢出與 axe 檢查，首頁也在 375／1280 檢查 axe 並附截圖供視覺審閱；不斷言 CSS 色值。
+- `bun run --filter @storefront/web test:coverage`：34 files、438 tests 通過；statements 87.63%、branches 89.64%。
+- `bun run --filter @storefront/e2e e2e tests/product-detail.spec.ts --project=chromium --no-deps`：2 passed，包含既有鍵盤／觸控圖庫流程與新增的 375／1280 圖庫方形幾何、水平溢出、axe 零違規檢查。
+- `bun run --filter @storefront/e2e e2e tests/homepage.spec.ts --project=home --no-deps`：12 passed，包含 375／1280 首頁水平溢出與 axe 零違規檢查。
+- 兩支 E2E spec 執行時擷取了頁面截圖附件；list reporter 未保留獨立圖片檔，owner 視覺審閱仍待整合。測試不斷言 CSS 色值。
 
-既有圖庫觸控捲動後的對齊斷言在本分支前已有不穩定記錄；若仍失敗，需對照 trace 確認是否由本次樣式變更造成。
+既有圖庫觸控捲動後的對齊斷言在本分支前已有不穩定記錄；本次聚焦執行通過。完整整合 CI 由主分支執行。
