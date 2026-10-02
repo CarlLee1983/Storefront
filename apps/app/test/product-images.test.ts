@@ -4,7 +4,7 @@ import { createAdminService } from "../src/admin/service";
 import { systemClock } from "../src/shared/clock";
 import { MAX_IMAGE_BYTES } from "../src/product-images";
 import type { ProductImageBucket } from "../src/images/upload";
-import { mintAccessJwt } from "./access";
+import { mintAccessJwt, adminDeps } from "./access";
 import { assignDefaultCategory } from "./categories";
 import { resetDb } from "./db";
 import { fakeBucket, imageVariants } from "./images";
@@ -70,7 +70,7 @@ describe("商品圖片 RPC", () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
     const { serviceBucket, objects, bucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const results = await Promise.all(Array.from({ length: 10 }, () => service.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() })));
     expect(results.filter((result) => result.ok)).toHaveLength(8);
     expect(results.filter((result) => !result.ok)).toEqual([{ ok: false, reason: "image_limit" }, { ok: false, reason: "image_limit" }]);
@@ -87,7 +87,7 @@ describe("商品圖片 RPC", () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
     const { bucket, objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const input = { id, uploadId: crypto.randomUUID(), variants: imageVariants() };
     const first = await service.addProductImage(jwt, input);
     bucket.put.mockClear();
@@ -106,7 +106,7 @@ describe("商品圖片 RPC", () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
     const { serviceBucket, objects } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const input = { id, uploadId: crypto.randomUUID(), variants: imageVariants() };
     const results = await Promise.all(Array.from({ length: 5 }, () => service.addProductImage(jwt, input)));
     expect(results.every((result) => result.ok)).toBe(true);
@@ -123,7 +123,7 @@ describe("商品圖片 RPC", () => {
     const id = await createProduct(jwt);
     const secondId = await createProduct(jwt);
     const { serviceBucket, bucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const input = { id, uploadId: crypto.randomUUID(), variants: imageVariants() };
     expect((await service.addProductImage(jwt, input)).ok).toBe(true);
     const changed = imageVariants();
@@ -139,7 +139,7 @@ describe("商品圖片 RPC", () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
     const { serviceBucket, bucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     for (const uploadId of [undefined, "invalid", 1]) {
       expect(await service.addProductImage(jwt, { id, uploadId, variants: imageVariants() })).toMatchObject({ ok: false, reason: "invalid_input" });
     }
@@ -149,7 +149,7 @@ describe("商品圖片 RPC", () => {
   it("不存在的商品不寫 R2", async () => {
     const jwt = await mintAccessJwt();
     const { bucket, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     expect(await service.addProductImage(jwt, { id: 999999, uploadId: crypto.randomUUID(), variants: imageVariants() })).toEqual({ ok: false, reason: "product_not_found" });
     expect(bucket.put).not.toHaveBeenCalled();
   });
@@ -157,7 +157,7 @@ describe("商品圖片 RPC", () => {
   it("未授權先拒絕，連格式驗證、D1 與 R2 都不觸及", async () => {
     const { bucket, serviceBucket } = fakeBucket();
     const prepare = vi.fn();
-    const service = createAdminService({ prepare } as unknown as D1Database, systemClock, access(), serviceBucket);
+    const service = createAdminService({ prepare } as unknown as D1Database, systemClock, access(), adminDeps(serviceBucket));
     expect(await service.addProductImage("", null)).toEqual({ ok: false, reason: "unauthorized" });
     expect(await service.addProductImage("", { id: 1, uploadId: crypto.randomUUID(), variants: imageVariants() })).toEqual({ ok: false, reason: "unauthorized" });
     expect(prepare).not.toHaveBeenCalled();
@@ -178,7 +178,7 @@ describe("商品圖片 RPC", () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
     const { serviceBucket, bucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     expect(await service.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: variants() })).toMatchObject({ ok: false, reason: "invalid_input" });
     expect(bucket.put).not.toHaveBeenCalled();
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { images: [] } });
@@ -192,7 +192,7 @@ describe("R2 / D1 失敗時清理", () => {
     const { serviceBucket, bucket, objects } = fakeBucket();
     bucket.put.mockImplementationOnce(async (key, bytes) => { objects.set(key, bytes); return {}; })
       .mockImplementationOnce(async (key, bytes) => { objects.set(key, bytes); throw new Error("R2 write failed"); });
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     expect(await service.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() })).toEqual({ ok: false, reason: "image_upload_failed" });
     expect(objects.size).toBe(0);
     expect(bucket.delete).toHaveBeenCalledTimes(1);
@@ -203,8 +203,8 @@ describe("R2 / D1 失敗時清理", () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
     const { serviceBucket, bucket, objects } = fakeBucket();
-    const success = createAdminService(env.DB, systemClock, access(), serviceBucket);
-    const failure = createAdminService(failInsert(), systemClock, access(), serviceBucket);
+    const success = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
+    const failure = createAdminService(failInsert(), systemClock, access(), adminDeps(serviceBucket));
     const [saved, failed] = await Promise.all([success.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() }), failure.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() })]);
     expect(failed).toEqual({ ok: false, reason: "image_upload_failed" });
     expect(saved.ok).toBe(true);
@@ -226,7 +226,7 @@ describe("R2 / D1 失敗時清理", () => {
         throw new Error("D1 response lost after commit");
       } }) };
     } } as unknown as D1Database;
-    const result = await createAdminService(d1, systemClock, access(), serviceBucket).addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() });
+    const result = await createAdminService(d1, systemClock, access(), adminDeps(serviceBucket)).addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() });
     expect(result.ok).toBe(true);
     expect(objects.size).toBe(3);
     expect(bucket.delete).not.toHaveBeenCalled();
@@ -250,11 +250,11 @@ describe("R2 / D1 失敗時清理", () => {
       } }) };
     } } as unknown as D1Database;
     const input = { id, uploadId: crypto.randomUUID(), variants: imageVariants() };
-    expect(await createAdminService(d1, systemClock, access(), serviceBucket).addProductImage(jwt, input)).toEqual({ ok: false, reason: "image_upload_failed" });
+    expect(await createAdminService(d1, systemClock, access(), adminDeps(serviceBucket)).addProductImage(jwt, input)).toEqual({ ok: false, reason: "image_upload_failed" });
     expect(objects.size).toBe(3);
     expect(bucket.delete).not.toHaveBeenCalled();
     bucket.put.mockClear();
-    const recovered = await createAdminService(env.DB, systemClock, access(), serviceBucket).addProductImage(jwt, input);
+    const recovered = await createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket)).addProductImage(jwt, input);
     expect(recovered.ok).toBe(true);
     expect(bucket.put).not.toHaveBeenCalled();
   });
@@ -264,7 +264,7 @@ describe("R2 / D1 失敗時清理", () => {
     const id = await createProduct(jwt);
     const { serviceBucket, bucket } = fakeBucket();
     bucket.delete.mockRejectedValue(new Error("R2 delete failed"));
-    const service = createAdminService(failInsert(), systemClock, access(), serviceBucket);
+    const service = createAdminService(failInsert(), systemClock, access(), adminDeps(serviceBucket));
     expect(await service.addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() })).toEqual({ ok: false, reason: "image_upload_failed" });
     expect(await app.relistProduct(jwt, { id })).toEqual({ ok: false, reason: "no_images" });
   });
@@ -273,7 +273,7 @@ describe("R2 / D1 失敗時清理", () => {
     const jwt = await mintAccessJwt();
     const { serviceBucket, bucket } = fakeBucket();
     const db = { prepare: () => { throw new Error("D1 unavailable"); } } as unknown as D1Database;
-    expect(await createAdminService(db, systemClock, access(), serviceBucket).addProductImage(jwt, { id: 1, uploadId: crypto.randomUUID(), variants: imageVariants() }))
+    expect(await createAdminService(db, systemClock, access(), adminDeps(serviceBucket)).addProductImage(jwt, { id: 1, uploadId: crypto.randomUUID(), variants: imageVariants() }))
       .toEqual({ ok: false, reason: "image_upload_failed" });
     expect(bucket.put).not.toHaveBeenCalled();
     expect(bucket.delete).not.toHaveBeenCalled();
@@ -282,7 +282,7 @@ describe("R2 / D1 失敗時清理", () => {
   it("沒有 R2 binding 時 fail closed", async () => {
     const jwt = await mintAccessJwt();
     const id = await createProduct(jwt);
-    expect(await createAdminService(env.DB, systemClock, access()).addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() }))
+    expect(await createAdminService(env.DB, systemClock, access(), adminDeps()).addProductImage(jwt, { id, uploadId: crypto.randomUUID(), variants: imageVariants() }))
       .toEqual({ ok: false, reason: "image_upload_failed" });
   });
 });

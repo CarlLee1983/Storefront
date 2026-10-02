@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mintAccessJwt } from "./access";
 import { setNow } from "./clock";
@@ -6,7 +7,7 @@ import { resetDb } from "./db";
 import { installFakeGateway, type FakeGateway } from "./fake-gateway";
 import { orderOf, placeMugOrder, startPaymentFor, stockOf } from "./payment-helpers";
 import { app, PAYMENT_WINDOW_MS, placeOrderAt, runCron, stocked, stockOf as releaseStockOf } from "./release-helpers";
-import { RECONCILE_BATCH_SIZE, RECONCILE_GRACE_MS } from "../src/payments/reconcile";
+import { RECONCILE_BATCH_SIZE, RECONCILE_BUDGET_MS, RECONCILE_GRACE_MS } from "../src/payments/reconcile";
 
 const T0 = Date.UTC(2026, 9, 3, 2, 0, 0);
 
@@ -39,6 +40,13 @@ async function listing() {
   const result = await app.listPaymentsToReconcile(await mintAccessJwt());
   if (!result.ok) throw new Error("讀取補查清單失敗");
   return result.data;
+}
+
+/** 待辦的 `resolved_at`（直接讀表，只為驗證它是待辦開著與否的唯一依據）。 */
+async function resolvedAtOf(paymentId: number): Promise<number | null> {
+  const row = await env.DB.prepare("SELECT resolved_at FROM payment_reconcile_issues WHERE payment_id = ?").bind(paymentId).first<{ resolved_at: number | null }>();
+  if (!row) throw new Error("沒有待辦");
+  return row.resolved_at;
 }
 
 async function mailKinds(cookie: string): Promise<string[]> {
@@ -167,6 +175,7 @@ describe("補查沒能確認結果：不偽造成功，留下可追溯的待辦"
   });
 
   it.each([
+    ["付款 ID 不符", { id: "pay_other" }],
     ["金額不符", { amountTwd: 1 }],
     ["商家參照不是這張訂單", { merchantReference: "999999" }],
   ])("閘道回的%s：不套用，待辦原因是 gateway_mismatch", async (_label, tampered) => {
@@ -201,6 +210,20 @@ describe("補查沒能確認結果：不偽造成功，留下可追溯的待辦"
 
     await app.applyPaymentResult(event);
 
+    expect((await listing()).payments).toEqual([]);
+    expect(await resolvedAtOf(paymentId)).not.toBeNull();
+  });
+
+  it("付款被顧客取消訂單轉為 expired：開著的待辦同步記為已解決", async () => {
+    const gateway = installFakeGateway();
+    const { alice, orderId, paymentId } = await pendingPayment(gateway);
+    gateway.failNext("get", 502);
+    await reconcile(paymentId);
+    expect(await resolvedAtOf(paymentId)).toBeNull();
+
+    expect(await app.cancelOrder(alice, { orderId })).toMatchObject({ ok: true });
+
+    expect(await resolvedAtOf(paymentId)).not.toBeNull();
     expect((await listing()).payments).toEqual([]);
   });
 
@@ -316,7 +339,7 @@ describe("Cron 補查", () => {
     expect((await listing()).payments).toEqual([]);
   });
 
-  it("每次最多補查一個批次：一直失敗的付款不會把其他付款擠出名額", async () => {
+  it("每次最多補查一個批次：前 20 筆閘道都說仍在等待，第 21 筆已收款，第二次 Cron 輪到它轉為已付款", async () => {
     const gateway = installFakeGateway();
     const alice = await signInCustomer("alice");
     const variantId = await stocked(100);
@@ -325,22 +348,98 @@ describe("Cron 補查", () => {
       const order = await placeOrderAt(alice, variantId, 1, T0 + i);
       placed.push({ orderId: order.orderId, gatewayPaymentId: await startPaymentFor(alice, order.orderId, gateway) });
     }
-    const firstPayment = placed[0]!.gatewayPaymentId;
-    const lastPayment = placed[RECONCILE_BATCH_SIZE]!.gatewayPaymentId;
-    gateway.settle(lastPayment, "succeeded");
-    // 第一筆一直查不到
-    gateway.payments.get(firstPayment)!.status = "pending";
-    const original = gateway.handle.bind(gateway);
-    vi.spyOn(gateway, "handle").mockImplementation((request) =>
-      request.url.endsWith(`/v1/payments/${firstPayment}`) ? Promise.resolve(Response.json({ ok: false, error: { code: "x", message: "x" } }, { status: 502 })) : original(request),
-    );
+    const last = placed[RECONCILE_BATCH_SIZE]!;
+    gateway.settle(last.gatewayPaymentId, "succeeded");
     const at = T0 + RECONCILE_BATCH_SIZE + RECONCILE_GRACE_MS + 1_000;
     expect(at).toBeLessThan(T0 + PAYMENT_WINDOW_MS);
 
     await runCron(at);
-    expect((await orderOf(alice, placed[RECONCILE_BATCH_SIZE]!.orderId)).status).toBe("pending_payment");
+    expect((await orderOf(alice, last.orderId)).status).toBe("pending_payment");
     await runCron(at + 1_000);
 
-    expect((await orderOf(alice, placed[RECONCILE_BATCH_SIZE]!.orderId)).status).toBe("paid");
+    expect((await orderOf(alice, last.orderId)).status).toBe("paid");
+  }, 30_000);
+
+  it("一直查不出結果（閘道出錯）的付款也輪替，不會把其他付款擠出名額", async () => {
+    const gateway = installFakeGateway();
+    const alice = await signInCustomer("alice");
+    const variantId = await stocked(100);
+    const placed = [] as { orderId: number; gatewayPaymentId: string }[];
+    for (let i = 0; i < RECONCILE_BATCH_SIZE + 1; i++) {
+      const order = await placeOrderAt(alice, variantId, 1, T0 + i);
+      placed.push({ orderId: order.orderId, gatewayPaymentId: await startPaymentFor(alice, order.orderId, gateway) });
+    }
+    const last = placed[RECONCILE_BATCH_SIZE]!;
+    gateway.settle(last.gatewayPaymentId, "succeeded");
+    const original = gateway.handle.bind(gateway);
+    vi.spyOn(gateway, "handle").mockImplementation((request) =>
+      request.url.endsWith(`/v1/payments/${placed[0]!.gatewayPaymentId}`) ? Promise.resolve(Response.json({ ok: false, error: { code: "x", message: "x" } }, { status: 502 })) : original(request),
+    );
+    const at = T0 + RECONCILE_BATCH_SIZE + RECONCILE_GRACE_MS + 1_000;
+
+    await runCron(at);
+    await runCron(at + 1_000);
+
+    expect((await orderOf(alice, last.orderId)).status).toBe("paid");
+  }, 30_000);
+
+  it("付款期限前 2 分鐘內才發起（建立不滿寬限時間）、閘道已收款卻漏通知：過了失效時間就補查，訂單逾期之前入帳", async () => {
+    const gateway = installFakeGateway();
+    const alice = await signInCustomer("alice");
+    const variantId = await stocked(10);
+    const order = await placeOrderAt(alice, variantId, 2, T0);
+    setNow(T0 + 10 * 60_000);
+    const gatewayPaymentId = await startPaymentFor(alice, order.orderId, gateway);
+    gateway.settle(gatewayPaymentId, "succeeded");
+    // 失效時間是付款期限前 2 分鐘（T0 + 13 分）；此時建立才 2 分鐘，還沒到寬限時間
+    await runCron(T0 + 12 * 60_000);
+    expect((await orderOf(alice, order.orderId)).status).toBe("pending_payment");
+
+    await runCron(T0 + 13 * 60_000 + 1_000);
+
+    expect((await orderOf(alice, order.orderId)).status).toBe("paid");
+    expect(gateway.refunded).toEqual([]);
+  });
+
+  it("閘道卡住（永不回應）：呼叫逾時記為待辦，同一次 Cron 的訂單逾期照常生效", async () => {
+    const gateway = installFakeGateway();
+    const alice = await signInCustomer("alice");
+    const variantId = await stocked(10);
+    const order = await placeOrderAt(alice, variantId, 2, T0);
+    setNow(T0 + 1_000);
+    const gatewayPaymentId = await startPaymentFor(alice, order.orderId, gateway);
+    gateway.settle(gatewayPaymentId, "succeeded");
+    vi.spyOn(gateway, "handle").mockImplementation(() => new Promise<Response>(() => undefined));
+
+    await runCron(order.paymentDeadline + 1_000);
+
+    expect((await orderOf(alice, order.orderId)).status).toBe("expired");
+    expect((await listing()).payments).toMatchObject([{ issue: { reason: "gateway_unavailable", lastSource: "cron" } }]);
+  }, 30_000);
+
+  it("補查超過時間預算：不再開始新的一筆，其餘 Cron 工作照常進行，沒查到的下次輪替", async () => {
+    const gateway = installFakeGateway();
+    const alice = await signInCustomer("alice");
+    const variantId = await stocked(10);
+    const placed = [] as { orderId: number; gatewayPaymentId: string }[];
+    for (let i = 0; i < 3; i++) {
+      const order = await placeOrderAt(alice, variantId, 1, T0 + i);
+      placed.push({ orderId: order.orderId, gatewayPaymentId: await startPaymentFor(alice, order.orderId, gateway) });
+    }
+    for (const { gatewayPaymentId } of placed) gateway.settle(gatewayPaymentId, "succeeded");
+    const original = gateway.handle.bind(gateway);
+    let lookups = 0;
+    vi.spyOn(gateway, "handle").mockImplementation((request) => {
+      lookups += 1;
+      vi.setSystemTime(Date.now() + RECONCILE_BUDGET_MS + 1_000);
+      return original(request);
+    });
+    const at = T0 + RECONCILE_GRACE_MS + 1_000;
+
+    await runCron(at);
+
+    expect(lookups).toBe(1);
+    const statuses = await Promise.all(placed.map(async ({ orderId }) => (await orderOf(alice, orderId)).status));
+    expect(statuses.filter((status) => status === "paid")).toHaveLength(1);
   });
 });

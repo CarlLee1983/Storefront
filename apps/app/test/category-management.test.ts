@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAdminService } from "../src/admin/service";
 import { systemClock } from "../src/shared/clock";
-import { mintAccessJwt } from "./access";
+import { mintAccessJwt, adminDeps } from "./access";
 import { assignCategory, createCategory } from "./categories";
 import { resetDb } from "./db";
 import { fakeBucket, imageVariants, uploadAndList } from "./images";
@@ -94,7 +94,7 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const first = await service.setCategoryImage(jwt, upload(id));
     const second = await service.setCategoryImage(jwt, upload(id));
     if (!first.ok || !second.ok) throw new Error("上傳失敗");
@@ -109,7 +109,7 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { bucket, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     await service.setCategoryImage(jwt, upload(id));
     bucket.delete.mockRejectedValue(new Error("R2 delete failed"));
     const second = await service.setCategoryImage(jwt, upload(id));
@@ -121,11 +121,11 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { objects, serviceBucket } = fakeBucket();
-    const good = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const good = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const first = await good.setCategoryImage(jwt, upload(id));
     if (!first.ok) throw new Error("上傳失敗");
     const failing = { prepare: (sql: string) => env.DB.prepare(sql), batch: vi.fn(async () => { throw new Error("D1 write failed"); }) } as unknown as D1Database;
-    const service = createAdminService(failing, systemClock, access(), serviceBucket);
+    const service = createAdminService(failing, systemClock, access(), adminDeps(serviceBucket));
     expect(await service.setCategoryImage(jwt, upload(id))).toEqual({ ok: false, reason: "image_upload_failed" });
     expect([...objects.keys()].sort()).toEqual(first.data.image.variants.map((variant) => variant.key).sort());
     expect(await app.listCategoriesForAdmin(jwt)).toMatchObject({ ok: true, data: [{ image: first.data.image }] });
@@ -135,7 +135,7 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const results = await Promise.all([service.setCategoryImage(jwt, upload(id)), service.setCategoryImage(jwt, upload(id))]);
     if (!results.every((result) => result.ok)) throw new Error("上傳失敗");
     const listed = await app.listCategoriesForAdmin(jwt);
@@ -148,10 +148,10 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { objects, serviceBucket } = fakeBucket();
-    const good = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const good = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     await good.setCategoryImage(jwt, upload(id));
     const lost = { prepare: (sql: string) => env.DB.prepare(sql), batch: async (statements: D1PreparedStatement[]) => { await env.DB.batch(statements); throw new Error("response lost"); } } as unknown as D1Database;
-    const service = createAdminService(lost, systemClock, access(), serviceBucket);
+    const service = createAdminService(lost, systemClock, access(), adminDeps(serviceBucket));
     const replaced = await service.setCategoryImage(jwt, upload(id));
     if (!replaced.ok) throw new Error(`更換失敗：${replaced.reason}`);
     expect([...objects.keys()].sort()).toEqual(replaced.data.image.variants.map((variant) => variant.key).sort());
@@ -161,7 +161,7 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { bucket, objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const input = upload(id);
     const first = await service.setCategoryImage(jwt, input);
     bucket.put.mockClear();
@@ -177,7 +177,7 @@ describe("分類圖片", () => {
   it("沒有 R2 bucket 時回 image_upload_failed", async () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
-    const service = createAdminService(env.DB, systemClock, access());
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps());
     expect(await service.setCategoryImage(jwt, upload(id))).toEqual({ ok: false, reason: "image_upload_failed" });
   });
 
@@ -185,7 +185,7 @@ describe("分類圖片", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt);
     const { bucket, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     expect(await service.setCategoryImage(jwt, upload(999999))).toEqual({ ok: false, reason: "category_not_found" });
     const bad = imageVariants();
     bad[0]!.bytes = new Uint8Array(new TextEncoder().encode("not an image"));
@@ -217,7 +217,7 @@ describe("刪除分類", () => {
     const id = await createCategory(jwt, "living", "客廳");
     const keep = await createCategory(jwt, "dining", "餐廳");
     const { objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     await service.setCategoryImage(jwt, upload(id));
     await service.setCategoryImage(jwt, upload(keep));
     expect(objects.size).toBe(6);
@@ -242,7 +242,7 @@ describe("刪除分類", () => {
     const id = await createCategory(jwt, "living", "客廳");
     const other = await createCategory(jwt, "dining", "餐廳");
     const { objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const image = await service.setCategoryImage(jwt, upload(id));
     if (!image.ok) throw new Error("上傳失敗");
     const product = await createProduct(jwt);
@@ -309,7 +309,7 @@ describe("未授權", () => {
     const jwt = await mintAccessJwt();
     const id = await createCategory(jwt, "living", "客廳", "沙發");
     const { bucket, objects, serviceBucket } = fakeBucket();
-    const service = createAdminService(env.DB, systemClock, access(), serviceBucket);
+    const service = createAdminService(env.DB, systemClock, access(), adminDeps(serviceBucket));
     const unauthorized = { ok: false, reason: "unauthorized" };
     for (const bad of ["", "not-a-jwt"]) {
       expect(await service.updateCategory(bad, { id, name: "被改", description: "被改" })).toEqual(unauthorized);

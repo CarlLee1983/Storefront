@@ -78,6 +78,9 @@ const cancelledSchema = z.object({ paymentId: z.string(), status: z.literal("exp
 const successSchema = z.object({ ok: z.literal(true), data: z.unknown() });
 const errorSchema = z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) });
 
+/** 每次呼叫閘道最久等多久；逾時視為連不上（`unreachable`），不讓卡住的閘道拖住呼叫端（例如 Cron）。 */
+export const GATEWAY_TIMEOUT_MS = 5_000;
+
 export interface HttpGatewayConfig {
   baseUrl: string;
   apiKey: string;
@@ -91,20 +94,28 @@ export function createHttpGateway(
   const root = baseUrl.replace(/\/+$/, "");
 
   async function call<S extends z.ZodType>(path: string, method: "GET" | "POST", schema: S, body?: unknown): Promise<z.output<S>> {
+    const timeout = AbortSignal.timeout(GATEWAY_TIMEOUT_MS);
+    // 不依賴 fetch 一定會理會 signal：逾時也直接放棄等待（回應本體同樣計入這個期限）
+    const expired = new Promise<never>((_resolve, reject) => timeout.addEventListener("abort", () => reject(timeout.reason), { once: true }));
+    expired.catch(() => undefined);
     let response: Response;
+    let json: unknown;
     try {
-      response = await fetchImpl(`${root}${path}`, {
-        method,
-        headers: { Authorization: `Bearer ${apiKey}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        // 閘道的網址是設定值，不跟隨導向
-        redirect: "manual",
-      });
+      response = await Promise.race([
+        fetchImpl(`${root}${path}`, {
+          method,
+          headers: { Authorization: `Bearer ${apiKey}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+          body: body === undefined ? undefined : JSON.stringify(body),
+          // 閘道的網址是設定值，不跟隨導向
+          redirect: "manual",
+          signal: timeout,
+        }),
+        expired,
+      ]);
+      json = await Promise.race([response.json().catch(() => undefined), expired]);
     } catch (cause) {
       throw new GatewayError("unreachable", null, `連不上金流閘道：${method} ${path}`, { cause });
     }
-
-    const json: unknown = await response.json().catch(() => undefined);
     if (!response.ok) {
       const failure = errorSchema.safeParse(json);
       if (failure.success) throw new GatewayError(failure.data.error.code, response.status, failure.data.error.message);

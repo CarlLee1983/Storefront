@@ -45,8 +45,10 @@ it("回復程序移除待辦表，付款不受影響，之後可重新套用 002
 
   expect(await rows("SELECT name FROM sqlite_master WHERE name = 'payment_reconcile_issues'")).toEqual([]);
   expect(await rows("SELECT id, status FROM payments")).toEqual([{ id: 1, status: "pending" }]);
+  expect(await rows("SELECT name FROM pragma_table_info('payments')")).not.toContainEqual({ name: "reconciled_at" });
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
   expect(await rows("SELECT name FROM sqlite_master WHERE name = 'payment_reconcile_issues'")).toHaveLength(1);
+  expect(await rows("SELECT reconciled_at FROM payments")).toEqual([{ reconciled_at: null }]);
 });
 
 it("還有開著的待辦時，回復的守門檢查讓整段失敗且資料不動；已解決的不擋", async () => {

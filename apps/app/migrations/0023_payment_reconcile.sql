@@ -9,3 +9,5 @@ CREATE TABLE `payment_reconcile_issues` (
 	FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "payment_reconcile_issues_reason_check" CHECK("payment_reconcile_issues"."reason" IN ('gateway_unavailable', 'gateway_mismatch', 'result_unclear'))
 );
+--> statement-breakpoint
+ALTER TABLE `payments` ADD `reconciled_at` integer;

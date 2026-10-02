@@ -1,3 +1,4 @@
+import type { ProductImageBucket } from "../src/images/upload";
 import { env } from "cloudflare:workers";
 import { generateKeyPair, importJWK, SignJWT } from "jose";
 import { TEST_AUD, TEST_KID, TEST_TEAM_DOMAIN } from "./constants";
@@ -35,4 +36,14 @@ export async function mintAccessJwt(options: TokenOptions = {}): Promise<string>
 export async function generateRogueKey(): Promise<CryptoKey> {
   const { privateKey } = await generateKeyPair("RS256");
   return privateKey;
+}
+
+/** `createAdminService` 的相依：補查付款不是這些測試要驗的，被呼叫就丟錯（讓誤用立刻現形）。 */
+export function adminDeps(images?: ProductImageBucket) {
+  return {
+    images,
+    reconcilePayment: (): never => {
+      throw new Error("這個測試不該補查付款");
+    },
+  };
 }

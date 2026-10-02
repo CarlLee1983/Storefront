@@ -26,6 +26,8 @@ export const payments = sqliteTable(
     refundReason: text("refund_reason").$type<RefundReason>(),
     /** 退款結果記下的時間（成功或失敗都記），UTC epoch 毫秒（高水位時鐘的有效時間）；沒有觸發過退款為 null。 */
     refundAt: integer("refund_at"),
+    /** 最近一次補查（向閘道查證）的時間，不論結果，UTC epoch 毫秒；從沒補查過為 null。Cron 依它輪替，查不出結果的付款不會擋住其他付款。 */
+    reconciledAt: integer("reconciled_at"),
   },
   (table) => [
     uniqueIndex("payments_gateway_payment_uidx").on(table.gatewayPaymentId),
@@ -49,7 +51,7 @@ export const paymentEvents = sqliteTable("payment_events", {
 
 /**
  * 付款補查的待辦：補查（Cron 或管理員觸發）向閘道查證一筆仍是 pending 的付款卻沒能確認結果時，每筆付款一列（upsert）。
- * 待辦是否還開著由查詢推導：`resolved_at` 為 null 而且付款仍是 pending（付款已被 webhook、導回查詢或後續補查套用就不再需要處理）。
+ * 待辦是否還開著只看 `resolved_at` 是否為 null：付款一離開 pending（webhook、導回查詢、補查套用結果，或轉為已失效）就同步記為已解決。
  * 保留已解決的列，讓之前出過什麼問題、試過幾次仍可追溯。
  */
 export const paymentReconcileIssues = sqliteTable(
@@ -67,7 +69,7 @@ export const paymentReconcileIssues = sqliteTable(
     lastAt: integer("last_at").notNull(),
     /** 最近一次補查的觸發者：`cron` 或管理員 email。 */
     lastSource: text("last_source").notNull(),
-    /** 補查成功確認結果（含閘道說仍在等待）的時間；仍開著為 null。 */
+    /** 待辦解決的時間（付款有了結果，或補查確認閘道說仍在等待）；仍開著為 null。 */
     resolvedAt: integer("resolved_at"),
   },
   (table) => [

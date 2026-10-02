@@ -127,11 +127,13 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 顧客付款後關窗、webhook 也沒送到時，不能只靠顧客返回頁面（設計文件 A9；Migration `0023_payment_reconcile.sql`；`apps/app/src/payments/reconcile.ts`、`service.ts` 的 `reconcileOne`）。補查對本地仍是 `pending` 的付款向閘道查詢，終局結果（成功／失敗，帶事件 ID）一律交給同一個 `applyEvent`（與 webhook、導回查詢同一條路徑與事件 ID 去重），不另寫第二條套用路徑，所以重複補查、補查與 webhook 先後順序改變都不會重複入帳或重複保留；遲到的成功仍依 ADR 0001 重新保留或退款，付款結果通知與付款同一個 batch 寫入。
 
-- 觸發：每分鐘 Cron（`scheduled`）在逾期處理之前先補查建立超過 5 分鐘（`RECONCILE_GRACE_MS`）的 pending 付款，一次最多 20 筆（`RECONCILE_BATCH_SIZE`），最久沒補查過的在前，一直失敗的付款不會擠掉其他付款；補查出錯只記 log，不擋逾期與圖片清理。管理員也可在 `/admin/payments`（導覽「付款補查」）對任一筆 pending 付款按「補查」（RPC `reconcilePayment`，輸入 `paymentId`；清單 RPC `listPaymentsToReconcile`）。付款設定不全時回 `payment_unavailable`，Cron 只記一行 log。
-- 查證：閘道回的金額與商家參照必須與本站記錄一致；連不上、回錯、格式不符、金額或參照不符、成功或失敗卻沒有事件 ID、本地等待時閘道已退款，都不套用也不偽造成功。閘道說已失效 → 本地付款轉 `expired`；說仍在等待 → 不動、不算問題。
-- 待辦：沒能確認結果時，每筆付款一列寫進 `payment_reconcile_issues`（原因 `gateway_unavailable`／`gateway_mismatch`／`result_unclear`、失敗次數、第一次與最近一次時間、最近一次的觸發者 `cron` 或管理員 email）並記 `payment_reconcile_issue` log。待辦是否開著由查詢推導（未解決且付款仍是 pending）：後續補查確認結果會標記已解決，付款被 webhook 或導回查詢套用則不再列出；已解決的列保留供追溯，再出問題時重新計次。`/admin/payments` 把有待辦的付款排最前面，顯示原因、次數、時間與建議處理。
-- 不變：退款失敗（`refund_failed`）與「需要處理」旗標的行為不動（見上），#115 會延伸這裡的待辦做異常退款的安全重試。
-- 回復：先回復 App 與 Web，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0023_payment_reconcile.down.sql`（還有開著的待辦時守門檢查讓回復失敗，須先處理或確認可以捨棄）。
+- 觸發：每分鐘 Cron（`scheduled`）在逾期處理之前先補查本地 pending 的付款：建立超過 5 分鐘（`RECONCILE_GRACE_MS`），或已過閘道失效時間（付款期限前 2 分鐘內才發起的付款失效時間離建立不到 5 分鐘，仍要在訂單逾期前查到結果）。一次最多 20 筆（`RECONCILE_BATCH_SIZE`），依 `payments.reconciled_at`（每次補查開始前就記，不論結果）最久沒查的在前、其中失效時間較早的先查，所以一直查不出結果的付款不會擠掉其他付款。每次呼叫閘道最久等 5 秒（`GATEWAY_TIMEOUT_MS`，逾時視為 `unreachable`），整個補查最多花 20 秒（`RECONCILE_BUDGET_MS`），超過就不再開始新的一筆；補查出錯只記 log，不擋逾期與圖片清理。管理員也可在 `/admin/payments`（導覽「付款補查」）對任一筆 pending 付款按「補查」（RPC `reconcilePayment`，輸入 `paymentId`；清單 RPC `listPaymentsToReconcile`）。付款設定不全時回 `payment_unavailable`，Cron 只記一行 log。
+- Cron 的子請求量（估算，未對照 Cloudflare 官方上限逐項確認）：一次 Cron 最多補查 20 筆，每筆 1 次閘道 fetch；其中成功且需退款的另加 1 次退款 fetch，所以閘道 fetch 最多約 40 次；D1 與其他呼叫不計入這裡的估算。Free 方案每次呼叫的子請求上限是 50，仍在範圍內，但若之後調高批量要重新估算。
+- 查證：閘道回的付款 ID、金額與商家參照必須與本站記錄一致；連不上（含逾時）、回錯、格式不符、付款 ID／金額／參照不符、成功或失敗卻沒有事件 ID、本地等待時閘道已退款，都不套用也不偽造成功。閘道說已失效 → 本地付款轉 `expired`；說仍在等待 → 不動、不算問題。
+- 待辦：沒能確認結果時，每筆付款一列寫進 `payment_reconcile_issues`（原因 `gateway_unavailable`／`gateway_mismatch`／`result_unclear`、失敗次數、第一次與最近一次時間、最近一次的觸發者 `cron` 或管理員 email）並記 `payment_reconcile_issue` log。待辦是否開著只看 `resolved_at` 是否為空（後台清單與回復守門同一定義）：付款離開 pending 時，套用的路徑（`applyPaymentEvent` 的 batch、`expirePayment`）一併記為已解決，閘道說仍在等待則由補查解決；已解決的列保留供追溯，再出問題時重新計次。`/admin/payments` 把有待辦的付款排最前面，顯示原因、次數、時間與建議處理。
+- 已知限制：`gateway_mismatch`（閘道回的資料與本站記錄對不上）與 `result_unclear` 是資料面的矛盾，後台只能重新補查，沒有「接受閘道結果」或「作廢」的操作；需要工程人員到閘道主控頁核對後處理。
+- 與 #115：異常退款的安全重試另建自己的退款待辦表，不延伸 `payment_reconcile_issues`；退款失敗（`refund_failed`）與「需要處理」旗標的行為不動（見上）。
+- 回復：先回復 App 與 Web，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0023_payment_reconcile.down.sql`（移除待辦表與 `payments.reconciled_at`；還有開著的待辦時守門檢查讓回復失敗，須先處理或確認可以捨棄）。
 - 測試見 `apps/app/test/payment-reconcile.test.ts`（管理員補查、冪等與先後順序、遲到付款、待辦、權限、Cron）、`payment-reconcile-migration.test.ts`；Web 提示文字在 `apps/web/src/admin/payment-reconcile.test.ts`，手機與桌機操作（含閘道延遲回呼加關窗、補查後顧客進度與通知一致、顧客不能進補查頁）由 `e2e/tests/payment-reconcile.spec.ts` 驗證。
 
 設定（缺少時只有付款不可用，其餘頁面照常；部署前檢查同上，見 `apps/app/scripts/check-auth-deploy.ts`）：

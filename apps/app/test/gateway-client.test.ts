@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHttpGateway, GatewayError } from "../src/payments/gateway";
+import { createHttpGateway, GATEWAY_TIMEOUT_MS, GatewayError } from "../src/payments/gateway";
 
 const BASE_URL = "https://gateway.example";
 const API_KEY = "key-for-test";
@@ -127,4 +127,17 @@ describe("HTTP 閘道：失敗", () => {
     expect(error).toBeInstanceOf(GatewayError);
     expect(error).toMatchObject({ code: "unreachable", status: null, cause });
   });
+});
+
+describe("HTTP 閘道：逾時", () => {
+  it("閘道永不回應（連 signal 都不理會）：逾時後以 unreachable 失敗，不無限等待", async () => {
+    const { gateway } = gatewayReplying(() => new Promise<Response>(() => undefined));
+
+    const started = Date.now();
+    const error = await gateway.getPayment("pay_1").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GatewayError);
+    expect(error).toMatchObject({ code: "unreachable", status: null });
+    expect(Date.now() - started).toBeLessThan(GATEWAY_TIMEOUT_MS + 2_000);
+  }, GATEWAY_TIMEOUT_MS + 5_000);
 });

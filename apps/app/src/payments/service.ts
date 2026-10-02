@@ -23,7 +23,7 @@ import {
 import { deliverNoticeSafely } from "../contact/notify";
 import { paymentExpiresAt } from "../orders/payment-deadline";
 import { refundReasonFor } from "./refund";
-import { paymentExists, recordReconcileIssue, resolveReconcileIssue, selectDuePayments, selectPendingPaymentById, type PaymentToReconcile } from "./reconcile";
+import { markReconciled, paymentExists, RECONCILE_BUDGET_MS, recordReconcileIssue, resolveReconcileIssue, selectDuePayments, selectPendingPaymentById, type PaymentToReconcile } from "./reconcile";
 import type { PaymentEvent, ReconcileIssueReason } from "./shared";
 
 /** 一筆付款補查的結果：套用了閘道的終局結果、閘道端已失效、閘道說還在等待，或沒能確認結果（記為待辦）。 */
@@ -60,9 +60,9 @@ export function createPaymentService(
     console.error(JSON.stringify({ event: "payment_gateway_failed", operation, code: error.code, status: error.status }));
   }
 
-  /** 閘道回的金額與商家參照必須與本站記錄一致；不一致記一行 log。 */
-  function gatewayResultMatches(queried: GatewayPayment, payment: { amountTwd: number }, orderId: number): boolean {
-    if (queried.amountTwd === payment.amountTwd && queried.merchantReference === String(orderId)) return true;
+  /** 閘道回的付款 ID、金額與商家參照必須與本站記錄一致；不一致記一行 log。 */
+  function gatewayResultMatches(queried: GatewayPayment, payment: { gatewayPaymentId: string; amountTwd: number }, orderId: number): boolean {
+    if (queried.paymentId === payment.gatewayPaymentId && queried.amountTwd === payment.amountTwd && queried.merchantReference === String(orderId)) return true;
     console.error(JSON.stringify({ event: "payment_gateway_mismatch", orderId, gatewayPaymentId: queried.paymentId }));
     return false;
   }
@@ -140,7 +140,7 @@ export function createPaymentService(
     }
     if (!gatewayResultMatches(queried, pending, orderId)) return fail("payment_in_progress");
     if (queried.status === "expired") {
-      await expirePayment(db, pending.id);
+      await expirePayment(db, pending.id, clock.now());
       return null;
     }
     if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
@@ -163,7 +163,7 @@ export function createPaymentService(
     for (const pending of pendings) {
       try {
         await gateway!.cancel(pending.gatewayPaymentId);
-        await expirePayment(db, pending.id);
+        await expirePayment(db, pending.id, clock.now());
       } catch (error) {
         logGatewayError("cancel", error);
         if (!(error instanceof GatewayError && error.status === 409)) return fail("payment_gateway_unavailable");
@@ -187,8 +187,8 @@ export function createPaymentService(
   /**
    * 補查一筆本地仍是 pending 的付款（Cron 與管理員觸發共用；不依賴顧客返回頁面）：向閘道查證，
    * 終局結果一律交給 `applyEvent`（與 webhook、導回查詢同一條套用路徑與事件 ID 去重），這裡不另寫第二條。
-   * 查不到、金額或商家參照不符、結果無法套用（成功或失敗卻沒有事件 ID，或本地還在等待時閘道已退款）都不偽造成功，
-   * 只記成待辦（`payment_reconcile_issues`）並記一行 log；確認了結果（含閘道說仍在等待）就把開著的待辦記為已解決。
+   * 查不到、付款 ID／金額／商家參照不符、結果無法套用（成功或失敗卻沒有事件 ID，或本地還在等待時閘道已退款）都不偽造成功，
+   * 只記成待辦（`payment_reconcile_issues`）並記一行 log；付款離開 pending 時待辦由套用的路徑一併解決，閘道說仍在等待則在這裡解決。
    * `source` 是觸發者（`cron` 或管理員 email），記在待辦上供追溯。呼叫端必須已確認閘道設定存在。
    */
   async function reconcileOne(payment: PaymentToReconcile, source: string): Promise<ReconcileOutcome> {
@@ -198,10 +198,8 @@ export function createPaymentService(
       console.error(JSON.stringify({ event: "payment_reconcile_issue", paymentId: id, orderId, reason, source }));
       return { outcome: "issue", reason };
     };
-    const confirmed = async (outcome: ReconcileOutcome): Promise<ReconcileOutcome> => {
-      await resolveReconcileIssue(db, id, clock.now());
-      return outcome;
-    };
+    // 查之前先記下補查時間：閘道卡住、出錯或結果不明的付款也要讓位給 Cron 的其他付款
+    await markReconciled(db, id, clock.now());
 
     let queried;
     try {
@@ -215,13 +213,17 @@ export function createPaymentService(
     if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
       const applied = await applyEvent({ eventId: queried.eventId, gatewayPaymentId, outcome: queried.status });
       if (!applied.ok) return issue("result_unclear");
-      return confirmed({ outcome: "settled", ...applied.data });
+      return { outcome: "settled", ...applied.data };
     }
     if (queried.status === "expired") {
-      await expirePayment(db, id);
-      return confirmed({ outcome: "expired" });
+      await expirePayment(db, id, clock.now());
+      return { outcome: "expired" };
     }
-    if (queried.status === "pending") return confirmed({ outcome: "waiting" });
+    if (queried.status === "pending") {
+      // 閘道說還在等待：之前的問題已經不存在（付款離開 pending 時，套用的路徑會自己解決待辦）
+      await resolveReconcileIssue(db, id, clock.now());
+      return { outcome: "waiting" };
+    }
     return issue("result_unclear");
   }
 
@@ -249,7 +251,13 @@ export function createPaymentService(
         console.error(JSON.stringify({ event: "payment_reconcile_skipped", reason: "payment_unavailable" }));
         return tally;
       }
+      const startedAt = Date.now();
       for (const payment of await selectDuePayments(db, clock.now())) {
+        // 閘道慢時不再開始新的一筆：同一次 Cron 後面的訂單逾期與圖片清理不能被補查拖住（沒查到的下次輪替）
+        if (Date.now() - startedAt >= RECONCILE_BUDGET_MS) {
+          console.error(JSON.stringify({ event: "payment_reconcile_budget_exhausted", checked: tally.checked }));
+          break;
+        }
         const result = await reconcileOne(payment, "cron");
         tally.checked += 1;
         if (result.outcome === "issue") tally.issues += 1;
@@ -295,12 +303,12 @@ export function createPaymentService(
       }
 
       // 閘道回的金額與商家參照必須與本站記錄一致，不一致就不套用（不信任閘道回應與本站訂單對不上的結果）
-      if (!gatewayResultMatches(queried, payment, orderId)) return fail("payment_mismatch");
+      if (!gatewayResultMatches(queried, { ...payment, gatewayPaymentId }, orderId)) return fail("payment_mismatch");
       if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
         return applyEvent({ eventId: queried.eventId, gatewayPaymentId, outcome: queried.status });
       }
       // 閘道端已失效（顧客沒付、或被取消）：本地不再停在 pending
-      if (queried.status === "expired") await expirePayment(db, payment.id);
+      if (queried.status === "expired") await expirePayment(db, payment.id, clock.now());
       const current = await selectPaymentAndOrderStatus(db, gatewayPaymentId);
       return current ? ok(current) : fail("payment_not_found");
     },

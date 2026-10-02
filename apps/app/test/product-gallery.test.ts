@@ -4,7 +4,7 @@ import { createAdminService } from "../src/admin/service";
 import { cleanupDeletedProductImages } from "../src/images/manage";
 import type { ProductImageBucket } from "../src/images/upload";
 import { systemClock } from "../src/shared/clock";
-import { mintAccessJwt } from "./access";
+import { mintAccessJwt, adminDeps } from "./access";
 import { assignDefaultCategory } from "./categories";
 import { resetDb } from "./db";
 import { imageVariants } from "./images";
@@ -106,7 +106,7 @@ it("R2 cleanup failures are durable and retryable, never leaving a broken refere
   await assignDefaultCategory(jwt, id);
   await app.relistProduct(jwt, { id });
   const bucket = { put: vi.fn(), delete: vi.fn().mockRejectedValue(new Error("R2 unavailable")) };
-  const service = createAdminService(env.DB, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, bucket as unknown as ProductImageBucket);
+  const service = createAdminService(env.DB, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, adminDeps(bucket as unknown as ProductImageBucket));
   const input = { id, imageId: images[0]!.id };
   expect(await service.deleteProductImage(jwt, input)).toEqual({ ok: false, reason: "image_delete_failed" });
   expect(await imageIds(jwt, id)).toEqual([images[1]!.id]);
@@ -150,7 +150,7 @@ it("a committed D1 deletion with a lost response is recoverable without touching
   await assignDefaultCategory(jwt, id);
   await app.relistProduct(jwt, { id });
   const d1 = { prepare: (sql: string) => env.DB.prepare(sql), batch: async (statements: D1PreparedStatement[]) => { await env.DB.batch(statements); throw new Error("response lost"); } } as unknown as D1Database;
-  const service = createAdminService(d1, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, env.PRODUCT_IMAGES);
+  const service = createAdminService(d1, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, adminDeps(env.PRODUCT_IMAGES));
   const input = { id, imageId: images[0]!.id };
   expect(await service.deleteProductImage(jwt, input)).toEqual({ ok: false, reason: "image_delete_failed" });
   expect(await imageIds(jwt, id)).toEqual([images[1]!.id]);
@@ -162,7 +162,7 @@ it("cleanup tombstone response loss and missing bucket are safe to retry", async
   const { jwt, id, images } = await fixture(1);
   const access = { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON };
   const input = { id, imageId: images[0]!.id };
-  const unavailable = createAdminService(env.DB, systemClock, access);
+  const unavailable = createAdminService(env.DB, systemClock, access, adminDeps());
   expect(await unavailable.deleteProductImage(jwt, input)).toEqual({ ok: false, reason: "image_delete_failed" });
   expect(await imageIds(jwt, id)).toEqual([images[0]!.id]);
   const d1 = { batch: (statements: D1PreparedStatement[]) => env.DB.batch(statements), prepare: (sql: string) => {
@@ -170,7 +170,7 @@ it("cleanup tombstone response loss and missing bucket are safe to retry", async
     if (!sql.startsWith("DELETE FROM product_image_deletions")) return statement;
     return { bind: (...values: unknown[]) => ({ run: async () => { await statement.bind(...values).run(); throw new Error("response lost"); } }) };
   } } as unknown as D1Database;
-  const service = createAdminService(d1, systemClock, access, env.PRODUCT_IMAGES);
+  const service = createAdminService(d1, systemClock, access, adminDeps(env.PRODUCT_IMAGES));
   expect(await service.deleteProductImage(jwt, input)).toEqual({ ok: false, reason: "image_delete_failed" });
   expect((await app.deleteProductImage(jwt, input)).ok).toBe(true);
   for (const variant of images[0]!.variants) expect(await env.PRODUCT_IMAGES.get(variant.key)).toBeNull();

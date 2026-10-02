@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "825704f7-239f-49dc-8f68-200ca872ff1b",
+  "id": "b5859282-4e8d-4472-aac6-3f7943cce52e",
   "prevId": "caf42cc5-16c8-48ee-8b08-4e3c2f094cae",
   "tables": {
     "customer_addresses": {
@@ -1760,6 +1760,13 @@
         },
         "refund_at": {
           "name": "refund_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reconciled_at": {
+          "name": "reconciled_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

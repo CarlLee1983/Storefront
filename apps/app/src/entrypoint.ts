@@ -29,7 +29,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       teamDomain: this.env.ACCESS_TEAM_DOMAIN,
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
-    }, this.env.PRODUCT_IMAGES, (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor));
+    }, { images: this.env.PRODUCT_IMAGES, reconcilePayment: (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor) });
   }
 
   /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */

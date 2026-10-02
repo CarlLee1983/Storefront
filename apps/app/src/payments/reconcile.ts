@@ -1,9 +1,15 @@
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { payments, paymentReconcileIssues, type ReconcileIssueReason } from "./schema";
 
-/** 付款建立後這麼久仍是 pending，Cron 才主動補查：留時間給顧客付款與 webhook、導回查詢，不與它們搶著查。 */
+/**
+ * 付款建立後這麼久仍是 pending，Cron 才主動補查：留時間給顧客付款與 webhook、導回查詢，不與它們搶著查。
+ * 付款已過閘道失效時間（`expires_at`）的不受此限：付款期限前 2 分鐘才發起的付款，失效時間離建立不到寬限時間，
+ * 仍要在訂單逾期之前查到結果。
+ */
 export const RECONCILE_GRACE_MS = 5 * 60_000;
+/** 一次 Cron 補查最久花多久（真實時間）；超過就不再開始新的一筆，讓訂單逾期與圖片清理照常進行。 */
+export const RECONCILE_BUDGET_MS = 20_000;
 /** Cron 每次最多補查幾筆（每筆一次閘道呼叫）；補查失敗的排在後面，不會擋住還沒查過的。 */
 export const RECONCILE_BATCH_SIZE = 20;
 /** 管理端清單最多列出幾筆待補查的付款，其餘以 `omitted` 回報筆數。 */
@@ -32,22 +38,28 @@ export async function paymentExists(db: DrizzleD1Database, paymentId: number): P
 }
 
 /**
- * Cron 該補查的付款：建立超過寬限時間、本地仍是 pending（不論是否已過閘道失效時間：閘道也許在失效前就收款了）。
- * 最久沒補查過的在前（從沒失敗過的視為 0），所以一直失敗的付款不會把其他付款擠出每次的名額。
+ * Cron 該補查的付款：本地仍是 pending，而且建立超過寬限時間或已過閘道失效時間（閘道也許在失效前就收款了）。
+ * 最久沒補查過的在前（從沒查過的視為 0；不論上次結果，所以一直查不出結果的付款不會把其他付款擠出每次的名額），
+ * 其中失效時間較早的先查。
  */
 export async function selectDuePayments(db: DrizzleD1Database, now: number): Promise<PaymentToReconcile[]> {
   return db
     .select({ id: payments.id, orderId: payments.orderId, gatewayPaymentId: payments.gatewayPaymentId, amountTwd: payments.amountTwd })
     .from(payments)
-    .leftJoin(paymentReconcileIssues, eq(paymentReconcileIssues.paymentId, payments.id))
-    .where(and(eq(payments.status, "pending"), lte(payments.createdAt, now - RECONCILE_GRACE_MS)))
-    .orderBy(sql`coalesce(${paymentReconcileIssues.lastAt}, 0)`, asc(payments.id))
+    .where(and(eq(payments.status, "pending"), or(lte(payments.createdAt, now - RECONCILE_GRACE_MS), lte(payments.expiresAt, now))))
+    .orderBy(sql`coalesce(${payments.reconciledAt}, 0)`, asc(payments.expiresAt), asc(payments.id))
     .limit(RECONCILE_BATCH_SIZE);
+}
+
+/** 記下這筆付款剛被補查過（開始查之前就記，閘道卡住或出錯也一樣，Cron 才會輪到別的付款）。 */
+export async function markReconciled(db: DrizzleD1Database, paymentId: number, now: number): Promise<void> {
+  await db.update(payments).set({ reconciledAt: now }).where(eq(payments.id, paymentId));
 }
 
 /**
  * 記下補查沒能確認結果的待辦（每筆付款一列）：已有開著的待辦就累計次數，已解決過的重新開始一輪。
  * 只對仍是 pending 的付款記（條件在這一句裡），付款若在補查期間被別的路徑套用就不留待辦。
+ * 待辦是否開著只看 `resolved_at`：付款離開 pending 時由套用的路徑一併記為已解決（`applyPaymentEvent`、`expirePayment`）。
  */
 export async function recordReconcileIssue(
   d1: D1Database,
@@ -72,7 +84,7 @@ export async function recordReconcileIssue(
     .run();
 }
 
-/** 補查確認了結果（含閘道說仍在等待）：開著的待辦記為已解決。 */
+/** 開著的待辦記為已解決（補查確認了結果，或付款離開 pending）。 */
 export async function resolveReconcileIssue(db: DrizzleD1Database, paymentId: number, now: number): Promise<void> {
   await db
     .update(paymentReconcileIssues)
@@ -90,7 +102,7 @@ export interface ReconcileListing {
     createdAt: number;
     /** 閘道回報的失效時間，UTC epoch 毫秒。 */
     expiresAt: number;
-    /** 開著的待辦；補查沒有失敗過（或已解決）為 null。 */
+    /** 開著的待辦（`resolved_at` 為空）；補查沒有失敗過或已解決為 null。 */
     issue: { reason: ReconcileIssueReason; attempts: number; firstAt: number; lastAt: number; lastSource: string } | null;
   }[];
   /** 超過列出上限而沒顯示的付款筆數，不得為負。 */

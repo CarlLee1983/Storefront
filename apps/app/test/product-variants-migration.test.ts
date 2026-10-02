@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from "vitest";
 import rollbackSql from "../rollback/0013_product_variants.down.sql?raw";
 import { createAdminService } from "../src/admin/service";
 import { systemClock } from "../src/shared/clock";
-import { mintAccessJwt } from "./access";
+import { mintAccessJwt, adminDeps } from "./access";
 
 const db = env.MIGRATION_DB;
 const BEFORE_0013 = 13;
@@ -36,7 +36,7 @@ async function seedLegacy() {
   ]);
 }
 
-const admin = () => createAdminService(db, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, env.PRODUCT_IMAGES);
+const admin = () => createAdminService(db, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, adminDeps(env.PRODUCT_IMAGES));
 
 it("0013 把每個既有商品轉為預設變體，價格、原價、庫存、保留與歷史訂單金額都不變", async () => {
   await seedLegacy();

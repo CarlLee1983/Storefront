@@ -1,4 +1,4 @@
-import { and, asc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { PAYMENT_CUTOFF_BEFORE_DEADLINE_MS } from "../orders/payment-deadline";
@@ -7,7 +7,7 @@ import { orders, type OrderStatus } from "../orders/schema";
 import { everyLineReclaimableSql, lateSuccessStatusSql, payableStatusSql } from "./payable";
 import { paymentNeedsAttentionSql } from "./attention";
 import { insertPaymentResultNotice } from "../contact/notices";
-import { payments, type PaymentStatus, type RefundReason } from "./schema";
+import { paymentReconcileIssues, payments, type PaymentStatus, type RefundReason } from "./schema";
 import type { PaymentEvent } from "./shared";
 
 export interface OrderForPayment {
@@ -47,13 +47,18 @@ export async function selectPendingPayments(
     .orderBy(asc(payments.id));
 }
 
-/** 付款轉為 expired，僅限仍是 pending 的付款（已有結果的不會被蓋掉）；回傳這次呼叫是否真的轉換了。 */
-export async function expirePayment(db: DrizzleD1Database, paymentId: number): Promise<boolean> {
-  const updated = await db
-    .update(payments)
-    .set({ status: "expired" })
-    .where(and(eq(payments.id, paymentId), eq(payments.status, "pending")))
-    .returning({ id: payments.id });
+/**
+ * 付款轉為 expired，僅限仍是 pending 的付款（已有結果的不會被蓋掉）；回傳這次呼叫是否真的轉換了。
+ * 同一個 batch 把它開著的補查待辦記為已解決（付款不再 pending，待辦就沒有要處理的事）。
+ */
+export async function expirePayment(db: DrizzleD1Database, paymentId: number, now: number): Promise<boolean> {
+  const [updated] = await db.batch([
+    db.update(payments).set({ status: "expired" }).where(and(eq(payments.id, paymentId), eq(payments.status, "pending"))).returning({ id: payments.id }),
+    db
+      .update(paymentReconcileIssues)
+      .set({ resolvedAt: now })
+      .where(and(eq(paymentReconcileIssues.paymentId, paymentId), isNull(paymentReconcileIssues.resolvedAt), sql`EXISTS (SELECT 1 FROM payments WHERE id = ${paymentId} AND status <> 'pending')`)),
+  ]);
   return updated.length > 0;
 }
 
@@ -173,11 +178,16 @@ export async function applyPaymentEvent(
   `);
   // 通知的信件本體與付款結果同一個 batch（outbox）：付款有了結果信就存在，事件重送時事件鍵已有信就不動
   statements.push(insertPaymentResultNotice(gatewayPaymentId));
+  // 付款離開 pending（這次或先前的呼叫套用的）：開著的補查待辦記為已解決
+  statements.push(sql`
+    UPDATE payment_reconcile_issues SET resolved_at = ${effectiveNow}
+    WHERE resolved_at IS NULL AND payment_id IN (SELECT id FROM payments WHERE gateway_payment_id = ${gatewayPaymentId} AND status <> 'pending')
+  `);
   // 4. 讀回 batch 當下（前面各句之後、同一個交易內）的訂單狀態：退款原因依它決定，不在 batch 之後另讀（之後訂單可能已被別的呼叫轉走）
   statements.push(sql`SELECT status FROM orders WHERE id = ${orderId}`);
 
   const results = await batchAtEffectiveNow(d1, now, statements);
-  const paymentSettled = results[results.length - 3]!.meta.changes > 0;
+  const paymentSettled = results[results.length - 4]!.meta.changes > 0;
   const orderSettled = outcome === "succeeded" && results[1]!.meta.changes > 0;
   const orderStatus = (results[results.length - 1]!.results[0] as { status: OrderStatus }).status;
   return { paymentSettled, orderSettled, orderStatus };
