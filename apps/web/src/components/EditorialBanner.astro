@@ -25,18 +25,59 @@ const { image, title, description, linkText } = EDITORIAL_BANNER;
 </section>
 
 <style>
-  .banner { display: grid; margin-top: var(--section-gap); background: var(--color-primary); color: var(--color-on-inverse); }
-  .banner-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--space-4); padding: var(--space-8) var(--space-4); }
-  .banner-copy h2 { margin: 0; font-size: var(--text-display-banner); font-weight: 700; line-height: 1.05; text-wrap: balance; }
-  .banner-copy p { margin: 0; font-size: var(--text-lg); max-width: 24em; }
-  .banner-copy a { color: var(--color-on-inverse); font-weight: 700; text-decoration-thickness: 2px; }
-  .banner-copy a:hover { color: var(--color-on-inverse); }
+  .banner {
+    display: grid;
+    margin-top: var(--section-gap);
+    background: var(--color-primary);
+    color: var(--color-on-inverse);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .banner-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: var(--space-4);
+    padding: var(--space-8) var(--space-6);
+  }
+  .banner-copy h2 {
+    margin: 0;
+    font-size: var(--text-display-banner);
+    font-weight: 700;
+    line-height: 1.1;
+    text-wrap: balance;
+    letter-spacing: -0.02em;
+  }
+  .banner-copy p {
+    margin: 0;
+    font-size: var(--text-base);
+    max-width: 26em;
+    line-height: 1.6;
+    opacity: 0.9;
+  }
+  .banner-copy a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-on-inverse);
+    font-weight: 600;
+    text-decoration: none;
+    padding-bottom: 2px;
+    border-bottom: 2px solid var(--color-on-inverse);
+    transition: opacity var(--duration-fast), transform var(--duration-fast);
+  }
+  .banner-copy a:hover {
+    opacity: 0.85;
+    transform: translateX(4px);
+  }
   .banner-copy :focus-visible { outline-color: var(--color-on-inverse); }
-  .banner-media { aspect-ratio: 4 / 3; }
+  .banner-media { aspect-ratio: 4 / 3; overflow: hidden; }
   .banner-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
   @media (min-width: 56.25rem) {
     .banner { grid-template-columns: 1fr 1fr; }
-    .banner-copy { padding: var(--space-8); }
+    .banner-copy { padding: var(--space-8) var(--space-12); }
     .banner-media { position: relative; aspect-ratio: auto; min-height: 28rem; }
     .banner-media img { position: absolute; inset: 0; }
   }

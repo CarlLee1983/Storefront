@@ -72,7 +72,9 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
-        <p><a href="/admin/products/new">新增商品</a></p>
+        <div class="admin-toolbar">
+          <a class="button-create" href="/admin/products/new">＋ 新增商品</a>
+        </div>
         {savedMessage && <p role="status">{savedMessage}</p>}
         {listingError && <p id="listing-error" class="error" role="alert">{listingError}</p>}
         {products?.ok && products.data.length === 0 && <p>目前沒有商品。</p>}

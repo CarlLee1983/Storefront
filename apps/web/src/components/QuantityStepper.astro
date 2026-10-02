@@ -20,10 +20,39 @@ const { decreaseLabel, increaseLabel, max, value = 1, id, inputLabel, name = "qu
 </div>
 
 <style>
-  .stepper { display: flex; border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); }
+  .stepper {
+    display: inline-flex;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(28, 27, 26, 0.04);
+  }
   .stepper button, .stepper input { min-height: 44px; border: 0; border-radius: 0; }
-  .stepper-button { width: 44px; padding: 0; color: var(--color-text); background: none; font-size: var(--text-lg); }
-  .stepper-button:hover { background: var(--color-panel); }
-  .stepper input { width: 3.5rem; padding: 0; text-align: center; font-weight: 700; appearance: textfield; -moz-appearance: textfield; }
+  .stepper-button {
+    width: 40px;
+    padding: 0;
+    color: var(--color-text);
+    background: transparent;
+    font-size: var(--text-base);
+    font-weight: 500;
+    box-shadow: none;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+  }
+  .stepper-button:hover { background: var(--color-panel); color: var(--color-primary); transform: none; }
+  .stepper-button:active { background: var(--color-border); }
+  .stepper input {
+    width: 3.25rem;
+    padding: 0;
+    text-align: center;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    background: transparent;
+    border-left: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .stepper input:focus { box-shadow: none; outline: none; background: var(--color-surface); }
   .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 </style>

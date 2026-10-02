@@ -1,32 +1,159 @@
 /* Admin overrides share storefront tokens without changing storefront form/table rules. */
 .admin-shell main, .admin-shell .site-header { width: min(100%, 90rem); }
-.admin-shell .site-header { flex-wrap: nowrap; gap: var(--space-2); }
-.admin-shell .brand { flex: 0 0 auto; }
-.admin-shell .site-header nav { flex: 1; min-width: 0; flex-wrap: nowrap; gap: var(--space-2); overflow-x: auto; }
-.admin-shell .site-header a { flex-shrink: 0; white-space: nowrap; }
+.admin-shell .site-header {
+  flex-wrap: nowrap;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-shell .brand {
+  flex: 0 0 auto;
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.admin-shell .site-header nav { flex: 1; min-width: 0; flex-wrap: nowrap; gap: var(--space-2); overflow-x: auto; display: flex; align-items: center; }
+.admin-shell .site-header a {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: all var(--duration-fast);
+}
+.admin-shell .site-header a:hover {
+  color: var(--color-text);
+  background: var(--color-panel);
+}
+.admin-shell .site-header a[aria-current="page"] {
+  color: var(--color-text);
+  background: var(--color-panel);
+  font-weight: 600;
+  text-decoration: none;
+}
 .admin-shell a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: var(--space-2); }
 .admin-shell button, .admin-shell input:not([type="hidden"]), .admin-shell select, .admin-shell textarea { min-width: 44px; min-height: 44px; }
-.admin-shell input:not([type="hidden"]), .admin-shell select { height: 44px; }
+.admin-shell input:not([type="hidden"]), .admin-shell select { height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
+.admin-shell input:focus, .admin-shell select:focus, .admin-shell textarea:focus { border-color: var(--color-focus); outline: none; }
 .admin-shell input, .admin-shell select, .admin-shell textarea { max-width: 40rem; }
-.admin-shell label { max-width: 40rem; }
-.admin-shell .admin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.admin-shell .admin-card-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin-block: var(--space-4) var(--space-8);
+  box-shadow: var(--shadow-subtle);
+}
+.admin-shell .admin-card-section h2 {
+  margin-top: 0;
+  margin-bottom: var(--space-4);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+.admin-shell .admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: var(--space-4);
+}
+.admin-shell .button-create {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  height: 40px;
+  padding: 0 var(--space-4);
+  background: var(--color-primary);
+  color: var(--color-on-inverse);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(158, 61, 44, 0.2);
+  transition: all var(--duration-fast) var(--ease-spring);
+}
+.admin-shell .button-create:hover {
+  background: var(--color-primary-hover);
+  color: var(--color-on-inverse);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(158, 61, 44, 0.3);
+}
+.admin-shell .admin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .admin-shell .admin-actions form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.admin-shell .admin-filter { display: flex; align-items: flex-end; gap: var(--space-3); }
+.admin-shell .admin-actions a,
+.admin-shell .admin-actions button {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+.admin-shell .admin-actions a {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  text-decoration: none;
+}
+.admin-shell .admin-actions a:hover {
+  background: var(--color-panel);
+  border-color: var(--color-control-border);
+}
+.admin-shell .admin-filter {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-subtle);
+}
 .admin-shell .admin-filter label { margin: 0; flex: 0 1 15rem; min-width: 0; }
 .admin-shell .admin-filter select { display: block; }
-.admin-shell .admin-filter button { flex-shrink: 0; }
-.admin-shell .admin-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); }
+.admin-shell .admin-filter button { flex-shrink: 0; min-height: 44px; padding-inline: var(--space-4); }
+.admin-shell .admin-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
 .admin-shell .category-preview { max-width: 100%; height: auto; max-height: 12rem; object-fit: contain; }
+
+.admin-shell .table-scroll {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+  overflow: hidden;
+}
+.admin-shell table th {
+  background: var(--color-panel);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  padding: var(--space-3);
+  color: var(--color-muted);
+}
+.admin-shell table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-shell table tr:last-child td {
+  border-bottom: 0;
+}
+.admin-shell table tr:hover td {
+  background: rgba(245, 244, 239, 0.4);
+}
 
 .admin-shell .admin-products table { table-layout: auto; min-width: 0; }
 .admin-shell .admin-products th, .admin-shell .admin-products td { white-space: nowrap; overflow-wrap: normal; vertical-align: middle; }
-.admin-shell .admin-products th:nth-child(2), .admin-shell .admin-products td:nth-child(2) { width: 18%; min-width: 8rem; white-space: normal; overflow-wrap: anywhere; }
+.admin-shell .admin-products th:nth-child(2), .admin-shell .admin-products td:nth-child(2) { width: 18%; min-width: 8rem; white-space: normal; overflow-wrap: anywhere; font-weight: 600; }
 .admin-shell .admin-products th:nth-child(n+4):nth-child(-n+8), .admin-shell .admin-products td:nth-child(n+4):nth-child(-n+8) { text-align: right; font-variant-numeric: tabular-nums; }
 .admin-shell .admin-products td:last-child { width: 1%; }
 .admin-shell .admin-products .admin-actions, .admin-shell .admin-products .admin-actions form { flex-wrap: nowrap; }
-.admin-shell .admin-products input[name="delta"] { width: 9rem; flex: 0 0 9rem; }
+.admin-shell .admin-products input[name="delta"] { width: 7.5rem; flex: 0 0 7.5rem; height: 36px; min-height: 36px; padding: 0 var(--space-2); }
 @media (min-width: 48rem) {
-  .admin-shell .admin-products th, .admin-shell .admin-products td { padding-inline: .375rem; }
+  .admin-shell .admin-products th, .admin-shell .admin-products td { padding-inline: var(--space-3); }
 }
 
 .admin-shell .admin-categories table { table-layout: auto; min-width: 0; }
@@ -70,10 +197,22 @@
 }
 
 .admin-shell #product-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-4); padding: 0; list-style: none; }
-.admin-shell #product-images li { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); min-width: 0; }
-.admin-shell #product-images img { display: block; width: 100%; height: 9rem; object-fit: contain; margin-bottom: var(--space-2); }
+.admin-shell #product-images li {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+  min-width: 0;
+  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
+}
+.admin-shell #product-images li:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+.admin-shell #product-images img { display: block; width: 100%; height: 9rem; object-fit: contain; margin-bottom: var(--space-2); border-radius: var(--radius-sm); }
 .admin-shell #product-images .image-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
-.admin-shell #product-images .drag-over { outline: 3px solid currentColor; }
+.admin-shell #product-images .drag-over { outline: 2px dashed var(--color-primary); outline-offset: 2px; }
 .admin-shell .order-products { list-style: none; padding: 0; margin: 0; }
 .admin-shell .order-products li, .admin-shell .order-product { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
 .admin-shell .order-products li > span:last-child, .admin-shell .order-product > span:last-child { min-width: 0; }

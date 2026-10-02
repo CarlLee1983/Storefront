@@ -11,12 +11,14 @@ if (Astro.locals.customer) {
 ---
 
 <Layout title="登入" noindex>
-  <p>使用 LINE 或 Google 登入。兩種方式是各自獨立的帳號，不會合併；結帳後請用原本的方式登入查看訂單。</p>
-  <p id="error" class="error" role="alert" hidden></p>
-  <p>
-    <button type="button" data-provider="line" data-next={next}>用 LINE 登入</button>
-    <button type="button" data-provider="google" data-next={next}>用 Google 登入</button>
-  </p>
+  <div class="login-card">
+    <p class="login-desc">使用 LINE 或 Google 登入。兩種方式是各自獨立的帳號，不會合併；結帳後請用原本的方式登入查看訂單。</p>
+    <p id="error" class="error" role="alert" hidden></p>
+    <div class="login-actions">
+      <button type="button" class="social-button line" data-provider="line" data-next={next}>用 LINE 登入</button>
+      <button type="button" class="social-button google" data-provider="google" data-next={next}>用 Google 登入</button>
+    </div>
+  </div>
   <script>
     import { requestSocialLogin } from "../auth/client";
 
@@ -36,3 +38,51 @@ if (Astro.locals.customer) {
     }
   </script>
 </Layout>
+
+<style>
+  .login-card {
+    max-width: 28rem;
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-subtle);
+  }
+  .login-desc {
+    margin: 0 0 var(--space-6);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+  }
+  .login-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .social-button {
+    width: 100%;
+    min-height: 48px;
+    font-weight: 600;
+  }
+  .social-button.line {
+    background: #06c755;
+    border-color: #06c755;
+    color: #ffffff;
+  }
+  .social-button.line:hover {
+    background: #05b04c;
+    border-color: #05b04c;
+    box-shadow: 0 4px 12px rgba(6, 199, 85, 0.25);
+  }
+  .social-button.google {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    box-shadow: 0 1px 2px rgba(28, 27, 26, 0.05);
+  }
+  .social-button.google:hover {
+    background: var(--color-panel);
+    border-color: var(--color-control-border);
+    box-shadow: 0 4px 12px rgba(28, 27, 26, 0.08);
+  }
+</style>

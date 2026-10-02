@@ -38,21 +38,60 @@ const { categories } = Astro.props;
 </ul>
 
 <style>
-  /* 與商品卡相同的 1px 格線拼貼 */
-  .category-tiles { list-style: none; margin: 0; padding: 0 1px 1px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  @media (min-width: 56.25rem) { .category-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .category-tiles li { min-width: 0; margin: 0 -1px -1px 0; }
-  .tile { position: relative; height: 100%; display: flex; flex-direction: column; color: var(--color-text); text-decoration: none; background: var(--color-surface); border: 1px solid var(--color-border); }
-  .tile:hover { color: var(--color-text); }
+  /* 柔和溫潤的卡片網格 */
+  .category-tiles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+  @media (min-width: 56.25rem) {
+    .category-tiles {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-6);
+    }
+  }
+  .category-tiles li { min-width: 0; }
+  .tile {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    color: var(--color-text);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-subtle);
+    transition: transform var(--duration-normal) var(--ease-spring), box-shadow var(--duration-normal) var(--ease-smooth), border-color var(--duration-fast);
+  }
+  .tile:hover {
+    color: var(--color-text);
+    border-color: var(--color-control-border);
+    box-shadow: var(--shadow-card);
+    transform: translateY(-2px);
+  }
   .tile:focus-visible { z-index: 1; }
-  .tile-media { display: block; aspect-ratio: 4 / 3; background: var(--color-panel); }
-  .tile-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .tile-placeholder { display: grid; place-items: center; width: 100%; height: 100%; font-size: var(--text-display-placeholder); font-weight: 700; color: var(--color-muted); }
-  .tile-body { flex: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-3); }
+  .tile-media { display: block; aspect-ratio: 4 / 3; background: var(--color-panel); overflow: hidden; }
+  .tile-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--duration-normal) var(--ease-smooth);
+  }
+  .tile:hover .tile-media img {
+    transform: scale(1.03);
+  }
+  .tile-placeholder { display: grid; place-items: center; width: 100%; height: 100%; font-size: var(--text-display-placeholder); font-weight: 700; color: var(--color-subtle); }
+  .tile-body { flex: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-4); }
   .tile-text { min-width: 0; }
   .tile h3 { margin: 0; font-size: var(--text-base); font-weight: 700; line-height: 1.4; }
   .tile-description { display: block; margin-top: var(--space-1); font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted); }
-  .tile svg { flex: none; margin-top: var(--space-1); transition: transform var(--duration-fast); }
-  .tile:hover svg { transform: translateX(.25rem); color: var(--color-text); }
-  .tile:hover h3 { text-decoration: underline; text-underline-offset: .2em; }
+  .tile svg { flex: none; margin-top: var(--space-1); color: var(--color-muted); transition: transform var(--duration-fast) var(--ease-spring), color var(--duration-fast); }
+  .tile:hover svg { transform: translateX(0.25rem); color: var(--color-primary); }
+  .tile:hover h3 { color: var(--color-primary); }
 </style>

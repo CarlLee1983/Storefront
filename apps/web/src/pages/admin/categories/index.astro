@@ -83,27 +83,31 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
         {savedMessage && <p role="status">{savedMessage}</p>}
         {deleteError && <p class="error" role="alert">{deleteError}</p>}
         <p>只有沒有任何商品（不分上架與否）的分類可以刪除。</p>
-        <h2>新增分類</h2>
-        {createFailure && <p class="error" role="alert">{createFailure.message}</p>}
-        <form method="post">
-          <input type="hidden" name="intent" value="create-category" />
-          <label>
-            分類名稱
-            <input name="categoryName" value={submitted.categoryName ?? ""} required />
-            {createFailure?.fields.name?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            分類說明（一行）
-            <input name="categoryDescription" value={submitted.categoryDescription ?? ""} required />
-            {createFailure?.fields.description?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            網址代稱（小寫英文、數字與連字號，建立後不能修改）
-            <input name="categorySlug" value={submitted.categorySlug ?? ""} required pattern={SLUG_PATTERN.source} maxlength={MAX_SLUG_LENGTH} />
-            {createFailure?.fields.slug?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <button type="submit">建立分類</button>
-        </form>
+        <div class="admin-card-section">
+          <h2>新增分類</h2>
+          {createFailure && <p class="error" role="alert">{createFailure.message}</p>}
+          <form method="post">
+            <input type="hidden" name="intent" value="create-category" />
+            <label>
+              分類名稱
+              <input name="categoryName" value={submitted.categoryName ?? ""} required />
+              {createFailure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              分類說明（一行）
+              <input name="categoryDescription" value={submitted.categoryDescription ?? ""} required />
+              {createFailure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              網址代稱（小寫英文、數字與連字號，建立後不能修改）
+              <input name="categorySlug" value={submitted.categorySlug ?? ""} required pattern={SLUG_PATTERN.source} maxlength={MAX_SLUG_LENGTH} />
+              {createFailure?.fields.slug?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <div class="admin-actions">
+              <button type="submit">建立分類</button>
+            </div>
+          </form>
+        </div>
         <h2>分類列表</h2>
         {categories?.ok && categories.data.length === 0 && <p>目前沒有分類。</p>}
         {

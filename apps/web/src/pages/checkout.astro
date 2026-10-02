@@ -227,29 +227,27 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
 </script>
 
 <style>
-  .checkout-title { margin: 0 0 var(--space-6); font-size: var(--text-display-page); line-height: 1; }
+  .checkout-title { margin: 0 0 var(--space-6); font-size: var(--text-display-page); line-height: 1.1; letter-spacing: -0.02em; }
   #checkout-content:not([hidden]) { display: grid; gap: var(--space-6); }
-  .checkout-summary, #checkout-form { min-width: 0; padding: var(--space-4) 0; border-top: 2px solid var(--color-text); }
-  .checkout-summary { padding-inline: var(--space-4); background: var(--color-panel); }
-  .checkout-summary h2, #checkout-form h2 { margin-top: 0; }
-  #checkout-form input { min-height: 44px; }
+  .checkout-summary, #checkout-form { min-width: 0; padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-subtle); }
+  .checkout-summary { background: var(--color-panel); }
+  .checkout-summary h2, #checkout-form h2 { margin-top: 0; font-size: var(--text-base); font-weight: 700; }
+  #checkout-form input { min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
   #checkout-form button { width: 100%; margin-top: var(--space-4); }
   #checkout-issues:empty { display: none; }
-  :global(#checkout-lines .summary-product) { display: flex; align-items: center; gap: var(--space-3); font-weight: 700; }
-  :global(#checkout-lines .cart-cover) { display: grid; flex-shrink: 0; place-items: center; width: var(--product-thumb-size); height: var(--product-thumb-size); background: var(--color-bg); overflow: hidden; }
+  :global(#checkout-lines .summary-product) { display: flex; align-items: center; gap: var(--space-3); font-weight: 600; }
+  :global(#checkout-lines .cart-cover) { display: grid; flex-shrink: 0; place-items: center; width: var(--product-thumb-size); height: var(--product-thumb-size); background: var(--color-surface); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--color-border); }
   :global(#checkout-lines .cart-cover img) { width: 100%; height: 100%; object-fit: cover; }
-  :global(#checkout-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-muted); text-align: center; }
+  :global(#checkout-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-subtle); text-align: center; }
   thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   :global(#checkout-lines) { display: grid; gap: var(--space-4); }
   :global(#checkout-lines tr) { display: grid; padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
-  :global(#checkout-lines td) { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border: 0; }
+  :global(#checkout-lines td) { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border: 0; font-size: var(--text-sm); }
   :global(#checkout-lines td:not(.summary-product)::before) { content: attr(data-label); color: var(--color-muted); }
   :global(#checkout-lines .summary-product) { justify-content: start; }
   @media (min-width: 64rem) {
-    #checkout-content:not([hidden]) { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; }
-    .checkout-summary { grid-column: 2; grid-row: 1 / span 10; }
+    #checkout-content:not([hidden]) { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: var(--space-8); }
+    .checkout-summary { grid-column: 2; grid-row: 1 / span 10; position: sticky; top: var(--space-4); }
     #checkout-content > :not(.checkout-summary) { grid-column: 1; }
-    .checkout-summary { padding: var(--space-6); }
-    #checkout-form { padding-block: var(--space-6); }
   }
 </style>

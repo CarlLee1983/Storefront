@@ -1,33 +1,66 @@
 /* Public storefront only. Admin keeps the shared base tokens and its own 48rem layout. */
 body.storefront-shell {
-  --color-error: #672579;
-  --text-display-hero: clamp(2rem, 7vw, 3.75rem);
-  --text-display-banner: clamp(2.25rem, 8vw, 4.5rem);
-  --text-display-page: clamp(2.5rem, 10vw, 5rem);
-  --text-display-product: clamp(2rem, 6vw, 3.5rem);
-  --text-display-placeholder: 4rem;
-  --section-gap: clamp(3rem, 6vw, 5rem);
-  --control-height: 3.25rem;
+  --color-error: #9e2a2b;
+  --text-display-hero: clamp(2.25rem, 6vw, 3.75rem);
+  --text-display-banner: clamp(2rem, 5vw, 3.5rem);
+  --text-display-page: clamp(2.25rem, 6vw, 4rem);
+  --text-display-product: clamp(1.75rem, 4vw, 2.75rem);
+  --text-display-placeholder: 3rem;
+  --section-gap: clamp(3.5rem, 7vw, 6rem);
+  --control-height: 3rem;
   --product-thumb-size: 4rem;
   --product-thumb-cart-size: 5.5rem;
 }
 
-body.storefront-shell h1 { font-size: var(--text-display-page); line-height: 1.1; }
-body.storefront-shell h1,
-body.storefront-shell h2,
-body.storefront-shell h3 { font-weight: 700; letter-spacing: normal; }
-body.storefront-shell .brand,
-body.storefront-shell .drawer-nav a { font-weight: 700; letter-spacing: normal; }
-body.storefront-shell main a { color: var(--color-text); text-decoration: underline; }
-body.storefront-shell main a:hover { color: var(--color-text); text-decoration-thickness: 2px; }
+body.storefront-shell h1 {
+  font-size: var(--text-display-page);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+body.storefront-shell h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+body.storefront-shell h3 {
+  font-weight: 600;
+  letter-spacing: normal;
+}
+body.storefront-shell .brand {
+  font-family: var(--font-body);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-size: 1.35rem;
+}
+body.storefront-shell .drawer-nav a {
+  font-weight: 700;
+  letter-spacing: normal;
+}
+body.storefront-shell main a {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  text-decoration-color: var(--color-border);
+  transition: text-decoration-color var(--duration-fast), color var(--duration-fast);
+}
+body.storefront-shell main a:hover {
+  color: var(--color-primary);
+  text-decoration-color: var(--color-primary);
+}
 body.storefront-shell .site-header a:hover:not(.brand),
 body.storefront-shell .menu-drawer a:hover,
 body.storefront-shell .site-header a.sale-link,
 body.storefront-shell .drawer-nav a.sale-link,
 body.storefront-shell .site-header nav a[aria-current="page"],
-body.storefront-shell .drawer-nav a[aria-current="page"] { color: var(--color-text); }
+body.storefront-shell .drawer-nav a[aria-current="page"] {
+  color: var(--color-text);
+}
 body.storefront-shell .site-header nav a[aria-current="page"],
-body.storefront-shell .drawer-nav a[aria-current="page"] { text-decoration: underline; }
+body.storefront-shell .drawer-nav a[aria-current="page"] {
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+  text-decoration-thickness: 2px;
+}
 body.storefront-shell .price,
 body.storefront-shell .price-now,
 body.storefront-shell .price-was,
@@ -36,27 +69,100 @@ body.storefront-shell .line-subtotal,
 body.storefront-shell .cart-total,
 body.storefront-shell #checkout-total,
 body.storefront-shell .subtotal,
-body.storefront-shell .total { font-variant-numeric: tabular-nums; }
+body.storefront-shell .total {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
 
 body.storefront-shell .buy-form button,
 body.storefront-shell #checkout-form button,
-body.storefront-shell .pay { min-height: var(--control-height); }
+body.storefront-shell .pay {
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.02em;
+}
 body.storefront-shell .button-secondary {
   color: var(--color-text);
   background: var(--color-surface);
-  border: 1px solid var(--color-control-border);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 2px rgba(28, 27, 26, 0.04);
 }
-body.storefront-shell .button-secondary:hover { color: var(--color-text); background: var(--color-panel); }
-body.storefront-shell .button-secondary:disabled { color: var(--color-surface); background: var(--color-muted); }
-body.storefront-shell .on-sale .price-now { color: var(--color-primary); }
+body.storefront-shell .button-secondary:hover {
+  color: var(--color-text);
+  background: var(--color-panel);
+  border-color: var(--color-control-border);
+}
+body.storefront-shell .button-secondary:disabled {
+  color: var(--color-subtle);
+  background: var(--color-panel);
+  border-color: var(--color-border);
+}
+body.storefront-shell .on-sale .price-now {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+body.storefront-shell .sale-tag {
+  border-radius: var(--radius-xs);
+  box-shadow: 0 2px 6px rgba(158, 61, 44, 0.25);
+  letter-spacing: 0.02em;
+}
 body.storefront-shell .button-link,
-body.storefront-shell .checkout-link { color: var(--color-on-inverse); text-decoration: none; }
+body.storefront-shell .checkout-link {
+  color: var(--color-on-inverse);
+  background: var(--color-primary);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 3px rgba(158, 61, 44, 0.2);
+  transition: all var(--duration-fast) var(--ease-spring);
+}
 body.storefront-shell .button-link:hover,
-body.storefront-shell .checkout-link:hover { color: var(--color-on-inverse); }
+body.storefront-shell .checkout-link:hover {
+  color: var(--color-on-inverse);
+  background: var(--color-primary-hover);
+  box-shadow: 0 4px 14px rgba(158, 61, 44, 0.3);
+  transform: translateY(-1px);
+}
+body.storefront-shell .button-link:active,
+body.storefront-shell .checkout-link:active {
+  transform: translateY(0);
+}
 
 /* Shared order status components keep their admin defaults; public colors are scoped here. */
-body.storefront-shell .order-status.paid { color: var(--color-on-inverse); background: var(--color-inverse); border-color: var(--color-inverse); }
-body.storefront-shell .order-status.shipped { color: var(--color-text); background: var(--color-surface); border-color: var(--color-control-border); }
-body.storefront-shell .payment-callout { border-color: var(--color-border); }
+body.storefront-shell .order-status.paid {
+  color: var(--color-on-inverse);
+  background: var(--color-inverse);
+  border-color: var(--color-inverse);
+  border-radius: var(--radius-xs);
+}
+body.storefront-shell .order-status.shipped {
+  color: var(--color-text);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+}
+body.storefront-shell .payment-callout {
+  border-color: var(--color-border);
+  background: var(--color-panel);
+  border-radius: var(--radius-sm);
+}
+
+/* Product list & card tactile polish */
+body.storefront-shell .product-card {
+  transition: transform var(--duration-normal) var(--ease-spring), box-shadow var(--duration-normal) var(--ease-smooth);
+}
+body.storefront-shell .product-card:hover {
+  z-index: 2;
+  box-shadow: var(--shadow-card);
+}
+body.storefront-shell .product-card .cover-frame {
+  overflow: hidden;
+}
+body.storefront-shell .product-card .cover-frame img {
+  transition: transform var(--duration-normal) var(--ease-smooth);
+}
+body.storefront-shell .product-card:hover .cover-frame img {
+  transform: scale(1.025);
+}
 
 /* Public layout uses 40rem, 56.25rem, and 64rem. Admin's 48rem breakpoint is independent. */
+
