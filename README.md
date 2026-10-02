@@ -156,4 +156,6 @@ Migration `0007_product_images.sql` 會新增圖片表、把商品 `listed` 預�
 - 購物車、結帳與庫存調整都以變體編號為準：結帳明細帶 `variantId`，訂單明細同時記 `variant_id` 與 `product_id`（取封面、連結），後台庫存調整送 `variantId`。商品詳情與列表帶 `defaultVariantId` 供加入購物車。被取代的以商品編號結帳的路徑已移除，瀏覽器購物車格式升到第 2 版，舊版購物車會被視為空（顧客需重新加入）。
 - 沿用現行付款扣庫語意：保留 = 待付款訂單明細（以變體加總），付款成功才扣在庫數；逾期、取消與遲到付款的規則不變。
 - 遷移保留歷史：舊明細逐筆指向該商品的預設變體，單價、數量、名稱快照與訂單總額原樣不動，所以實付金額與免運結果不變；對不到預設變體的明細會讓 `variant_id NOT NULL` 失敗、整個遷移中止，不會丟掉明細或編造對應。
+- 部署順序沿用先 migration、再 App、再 Web，窗口內的影響：(1) migration 後、新 App 前，舊 App 的商品列表、結帳與付款事件 SQL 會因 `products.price_twd`／`on_hand` 不存在而失敗，這段時間顧客無法瀏覽與結帳，付款事件套用也會失敗；(2) 新 App 上線、新 Web 未上線時，舊 Web 以 `productId` 結帳、以 `{ id }` 調庫存，會被驗證擋下回 `invalid_input`（不會寫入）。建議把兩個窗口壓到最短，並在 migration 前暫停後台庫存與商品操作。
+- 窗口內付款事件的補救：付款事件套用失敗時，付款與訂單都不會被改動。依據是閘道的事件本文在建立時固定、投遞紀錄存檔，且 `apps/gateway/src/transitions.ts` 註明可由閘道主控頁重送，程式內沒有自動重試；顧客被導回 `/orders/:id/payment-return` 時 App 也會主動向閘道查詢一次。補救順序：新 Web／App 都上線後，先到閘道主控頁查看窗口期間各事件的投遞結果，對失敗的事件重送（套用以事件 ID 去重，重送安全）；若主控頁查不到該事件或重送仍失敗，再人工以該事件的內容重放 webhook，並對照訂單與付款狀態確認。人工重放的步驟與權限尚無既有文件，需事前另行確認。
 - 回復：套用後若要退回，先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0013_product_variants.down.sql`（加 `--local`／`--remote`／`--env`）；它把預設變體寫回 `products`、明細改回只指向商品、移除 `d1_migrations` 紀錄。只在每個商品都恰好一個預設變體時可用，否則守門檢查會讓回復失敗。回復前須一併回復 Web、App 與 E2E 呼叫端（購物車格式與結帳輸入都已變更）。測試見 `apps/app/test/product-variants-migration.test.ts`。

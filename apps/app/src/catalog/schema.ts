@@ -20,7 +20,8 @@ export const products = sqliteTable("products", {
 
 /**
  * 商品變體（ADR 0005）：可獨立購買、定價與計算庫存的販售單位；購物車、價格校驗、訂單明細與庫存都以它為準。
- * 沒有選項的商品有且只有一個預設變體（`isDefault`）；多變體與選項維度由後續票擴充，不需要改動這張表的既有欄位。
+ * 沒有選項的商品有且只有一個預設變體（`isDefault`）；「恰一個」目前只由 `createProduct` 的 batch 保證（部分唯一索引只擋「超過一個」）。
+ * 後續若要切換預設變體，須在同一 batch 先清舊的再設新的；多變體與選項維度由後續票擴充，不需要改動這張表的既有欄位。
  */
 export const productVariants = sqliteTable("product_variants", {
   id: integer("id").primaryKey({ autoIncrement: true }),

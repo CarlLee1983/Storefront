@@ -176,6 +176,6 @@ Q22 已確認保留式遷移：舊商品轉預設變體；舊單保留實付單�
 | Q21–Q23、Q29 | 發票、歷史快照與遷移、後台、進度呈現 |
 | Q31 | 交付切片、故障演練與完整驗收 |
 
-詞彙以 [CONTEXT.md](../../CONTEXT.md) 為唯一詞彙表；本文件記業務規則、範圍與驗收。難以反轉且須解釋取捨的目標決策見 [ADR 0005](../adr/0005-variants-own-price-and-stock.md)、[ADR 0006](../adr/0006-physical-stock-deducted-on-dispatch.md)、[ADR 0007](../adr/0007-refunds-have-independent-progress.md)。這些文件均不表示功能已實作。
+詞彙以 [CONTEXT.md](../../CONTEXT.md) 為唯一詞彙表；本文件記業務規則、範圍與驗收。難以反轉且須解釋取捨的目標決策見 [ADR 0005](../adr/0005-variants-own-price-and-stock.md)、[ADR 0006](../adr/0006-physical-stock-deducted-on-dispatch.md)、[ADR 0007](../adr/0007-refunds-have-independent-progress.md)。這些文件原則上不表示功能已實作；例外：T01（#104）已實作 ADR 0005 的預設變體，多變體與停賣仍待後續票。
 
 本輪僅文件整理及靜態核對，未執行產品測試。後續實作的整合 gates 為 `bun run typecheck`、`bun run test:coverage`、`bun run e2e`，應以當時 repo／CI 契約為準；既有 issue #67 的測試不穩定不能視為已解決，也不能直接略過失敗。實作完成需檢查最終差異、驗收結果與營運文案，不把本文件當作測試通過證明。

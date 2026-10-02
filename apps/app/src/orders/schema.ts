@@ -66,6 +66,7 @@ export const orderLines = sqliteTable(
     orderId: integer("order_id")
       .notNull()
       .references(() => orders.id),
+    /** 必須等於 `variantId` 所屬變體的 `product_id`：結帳的 INSERT … SELECT 從變體取得，其他寫入路徑要自行維持。 */
     productId: integer("product_id")
       .notNull()
       .references(() => products.id),

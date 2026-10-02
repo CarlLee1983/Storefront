@@ -107,3 +107,15 @@ it("已有非預設變體時回復程序拒絕執行，不破壞資料", async (
 
   expect((await db.prepare("SELECT count(*) AS n FROM product_variants").first<{ n: number }>())!.n).toBe(3);
 });
+
+it("有商品沒有任何變體時回復程序同樣拒絕執行", async () => {
+  await seedLegacy();
+  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  // 明細參照變體，先移除商品 2 的明細才能刪它的變體
+  await db.batch([db.prepare("DELETE FROM order_lines WHERE product_id = 2"), db.prepare("DELETE FROM product_variants WHERE product_id = 2")]);
+
+  const [dropGuard, createGuard, check] = rollbackSql.split("--> statement-breakpoint");
+  await db.prepare(dropGuard!).run();
+  await db.prepare(createGuard!).run();
+  await expect(db.prepare(check!).run()).rejects.toThrow();
+});
