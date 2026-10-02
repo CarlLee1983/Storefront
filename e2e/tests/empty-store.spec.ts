@@ -13,6 +13,13 @@ test("店裡沒有上架商品時，首頁不出現精選區、分類方塊與�
   await expect(page.getByRole("region", { name: "精選商品" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "依空間選物" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: "特價" })).toHaveCount(0);
+  await expect(page.locator('a[href^="/categories/"]')).toHaveCount(0);
+  const heroLinks = page.getByRole("region", { name: "主視覺" }).locator("a.button-link");
+  await expect(heroLinks).toHaveCount(3);
+  for (const link of await heroLinks.all()) {
+    await expect(link).toHaveAttribute("href", "/products");
+    await expect(link).toHaveText("全部商品");
+  }
   expect((await new AxeBuilder({ page }).analyze()).violations, "空店面首頁").toEqual([]);
 });
 
