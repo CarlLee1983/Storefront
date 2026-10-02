@@ -48,6 +48,17 @@ describe("商品的尺寸、材質與保養資訊", () => {
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ data: { dimensions: "45 cm", material: "", care: "乾布擦拭" } });
   });
 
+  it("換行以 \\n 計長度：含 \\r\\n 換行恰 2000 字可儲存，並以 \\n 保存", async () => {
+    const jwt = await mintAccessJwt();
+    const id = await createListed(jwt);
+    const base = { id, name: "x", description: "", priceTwd: 1 };
+    const care = `${"保".repeat(999)}\n${"養".repeat(1000)}`;
+
+    expect(await app.updateProduct(jwt, { ...base, care: care.replace("\n", "\r\n") })).toEqual({ ok: true, data: { id } });
+    expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ data: { care } });
+    expect(await app.updateProduct(jwt, { ...base, care: `${care}x`.replace("\n", "\r\n") })).toMatchObject({ ok: false, reason: "invalid_input" });
+  });
+
   it("超過長度上限回 invalid_input，且需要管理員身分", async () => {
     const jwt = await mintAccessJwt();
     const id = await createListed(jwt);

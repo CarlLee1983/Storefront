@@ -19,10 +19,6 @@ interface ProductBase {
   priceTwd: number;
   /** 原價，新台幣整數元；null 表示不是特價商品。 */
   compareAtPriceTwd: number | null;
-  /** 尺寸、材質、保養資訊（純文字，空字串表示未提供）。 */
-  dimensions: string;
-  material: string;
-  care: string;
 }
 
 export type { AdminVariant, ProductSummary, VariantDetail };
@@ -48,6 +44,10 @@ export interface AdminProductSummary extends ProductBase {
 }
 
 export interface AdminProductDetail extends AdminProductSummary {
+  /** 尺寸、材質、保養資訊（純文字，空字串表示未提供）；只在單一商品回傳，清單不帶。 */
+  dimensions: string;
+  material: string;
+  care: string;
   images: ProductImage[];
 }
 
@@ -59,9 +59,6 @@ const defaultVariantColumns = {
   id: products.id,
   name: products.name,
   description: products.description,
-  dimensions: products.dimensions,
-  material: products.material,
-  care: products.care,
   // D1 的 batch 以欄位名稱為鍵回傳列，與 products.id 同名會互相覆蓋，所以要取別名
   defaultVariantId: sql<number>`${productVariants.id}`.as("default_variant_id"),
   priceTwd: productVariants.priceTwd,
@@ -232,11 +229,13 @@ export async function selectProductsForAdmin(db: DrizzleD1Database): Promise<Adm
 
 /** 單一商品（含下架）；不存在回 null。 */
 export async function selectProductForAdmin(db: DrizzleD1Database, id: number): Promise<AdminProductDetail | null> {
-  const [row] = await db.select(adminColumns).from(products).innerJoin(productVariants, withDefaultVariant).leftJoin(categories, eq(products.categoryId, categories.id)).where(eq(products.id, id));
-  if (!row) return null;
+  const [found] = await db.select({ ...adminColumns, dimensions: products.dimensions, material: products.material, care: products.care })
+    .from(products).innerJoin(productVariants, withDefaultVariant).leftJoin(categories, eq(products.categoryId, categories.id)).where(eq(products.id, id));
+  if (!found) return null;
+  const { dimensions, material, care, ...row } = found;
   const images = await db.select({ id: productImages.id, variants: productImages.variants }).from(productImages)
     .where(eq(productImages.productId, id)).orderBy(asc(productImages.position), asc(productImages.id));
-  return { ...toAdminSummary(row, (await selectAdminVariants(db, id)).get(id) ?? []), images };
+  return { ...toAdminSummary(row, (await selectAdminVariants(db, id)).get(id) ?? []), dimensions, material, care, images };
 }
 
 export interface ProductDetail {

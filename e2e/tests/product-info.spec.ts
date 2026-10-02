@@ -68,7 +68,12 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("沒有管理員身分無法儲存商品資訊", async ({ request }) => {
+test("沒有管理員身分無法儲存商品資訊，既有內容不變", async ({ request }) => {
   const response = await request.post(`/admin/products/${withInfoId}`, { form: { name: "x", description: "", priceTwd: "1", care: "駭入" }, headers: { origin: BASE_URL }, maxRedirects: 0 });
-  expect(response.status()).not.toBe(303);
+  expect(response.status()).toBe(403);
+
+  const page = await admin.newPage();
+  await page.goto(`/admin/products/${withInfoId}`);
+  await expect(page.getByLabel("保養（選填）")).toHaveValue(INFO.care);
+  await page.close();
 });

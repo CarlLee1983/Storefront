@@ -25,11 +25,11 @@ const description = z
   .trim()
   .max(MAX_DESCRIPTION_LENGTH, `說明不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`);
 
-/** 尺寸、材質、保養資訊：純文字，可以留空（清空）；更新時不帶表示不動。 */
+/** 尺寸、材質、保養資訊：純文字，可以留空（清空）；更新時不帶表示不動。瀏覽器表單以 \r\n 換行，先正規化成 \n 再計長度。 */
 const productInfoText = (label: string) => z
   .string({ error: `${label}必須是文字` })
-  .trim()
-  .max(MAX_DESCRIPTION_LENGTH, `${label}不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`);
+  .transform((value) => value.replace(/\r\n/g, "\n"))
+  .pipe(z.string().trim().max(MAX_DESCRIPTION_LENGTH, `${label}不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`));
 
 /** 單價：新台幣整數元，正整數。 */
 const priceTwd = wholeNumber("單價")
