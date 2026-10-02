@@ -5,6 +5,7 @@ import { currentCover } from "../images/cover-query";
 import type { ProductImage } from "../product-images";
 import { user } from "../auth/schema";
 import { productVariants, products } from "../catalog/schema";
+import { approvedCancelledQuantity, pendingCancellationQuantity } from "../cancellations/queries";
 import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/stock";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import type { VariantState } from "./diagnosis";
@@ -146,8 +147,12 @@ export interface OrderLineView {
   quantity: number;
   unitPriceTwd: number;
   deliveryType: DeliveryType;
-  /** 已交運的數量（各批次加總）；未交運的是 `quantity - shippedQuantity`。 */
+  /** 已交運的數量（各批次加總）。 */
   shippedQuantity: number;
+  /** 已核准取消的數量（停止履約、已釋放保留）。 */
+  cancelledQuantity: number;
+  /** 取消申請待審中的數量（凍結交運、仍占保留）。可交運或可再申請取消的是 `quantity - shippedQuantity - cancelledQuantity - pendingCancellationQuantity`。 */
+  pendingCancellationQuantity: number;
   cover: ProductImage | null;
 }
 
@@ -196,6 +201,8 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, w
       unitPriceTwd: orderLines.unitPriceTwd,
       deliveryType: orderLines.deliveryType,
       shippedQuantity: dispatchedQuantity(sql`${orderLines.id}`),
+      cancelledQuantity: approvedCancelledQuantity(sql`${orderLines.id}`),
+      pendingCancellationQuantity: pendingCancellationQuantity(sql`${orderLines.id}`),
       cover: currentCover(sql`${orderLines.productId}`),
     })
     .from(orders)
@@ -224,9 +231,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, w
       };
       views.set(order.id, view);
     }
-    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cover } = line;
+    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, cover } = line;
     if (lineId !== null && productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null && deliveryType !== null) {
-      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cover });
+      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, cover });
     }
   }
 
@@ -245,7 +252,7 @@ export async function cancelPendingOrder(db: DrizzleD1Database, customerId: stri
   const rows = await db
     .update(orders)
     .set({ status: CANCELLED })
-    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), canTransitionTo(CANCELLED)))
+    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), eq(orders.status, PENDING_PAYMENT), canTransitionTo(CANCELLED)))
     .returning({ id: orders.id });
   return rows.length > 0;
 }

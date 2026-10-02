@@ -133,3 +133,40 @@ export function insertDeliveryFailedNotice(shipmentId: number, eventKey: string)
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
+
+/** 取消申請的商品與數量一段文字（以 `cancellation_requests` 為外層列，別名 `cr`）。 */
+const cancellationItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || item.quantity, '、')
+  FROM cancellation_request_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.request_id = cr.id)`;
+
+/**
+ * 取消核准通知：一案一封，事件鍵 `cancellation:<申請編號>:approved`；只在該案已核准時寫，與核准同一個 batch。
+ * 信件說明取消的商品與數量、不再出貨，以及依原實付單價應退的金額（商品款加符合條件的原運費）；退款另有各筆進度與成功通知，退款失敗不影響取消結果。
+ */
+export function insertCancellationApprovedNotice(requestId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'cancellation_approved', '訂單 #' || orders.id || ' 的取消申請已核准',
+      '訂單 #' || orders.id || ' 的取消申請已核准：' || ${cancellationItemsText} || '。這些商品不會再出貨，保留已釋放。' ||
+      '應退款 NT$' || (cr.goods_twd + cr.standard_shipping_twd + cr.large_shipping_twd) || '（商品款 NT$' || cr.goods_twd || '、運費 NT$' || (cr.standard_shipping_twd + cr.large_shipping_twd) || '），' ||
+      '退款完成會另行通知；各筆退款的進度請至訂單頁查看。',
+      'cancellation:' || cr.id || ':approved', ${effectiveNow}
+    FROM cancellation_requests cr JOIN orders ON orders.id = cr.order_id
+    WHERE cr.id = ${requestId} AND cr.status = 'approved'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/** 取消拒絕通知：一案一封，事件鍵 `cancellation:<申請編號>:rejected`；只在該案已拒絕時寫。信件說明這些商品恢復正常出貨，並帶審核備註。 */
+export function insertCancellationRejectedNotice(requestId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'cancellation_rejected', '訂單 #' || orders.id || ' 的取消申請未獲核准',
+      '訂單 #' || orders.id || ' 的取消申請未獲核准：' || ${cancellationItemsText} || '。這些商品會照常安排出貨。' ||
+      CASE WHEN cr.decision_note <> '' THEN '說明：' || cr.decision_note || '。' ELSE '' END ||
+      '如有疑問請聯絡客服；已出貨的商品可依退貨流程處理。',
+      'cancellation:' || cr.id || ':rejected', ${effectiveNow}
+    FROM cancellation_requests cr JOIN orders ON orders.id = cr.order_id
+    WHERE cr.id = ${requestId} AND cr.status = 'rejected'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}

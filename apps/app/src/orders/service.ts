@@ -2,6 +2,9 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
+import { requestCancellationInput } from "../cancellations/input";
+import { selectMyCancellations } from "../cancellations/queries";
+import { requestCancellation } from "../cancellations/request";
 import { deliverNoticeSafely } from "../contact/notify";
 import { selectVerifiedEmail } from "../contact/queries";
 import { selectPaymentSummaries } from "../payments/queries";
@@ -12,8 +15,7 @@ import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
 import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectVariantStates, selectRequestHash } from "./queries";
 import { requestHash } from "./request-hash";
-import { CANCELLED } from "./schema";
-import { allowedSources } from "./transitions";
+import { CANCELLED, PENDING_PAYMENT } from "./schema";
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
 export type AuthenticateCustomer = (cookie: string) => Promise<string | null>;
@@ -104,7 +106,25 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       if (!order) return fail("order_not_found");
       const payments = await selectPaymentSummaries(db, customerId, clock.now(), order.id);
       const refunds = await selectRefundSummaries(db, customerId, order.id);
-      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [] });
+      const cancellations = await selectMyCancellations(db, customerId, order.id);
+      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations });
+    },
+
+    /**
+     * 申請取消自己已付款、未交運的指定數量（US：部分取消）。別人的或不存在的訂單一律 `order_not_found`；
+     * 訂單不是已付款或部分出貨回 `order_not_cancellable`，明細不屬於這張訂單回 `cancellation_line_invalid`，
+     * 數量超過「未交運且未被其他申請占用」的數量回 `cancellation_quantity_exceeded`（含同一明細重複申請、已被交運），同鍵不同內容回 `request_key_conflict`。
+     * 申請成立即凍結該數量的交運，審核結果由管理員決定（見管理 RPC `decideCancellation`）。
+     */
+    async requestCancellation(cookie: unknown, input: unknown) {
+      const customerId = await customerOf(cookie);
+      if (!customerId) return unauthorized;
+      const parsed = parseInput(requestCancellationInput, input);
+      if (!parsed.ok) return parsed;
+
+      const result = await requestCancellation(d1, db, customerId, parsed.data, clock.now());
+      if (result.ok) console.log(JSON.stringify({ event: "cancellation_requested", orderId: parsed.data.orderId, requestId: result.data.requestId, replayed: result.data.replayed }));
+      return result;
     },
 
     /**
@@ -127,7 +147,8 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const { orderId } = parsed.data;
       const order = await selectOrderStatus(db, customerId, orderId);
       if (!order) return fail("order_not_found");
-      if (!allowedSources(CANCELLED).includes(order.status)) return fail("order_not_cancellable");
+      // 顧客只能自行取消待付款訂單；已付款的未交運數量走取消申請（`cancellations/`）
+      if (order.status !== PENDING_PAYMENT) return fail("order_not_cancellable");
 
       const blocked = await invalidatePayments(orderId);
       if (blocked) return fail(blocked.reason === "payment_already_succeeded" ? "order_not_cancellable" : blocked.reason);

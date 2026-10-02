@@ -30,7 +30,7 @@ export interface RefundToRun {
  * （含 pending、processing、unknown、failed、succeeded——除 succeeded 外都是仍佔用額度的承諾，ADR 0007）加上這一筆不超過實收。
  * `p` 是付款的別名。D1 逐句執行，並行的承諾只有先到的那句看得到空間。
  */
-function withinQuotaSql(amount: SQL): SQL {
+export function withinQuotaSql(amount: SQL): SQL {
   return sql`p.status = 'succeeded' AND (SELECT COALESCE(SUM(r.amount_twd), 0) FROM refunds r WHERE r.payment_id = p.id) + ${amount} <= p.amount_twd`;
 }
 
@@ -38,7 +38,7 @@ function withinQuotaSql(amount: SQL): SQL {
  * 新退款的閘道退款 ID（冪等鍵）：登記時由應用程式產生、隨 INSERT 一起寫入，之後沒有任何程式會改它，
  * 所以同一筆退款的重送、重試與查證永遠帶同一個 ID。不用資料庫自增編號，是為了不必先寫空值占位再補。
  */
-const newGatewayRefundId = (): string => `rf_${crypto.randomUUID()}`;
+export const newGatewayRefundId = (): string => `rf_${crypto.randomUUID()}`;
 
 /** 衝突目標：只針對付款層級原因的部分唯一索引（同一付款同一原因已有退款）；其他唯一衝突（例如閘道退款 ID）要丟錯，不靜默吞掉。 */
 const paymentReasonConflict = sql`ON CONFLICT (payment_id, reason) WHERE reason IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success') DO NOTHING`;
@@ -53,7 +53,7 @@ export interface RefundCommitment {
 
 /**
  * 承諾（登記）一筆退款：單句條件寫入，額度條件見 `withinQuotaSql`；付款必須屬於同一張訂單的收款，退款綁定該筆付款，不跨收款。
- * 部分取消與發票折讓（#116、#121、#122）要新增退款一律走這裡，不要先讀額度再寫（讀寫之間會超額）。
+ * 發票折讓（#121、#122）要新增退款一律走這裡，不要先讀額度再寫（讀寫之間會超額）；取消核准（#116）的退款要與核准同一個 batch，改用同一份額度條件（`withinQuotaSql`）自己寫 INSERT。
  * 回傳新退款的編號；額度不足、付款不是 succeeded，或同一付款同一原因已有退款（唯一索引）回 null。
  */
 export async function commitRefund(d1: D1Database, commitment: RefundCommitment, now: number): Promise<number | null> {

@@ -175,6 +175,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#orders().cancelOrder(cookie, input);
   }
 
+  requestCancellation(cookie: string, input: unknown) {
+    return this.#orders().requestCancellation(cookie, input);
+  }
+
   getMyContact(cookie: string) {
     return this.#contact().getMyContact(cookie);
   }
@@ -344,6 +348,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   retryRefund(jwt: string, input: unknown) {
     return this.#admin().retryRefund(jwt, input);
+  }
+
+  listCancellationsToReview(jwt: string) {
+    return this.#admin().listCancellationsToReview(jwt);
+  }
+
+  decideCancellation(jwt: string, input: unknown) {
+    return this.#admin().decideCancellation(jwt, input);
   }
 
   listMailForAdmin(jwt: string) {

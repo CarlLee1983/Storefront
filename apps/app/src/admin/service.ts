@@ -30,6 +30,9 @@ import { selectOrderRefunds, selectRefundTodos } from "../payments/refunds";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
+import { decideCancellationInput } from "../cancellations/input";
+import { decideCancellation } from "../cancellations/decide";
+import { selectCancellationsToReview, selectOrderCancellations } from "../cancellations/queries";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
@@ -367,12 +370,44 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, retryRefundInput, input, (actor, { refundId }) => retryRefund(refundId, actor.email));
     },
 
+    /** 取消審核待辦：所有待審的取消申請（舊的在前）。 */
+    async listCancellationsToReview(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectCancellationsToReview(db));
+    },
+
+    /**
+     * 審核一案取消申請：核准（停止履約、釋放保留、登記並執行這一案的退款）或拒絕（恢復可交運）。
+     * 審核人、時間與備註記在申請上，並留審核通知；退款在核准之後接續執行（`retryRefund` 同一條路徑，操作者記在嘗試紀錄上），
+     * 退款失敗或被前筆阻擋都不影響已核准的取消，也不恢復出貨，退款留在退款待辦重試。
+     * 申請不存在回 `cancellation_not_found`，已做出相反決定回 `cancellation_already_decided`；同一決定重送冪等（核准重送會再嘗試登記與執行退款）。
+     */
+    decideCancellation(jwt: unknown, input: unknown) {
+      return authorized(jwt, decideCancellationInput, input, async (actor, request) => {
+        const result = await decideCancellation(d1, { ...request, actor: actor.email }, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "cancellation_decided", requestId: request.requestId, decision: result.data.decision, actor: actor.email, replayed: result.data.replayed }));
+        // 信件本體已在審核 batch 內寫好；投遞出錯不影響審核，重送同一決定時會補上首次投遞
+        await deliverNoticeSafely(db, `cancellation:${request.requestId}:${result.data.decision}`, clock.now());
+        if (result.data.refund === null) return ok({ ...result.data, refund: null });
+        // 退款由獨立的退款流程執行（同單逐筆、結果不明先查證）；沒執行成功只是留待重試，不改變取消結果
+        const executed = await retryRefund(result.data.refund.id, actor.email);
+        return ok({ ...result.data, refund: { id: result.data.refund.id, status: executed.ok ? executed.data.status : result.data.refund.status } });
+      });
+    },
+
     /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */
     getOrderForAdmin(jwt: unknown, input: unknown) {
       return authorized(jwt, orderIdInput, input, async (_actor, { orderId }) => {
         const order = await selectOrderForAdmin(db, orderId);
         if (!order) return fail("order_not_found");
-        return ok({ ...order, payments: await selectOrderPaymentSummaries(db, clock.now(), orderId), refunds: await selectOrderRefunds(db, orderId) });
+        return ok({
+          ...order,
+          payments: await selectOrderPaymentSummaries(db, clock.now(), orderId),
+          refunds: await selectOrderRefunds(db, orderId),
+          cancellations: await selectOrderCancellations(db, orderId),
+        });
       });
     },
   };

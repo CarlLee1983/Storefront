@@ -6,6 +6,7 @@ import { allowedSources, canTransitionTo } from "../orders/transitions";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
 import type { DeliveryType } from "../shipping/types";
+import { approvedCancelledQuantity, heldByCancellationQuantity } from "../cancellations/queries";
 import { dispatchedQuantity } from "./queries";
 import { shipments } from "./schema";
 
@@ -41,13 +42,14 @@ export type DispatchResult =
 
 /**
  * 管理員交運一批（ADR 0006）：單一 batch，批次的建立與其後每一句都受同一個事實約束，同成同敗：
- * 1. 建立批次：訂單此刻可交運（已付款或部分出貨）、同一冪等鍵還沒有批次、且每筆明細「已交運 + 本批」不超過明細數量。
+ * 1. 建立批次：訂單此刻可交運（已付款或部分出貨）、同一冪等鍵還沒有批次、且每筆明細「已交運 + 被取消申請占用（待審與核准）+ 本批」不超過明細數量。
  *    並行的兩次交運，先落地的一方贏，後者看到已交運的數量而被擋下（或同鍵重送時被視為重送）。
  * 2. 寫批次明細、3. 扣實體在庫、4. 寫庫存流水：只在這個批次「還沒有流水」時執行，所以同鍵重送不會重複扣庫。
  *    扣在庫在寫流水之前，流水的 `on_hand_after` 直接讀扣後的在庫數。扣除量就是本批數量；已交運數量隨批次明細增加，
  *    已付款保留同步減少，所以可售數量不變。
  * 5. 訂單狀態：每筆明細都出完轉已出貨，否則轉部分出貨（皆走 `canTransitionTo`）。6. 出貨通知同 batch 寫入，事件鍵冪等。
- * 與取消申請（#116）競爭同一數量時，以這個 batch 的落地順序為準：已交運的數量不再是可取消的未交運數量。
+ * 與取消申請（#116，`cancellations/request.ts`）競爭同一數量時，以這個 batch 的落地順序為準：申請先成立，該數量被占用而不可交運（待審凍結、核准停止履約）；
+ * 交運先成立，已交運的數量不再是可取消的未交運數量。訂單「出完」是每筆明細的剩餘數量（扣掉核准取消）都已交運。
  * 結果不以受影響列數判斷，而是 batch 之後讀這個冪等鍵的批次：存在就成功（`replayed` 表示不是這次建立的）。
  */
 export async function dispatchShipment(
@@ -89,7 +91,7 @@ export async function dispatchShipment(
         AND NOT EXISTS (
           SELECT 1 FROM json_each(${itemsJson}) item
           LEFT JOIN order_lines line ON line.id = json_extract(item.value, '$.orderLineId') AND line.order_id = orders.id
-          WHERE line.id IS NULL OR ${dispatchedQuantity(sql`line.id`)} + json_extract(item.value, '$.quantity') > line.quantity
+          WHERE line.id IS NULL OR ${dispatchedQuantity(sql`line.id`)} + ${heldByCancellationQuantity(sql`line.id`)} + json_extract(item.value, '$.quantity') > line.quantity
         )
     `,
     sql`
@@ -119,7 +121,7 @@ export async function dispatchShipment(
     sql`
       UPDATE orders SET status = ${SHIPPED}
       WHERE id = ${orderId} AND ${canTransitionTo(SHIPPED)} AND ${shipmentId} IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM order_lines line WHERE line.order_id = orders.id AND line.quantity > ${dispatchedQuantity(sql`line.id`)})
+        AND NOT EXISTS (SELECT 1 FROM order_lines line WHERE line.order_id = orders.id AND line.quantity - ${approvedCancelledQuantity(sql`line.id`)} > ${dispatchedQuantity(sql`line.id`)})
     `,
     sql`
       UPDATE orders SET status = ${PARTIALLY_SHIPPED}

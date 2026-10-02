@@ -7,7 +7,7 @@ describe("訂單狀態轉換表（CONTEXT.md 與 ADR 0001）", () => {
     expect(ALLOWED_TRANSITIONS).toEqual({
       pending_payment: ["paid", "expired", "cancelled"],
       expired: ["paid"],
-      paid: ["partially_shipped", "shipped"],
+      paid: ["partially_shipped", "shipped", "cancelled"],
       partially_shipped: ["partially_shipped", "shipped"],
       shipped: [],
       cancelled: [],
@@ -21,7 +21,8 @@ describe("訂單狀態轉換表（CONTEXT.md 與 ADR 0001）", () => {
   });
 
   it("allowedSources：由目標狀態列出允許的來源狀態", () => {
-    expect(allowedSources("cancelled")).toEqual(["pending_payment"]);
+    // 已付款的訂單全部數量都核准取消（沒有交運）才轉已取消；顧客自行取消另外限定待付款
+    expect(allowedSources("cancelled").sort()).toEqual(["paid", "pending_payment"]);
     expect(allowedSources("expired")).toEqual(["pending_payment"]);
     expect(allowedSources("paid").sort()).toEqual(["expired", "pending_payment"]);
     expect(allowedSources("shipped").sort()).toEqual(["paid", "partially_shipped"]);
