@@ -5,8 +5,8 @@ import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { mailMessageIdInput, requestContactEmailInput, verifyContactEmailInput } from "./input";
-import { insertDelivery, VERIFICATION_TTL_MS } from "./mail";
-import { selectMail, selectMailList, selectPendingVerification, selectVerificationByToken, selectVerifiedEmail } from "./queries";
+import { insertDelivery, VERIFICATION_RATE_LIMIT, VERIFICATION_RATE_WINDOW_MS, VERIFICATION_TTL_MS } from "./mail";
+import { countVerificationsSince, selectCurrentVerified, selectMail, selectMailList, selectPendingVerification, selectVerificationByToken, selectVerifiedEmail } from "./queries";
 import { contactVerifications, mailMessages } from "./schema";
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
@@ -62,6 +62,7 @@ export function createContactService(d1: D1Database, clock: Clock, authenticate:
       if ((await selectVerifiedEmail(db, customerId)) === email) return fail("already_verified");
 
       const now = clock.now();
+      if ((await countVerificationsSince(db, customerId, now - VERIFICATION_RATE_WINDOW_MS)) >= VERIFICATION_RATE_LIMIT) return fail("too_many_requests");
       const [, , [message], [delivery]] = await db.batch([
         db.update(contactVerifications)
           .set({ supersededAt: now })
@@ -79,7 +80,7 @@ export function createContactService(d1: D1Database, clock: Clock, authenticate:
 
     /**
      * 以信中的憑證完成驗證。憑證必須屬於目前登入的顧客（別人的憑證與不存在同為 `invalid_token`）；
-     * 重複點同一個連結是冪等的；被取代或過期的請求回 `verification_closed`。
+     * 重複點同一個連結（仍是目前已驗證地址時）是冪等的；被取代或過期的請求回 `verification_closed`。
      */
     async verifyContactEmail(cookie: unknown, input: unknown) {
       const customerId = await customerOf(cookie);
@@ -90,7 +91,10 @@ export function createContactService(d1: D1Database, clock: Clock, authenticate:
       const { token } = parsed.data;
       const found = await selectVerificationByToken(db, customerId, token);
       if (!found) return fail("invalid_token");
-      if (found.verifiedAt !== null) return ok({ email: found.email });
+      // 已驗證過的舊連結只在它仍是目前已驗證的那一筆時冪等成功；被之後的驗證取代就視為已失效
+      if (found.verifiedAt !== null) {
+        return (await selectCurrentVerified(db, customerId))?.id === found.id ? ok({ email: found.email }) : fail("verification_closed");
+      }
 
       // 期限以高水位時間判斷，與其他條件讀時間的寫入一致（Holdfast ADR 0011）
       const [result] = await batchAtEffectiveNow(d1, clock.now(), [

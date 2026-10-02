@@ -39,7 +39,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 顧客在帳戶頁（`/account`）驗證或更換聯絡 email，並在自己的模擬信箱（`/account/mailbox`）讀驗證信。聯絡 email 與登入身分各自獨立：LINE 與 Google 不合併，登入識別 email（含 LINE 的 placeholder）不會被當作已驗證的聯絡資料。首次結帳前須有已驗證的聯絡 email：結帳 RPC 回 `contact_email_unverified`，`/checkout` 會導去 `/account?reason=checkout`（購物車在瀏覽器，不受影響）。資料在 Migration `0016_contact_mailbox.sql`（`contact_verifications`、`mail_messages`、`mail_deliveries`、`mail_controls`）。
 
 - 顧客 RPC（皆以 cookie 驗身分，查詢一律限定該顧客）：`getMyContact`、`requestContactEmail`、`verifyContactEmail`、`listMyMail`、`getMyMail`。管理 RPC（需 Access JWT）：`listMailForAdmin`、`resendMail`、`setMailDeliveryFailure`；後台頁面是 `/admin/mail`。
-- 驗證：送出新地址會取代前一筆未完成的請求，驗證連結 24 小時內有效；新地址驗證成功才成為通知收件地址，在此之前既有已驗證地址不變。驗證連結要登入收信的那位顧客後開啟並按「確認驗證」（連結本身不變更資料），別人的憑證與不存在的憑證同樣回 `invalid_token`。
+- 驗證：送出新地址會取代前一筆未完成的請求，驗證連結 24 小時內有效，同一顧客 10 分鐘內最多 5 筆請求（超過回 `too_many_requests`）；新地址驗證成功才成為通知收件地址，在此之前既有已驗證地址不變。驗證連結要登入收信的那位顧客後開啟並按「確認驗證」（連結本身不變更資料），別人的憑證與不存在的憑證同樣回 `invalid_token`。
 - 信件內容不可變，每次投遞（含重送）記錄實際收件地址，換址不改寫歷史。只有送達的信會出現在顧客信箱；管理員看得到每次投遞的結果與收件地址，但看不到內文與驗證憑證。重送是同一封信的新投遞：驗證信只有在它的驗證請求仍有效時可重送（寄到它要驗證的地址），其他種類的信寄到顧客目前已驗證的地址。
 - 演練控制：管理員可開啟「投遞失敗」，之後每次投遞（含重送）都失敗，直到關閉；狀態存在 `mail_controls`（沒有這一列等於正常）。新增通知種類只需在 `apps/app/src/contact/mail.ts` 的 `MAIL_KINDS` 加值並寫入 `mail_messages`／`mail_deliveries`，資料表不需改動。
 - 部署順序沿用先 migration、再 App、再 Web。0016 只新增資料表，舊 App 與舊 Web 不受影響；但新 App 搭配舊 Web 時，舊結帳頁遇到 `contact_email_unverified` 只會顯示通用的結帳失敗訊息，應壓短窗口。上線後尚未驗證聯絡 email 的既有顧客（含已有訂單者）下次結帳前都須先驗證。

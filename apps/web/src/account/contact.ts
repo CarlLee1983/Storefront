@@ -10,6 +10,7 @@ export function describeContactFailure(result: { reason: string }): string {
   const messages: Record<string, string> = {
     invalid_input: "請輸入有效的 email。",
     already_verified: "這個 email 已經是你的聯絡 email，不需要再驗證。",
+    too_many_requests: "送出太頻繁，請 10 分鐘後再試；已寄出的驗證信仍可在我的信箱開啟。",
   };
   return Object.hasOwn(messages, result.reason) ? messages[result.reason]! : "目前無法送出驗證信，請稍後再試。";
 }

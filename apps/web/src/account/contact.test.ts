@@ -12,6 +12,7 @@ describe("聯絡 email 文案與表單", () => {
   it("已知失敗原因顯示固定文案，未知原因與 prototype 代碼顯示通用訊息", () => {
     expect(describeContactFailure({ reason: "invalid_input" })).toContain("有效的 email");
     expect(describeContactFailure({ reason: "already_verified" })).toContain("已經是你的聯絡 email");
+    expect(describeContactFailure({ reason: "too_many_requests" })).toContain("10 分鐘");
     expect(describeVerifyFailure({ reason: "verification_closed" })).toContain("過期");
     for (const reason of ["future_reason", "__proto__", "constructor"]) {
       expect(describeContactFailure({ reason })).toBe("目前無法送出驗證信，請稍後再試。");

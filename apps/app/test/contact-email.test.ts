@@ -85,6 +85,33 @@ describe("聯絡 email 驗證", () => {
   });
 });
 
+describe("頻率限制與舊憑證", () => {
+  it("同一顧客 10 分鐘內最多 5 筆驗證請求，超過回 too_many_requests；視窗過後可再送", async () => {
+    const cookie = await signInCustomer("alice", "Alice", { verifiedContact: false });
+    for (let i = 0; i < 5; i += 1) expect(await app.requestContactEmail(cookie, { email: `a${i}@example.com` })).toMatchObject({ ok: true });
+
+    expect(await app.requestContactEmail(cookie, { email: "a5@example.com" })).toEqual({ ok: false, reason: "too_many_requests" });
+
+    setNow(NOW + 10 * 60 * 1000 + 1);
+    expect(await app.requestContactEmail(cookie, { email: "a5@example.com" })).toMatchObject({ ok: true });
+  });
+
+  it("已驗證的舊連結被之後的驗證取代後不再成功", async () => {
+    const cookie = await signInCustomer("alice", "Alice", { verifiedContact: false });
+    await app.requestContactEmail(cookie, { email: "old@example.com" });
+    const oldToken = await latestToken(cookie);
+    await app.verifyContactEmail(cookie, { token: oldToken });
+    setNow(NOW + 1000);
+    await app.requestContactEmail(cookie, { email: "new@example.com" });
+    const newToken = await latestToken(cookie);
+    await app.verifyContactEmail(cookie, { token: newToken });
+
+    expect(await app.verifyContactEmail(cookie, { token: oldToken })).toEqual({ ok: false, reason: "verification_closed" });
+    expect(await app.verifyContactEmail(cookie, { token: newToken })).toEqual({ ok: true, data: { email: "new@example.com" } });
+    expect(await app.getMyContact(cookie)).toMatchObject({ ok: true, data: { verifiedEmail: "new@example.com" } });
+  });
+});
+
 describe("更換聯絡 email", () => {
   async function verified(cookie: string, email: string) {
     await app.requestContactEmail(cookie, { email });
@@ -128,7 +155,7 @@ describe("更換聯絡 email", () => {
 });
 
 describe("身分與隔離", () => {
-  it("LINE 與 Google 身分各自驗證：同一個 email 不合併，也看不到對方的信", async () => {
+  it("兩位顧客驗證同一個 email 互不影響，也看不到對方的信", async () => {
     const google = await signInCustomer("same-person", "Google person", { verifiedContact: false });
     const line = await signInCustomer("line-person", "LINE person", { verifiedContact: false });
     await app.requestContactEmail(google, { email: "me@example.com" });

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { contactVerifications, mailDeliveries, mailMessages } from "./schema";
 
@@ -6,13 +6,27 @@ type Db = DrizzleD1Database;
 
 /** 顧客目前已驗證的聯絡 email（通知收件地址）：最近一次驗證成功的那一筆；沒有回 null。 */
 export async function selectVerifiedEmail(db: Db, customerId: string): Promise<string | null> {
+  return (await selectCurrentVerified(db, customerId))?.email ?? null;
+}
+
+/** 目前已驗證的那一筆驗證請求（編號與地址）。 */
+export async function selectCurrentVerified(db: Db, customerId: string) {
   const [row] = await db
-    .select({ email: contactVerifications.email })
+    .select({ id: contactVerifications.id, email: contactVerifications.email })
     .from(contactVerifications)
     .where(and(eq(contactVerifications.customerId, customerId), isNotNull(contactVerifications.verifiedAt)))
     .orderBy(desc(contactVerifications.verifiedAt), desc(contactVerifications.id))
     .limit(1);
-  return row?.email ?? null;
+  return row ?? null;
+}
+
+/** 某時間點之後該顧客建立的驗證請求筆數（頻率限制用）。 */
+export async function countVerificationsSince(db: Db, customerId: string, since: number): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(contactVerifications)
+    .where(and(eq(contactVerifications.customerId, customerId), gte(contactVerifications.createdAt, since)));
+  return row?.count ?? 0;
 }
 
 /** 顧客還在等待驗證的請求（未驗證、未被取代、未過期）；請求建立時會取代前一筆，所以至多一筆。 */

@@ -22,3 +22,7 @@ export function insertDelivery(db: DrizzleD1Database, messageId: number | SQL, r
     .values({ messageId, recipientAddress, status: deliveryOutcome, attemptedAt: now })
     .returning({ id: mailDeliveries.id, status: mailDeliveries.status });
 }
+
+/** 頻率限制：同一顧客在這段時間內最多建立這麼多筆驗證請求，擋住重複觸發寄信。 */
+export const VERIFICATION_RATE_WINDOW_MS = 10 * 60 * 1000;
+export const VERIFICATION_RATE_LIMIT = 5;
