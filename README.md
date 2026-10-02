@@ -149,13 +149,25 @@ Migration `0007_product_images.sql` 會新增圖片表、把商品 `listed` 預�
 
 刪除先以同一 D1 batch 檢查「上架中至少一張」、寫入清理佇列、移除引用並緊縮順位，提交後才刪除 R2 物件，避免留下破圖封面。失敗回應會重新載入後台圖庫，保留未完成的上傳。R2 失敗或提交回應遺失可重試；既有每分鐘 Cron 每次重試最多 20 筆清理，失敗項目依最近嘗試時間輪替，避免阻塞其他圖片。商品下架後可刪至 0 張。已下載或快取的公開圖片不會因來源物件刪除而撤回。
 
-### 商品變體（預設變體）
+### 商品變體（預設變體與多變體）
 
-依 [ADR 0005](docs/adr/0005-variants-own-price-and-stock.md)，可購買、定價與計算庫存的單位是商品變體（`product_variants`）。目前每個商品只有一個預設變體，由 Migration `0013_product_variants.sql` 從既有商品的售價、原價與在庫數轉成；新增商品時一併建立。商品保留名稱、說明、分類、圖片與上架狀態，不再有 `price_twd`、`compare_at_price_twd`、`on_hand`。多變體與選項維度由後續票擴充。
+依 [ADR 0005](docs/adr/0005-variants-own-price-and-stock.md)，可購買、定價與計算庫存的單位是商品變體（`product_variants`）。每個商品都有一個預設變體，由 Migration `0013_product_variants.sql` 從既有商品的售價、原價與在庫數轉成；新增商品時一併建立。商品保留名稱、說明、分類、圖片與上架狀態，不再有 `price_twd`、`compare_at_price_twd`、`on_hand`。選項維度與多變體見下一節（Migration `0014_variant_options.sql`）。
 
-- 購物車、結帳與庫存調整都以變體編號為準：結帳明細帶 `variantId`，訂單明細同時記 `variant_id` 與 `product_id`（取封面、連結），後台庫存調整送 `variantId`。商品詳情與列表帶 `defaultVariantId` 供加入購物車。被取代的以商品編號結帳的路徑已移除，瀏覽器購物車格式升到第 2 版，舊版購物車會被視為空（顧客需重新加入）。
+- 購物車、結帳與庫存調整都以變體編號為準：結帳明細帶 `variantId`，訂單明細同時記 `variant_id` 與 `product_id`（取封面、連結），後台庫存調整送 `variantId`。沒有選項的商品，列表帶 `defaultVariantId` 供直接加入購物車；有選項的商品要進詳情頁選變體（詳情回傳各販售中變體的價格與可售量）。被取代的以商品編號結帳的路徑已移除，瀏覽器購物車格式升到第 2 版，舊版購物車會被視為空（顧客需重新加入）。
 - 沿用現行付款扣庫語意：保留 = 待付款訂單明細（以變體加總），付款成功才扣在庫數；逾期、取消與遲到付款的規則不變。
 - 遷移保留歷史：舊明細逐筆指向該商品的預設變體，單價、數量、名稱快照與訂單總額原樣不動，所以實付金額與免運結果不變；對不到預設變體的明細會讓 `variant_id NOT NULL` 失敗、整個遷移中止，不會丟掉明細或編造對應。
 - 部署順序沿用先 migration、再 App、再 Web，窗口內的影響：(1) migration 後、新 App 前，舊 App 的商品列表、結帳與付款事件 SQL 會因 `products.price_twd`／`on_hand` 不存在而失敗，這段時間顧客無法瀏覽與結帳，付款事件套用也會失敗；(2) 新 App 上線、新 Web 未上線時，舊 Web 以 `productId` 結帳、以 `{ id }` 調庫存，會被驗證擋下回 `invalid_input`（不會寫入）。建議把兩個窗口壓到最短，並在 migration 前暫停後台庫存與商品操作。
 - 窗口內付款事件的補救：付款事件套用失敗時，付款與訂單都不會被改動。依據是閘道的事件本文在建立時固定、投遞紀錄存檔，且 `apps/gateway/src/transitions.ts` 註明可由閘道主控頁重送，程式內沒有自動重試；顧客被導回 `/orders/:id/payment-return` 時 App 也會主動向閘道查詢一次。補救順序：新 Web／App 都上線後，先到閘道主控頁查看窗口期間各事件的投遞結果，對失敗的事件重送（套用以事件 ID 去重，重送安全）；若主控頁查不到該事件或重送仍失敗，再人工以該事件的內容重放 webhook，並對照訂單與付款狀態確認。人工重放的步驟與權限尚無既有文件，需事前另行確認。
 - 回復：套用後若要退回，先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0013_product_variants.down.sql`（加 `--local`／`--remote`／`--env`）；它把預設變體寫回 `products`、明細改回只指向商品、移除 `d1_migrations` 紀錄。只在每個商品都恰好一個預設變體時可用，否則守門檢查會讓回復失敗。回復前須一併回復 Web、App 與 E2E 呼叫端（購物車格式與結帳輸入都已變更）。測試見 `apps/app/test/product-variants-migration.test.ts`。
+
+#### 選項維度、多變體與停賣
+
+管理員在商品編輯頁（`/admin/products/:id`「選項與變體」）設定最多兩個選項維度（名稱，例如「尺寸」「顏色」），並只建立實際販售的組合；每個變體各有選項值、售價、原價與在庫數（庫存仍只能增減），可指定同商品圖庫中的一張圖片，也可停賣或恢復販售。對應 RPC：`setProductOptions`、`createVariant`、`updateVariant`、`setVariantDiscontinued`（皆需 Access JWT），庫存沿用 `adjustStock`。資料在 Migration `0014_variant_options.sql`：`products.option1_name`／`option2_name`、`product_variants.option1_value`／`option2_value`／`discontinued_at`／`image_id`，以及 `order_lines.variant_label`。
+
+- 沒有選項的商品維持一個預設變體（選項值為空字串）；設了選項後預設變體取得選項值。同商品的選項值組合不可重複（唯一索引），選項值個數必須等於維度個數（寫入的同一句檢查）。維度個數只有在商品僅有一個變體時才能增減，已有多個變體只能改維度名稱。
+- 停賣的變體不能被購買：結帳的條件寫入排除它，回報 `discontinued`；它不出現在詳情頁、列表價格範圍、有貨篩選與特價判定，仍留在後台與歷史訂單。全部變體停賣的商品列表顯示「已停賣」且沒有報價，詳情頁不顯示價格與購買表單。
+- 結帳再次驗證價格（`price_changed`）、停賣（`discontinued`）與可售量（`insufficient_stock`），逐變體判定，同單不同變體不合併、不共用庫存。訂單明細快照變體選項（`variant_label`，例如「120 公分 / 胡桃色」），之後改選項值或停賣不影響既有訂單。
+- 列表價格是販售中變體的範圍；有選項的商品只標示「有特價選項」，不顯示單一劃線價。圖庫仍最多 8 張、第一張為封面；刪除圖片時指定它的變體一併改回不指定。`product_variants.image_id` 沒有外鍵（外鍵會讓回復遷移必須重建資料表），「圖片屬於同一商品」由 `updateVariant` 在寫入的同一句檢查。
+- 部署順序沿用先 migration、再 App、再 Web。0014 只新增欄位與索引，舊 App 不受影響；新 App 搭配舊 Web 時，商品詳情回傳的欄位已改為 `variants`，舊詳情頁會顯示不出價格，應壓短窗口。
+- 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0014_variant_options.down.sql`；只在尚未使用任何新功能（沒有選項、選項值、停賣、指定圖片與明細選項快照）時可用，否則守門檢查讓回復失敗。要連 0013 一起回復，接著執行 0013 的回復腳本。測試見 `apps/app/test/variant-options-migration.test.ts`。
+- 購物車行加上選項標籤 `label`（選填，僅顯示用），仍是第 2 版格式。手機與桌機的選取與操作由 `e2e/tests/variants.spec.ts` 驗證（375／1280 寬，含無障礙掃描），選取邏輯的單元測試在 `apps/web/src/catalog/variant-picker.test.ts`。
