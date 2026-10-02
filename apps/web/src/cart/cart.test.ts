@@ -162,3 +162,28 @@ describe("clampQuantity", () => {
     expect(clampQuantity(MAX_QUANTITY + 1)).toBe(MAX_QUANTITY);
   });
 });
+
+describe("商品變體", () => {
+  const table120 = { variantId: 10, productId: 3, name: "餐桌", label: "120 公分 / 胡桃色", unitPriceTwd: 9000 };
+  const table150 = { variantId: 11, productId: 3, name: "餐桌", label: "150 公分 / 胡桃色", unitPriceTwd: 12000 };
+
+  it("同商品的不同變體各佔一筆，不合併；同一變體再加入才合併並以最新選項標籤為準", () => {
+    const cart = addToCart(addToCart(addToCart(emptyCart, table120, 1), table150, 2), { ...table120, label: "120 公分 / 白橡色" }, 1);
+    expect(cart.lines).toEqual([
+      { ...table120, label: "120 公分 / 白橡色", quantity: 2 },
+      { ...table150, quantity: 2 },
+    ]);
+    expect(cartTotal(cart)).toBe(9000 * 2 + 12000 * 2);
+  });
+
+  it("選項標籤隨購物車序列化還原；沒有標籤的舊資料照舊可用", () => {
+    const cart = addToCart(addToCart(emptyCart, table120, 1), mug, 1);
+    expect(deserializeCart(serializeCart(cart))).toEqual(cart);
+    expect(cart.lines[1]).not.toHaveProperty("label");
+  });
+
+  it("選項標籤不是字串：整份視為空購物車", () => {
+    const raw = JSON.stringify({ version: CART_VERSION, lines: [{ ...table120, quantity: 1, label: 5 }] });
+    expect(deserializeCart(raw)).toEqual(emptyCart);
+  });
+});

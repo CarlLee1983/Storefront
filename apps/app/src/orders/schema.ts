@@ -76,6 +76,8 @@ export const orderLines = sqliteTable(
       .references(() => productVariants.id),
     /** 商品名稱快照；之後商品改名不影響已成立的訂單明細。 */
     productName: text("product_name").notNull(),
+    /** 變體選項快照，選項值以「 / 」相連（例如「胡桃色 / 150 公分」）；沒有選項的商品為空字串。之後改選項值不影響已成立的訂單明細。 */
+    variantLabel: text("variant_label").notNull().default(""),
     quantity: integer("quantity").notNull(),
     /** 單價快照，新台幣整數元；之後商品改價不影響它。 */
     unitPriceTwd: integer("unit_price_twd").notNull(),

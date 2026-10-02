@@ -30,10 +30,10 @@ it("public detail returns listed product and current ordered gallery without inv
   const reordered = [images[2]!, images[0]!, images[1]!];
   expect((await app.reorderProductImages(jwt, { id, imageIds: reordered.map(image => image.id) })).ok).toBe(true);
   expect(await app.getProduct({ id })).toEqual({ ok: true, data: {
-    id, name: "陶瓷花器", description: "手工製作\n每件紋理不同", defaultVariantId: expect.any(Number), priceTwd: 680, compareAtPriceTwd: null, purchasable: true, available: 3, images: reordered, category: { slug: "default", name: "預設分類" }, related: [],
+    id, name: "陶瓷花器", description: "手工製作\n每件紋理不同", optionNames: [], variants: [{ id: expect.any(Number), isDefault: true, optionValues: [], priceTwd: 680, compareAtPriceTwd: null, available: 3, imageId: null }], purchasable: true, images: reordered, category: { slug: "default", name: "預設分類" }, related: [],
   } });
   await app.adjustStock(jwt, { variantId: await defaultVariantIdOf(id), delta: -3 });
-  expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { purchasable: false, available: 0 } });
+  expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { purchasable: false, variants: [expect.objectContaining({ available: 0 })] } });
 });
 it("new and unlisted products are indistinguishable from a nonexistent product", async () => {
   const { id, jwt } = await fixture();

@@ -23,6 +23,11 @@ describe("describeIssue（逐筆原因 → 提示文字）", () => {
     expect(describeIssue({ variantId: 1, kind: "variant_not_found" }, cart.lines[0])).toBe("「馬克杯」目前無法購買，請從購物車移除。");
   });
 
+  it("停賣的變體：提示已停賣並從購物車移除；有選項的變體在名稱後帶選項", () => {
+    const table = addToCart(emptyCart, { variantId: 5, productId: 4, name: "餐桌", label: "120 公分 / 胡桃色", unitPriceTwd: 9000 }, 1).lines[0];
+    expect(describeIssue({ variantId: 5, kind: "discontinued" }, table)).toBe("「餐桌（120 公分 / 胡桃色）」已停賣，請從購物車移除。");
+  });
+
   it("購物車裡找不到那一筆時用商品編號代替名稱", () => {
     expect(describeIssue({ variantId: 9, kind: "unlisted" }, undefined)).toBe("「商品 #9」目前無法購買，請從購物車移除。");
   });

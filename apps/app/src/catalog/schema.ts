@@ -14,6 +14,9 @@ export const products = sqliteTable("products", {
   listedAt: integer("listed_at"),
   /** 標為精選的時間，UTC epoch 毫秒；不是精選為空。下架商品可以保有精選標記。 */
   featuredAt: integer("featured_at"),
+  /** 選項維度（Option）名稱，例如「顏色」；最多兩個，空字串表示沒有該維度（沒有選項的商品兩者皆空）。第二個有值時第一個一定有值，由管理 RPC 維持。 */
+  option1Name: text("option1_name").notNull().default(""),
+  option2Name: text("option2_name").notNull().default(""),
 }, (table) => [
   index("products_category_listed_idx").on(table.categoryId, table.listed),
 ]);
@@ -21,7 +24,9 @@ export const products = sqliteTable("products", {
 /**
  * 商品變體（ADR 0005）：可獨立購買、定價與計算庫存的販售單位；購物車、價格校驗、訂單明細與庫存都以它為準。
  * 沒有選項的商品有且只有一個預設變體（`isDefault`）；「恰一個」目前只由 `createProduct` 的 batch 保證（部分唯一索引只擋「超過一個」）。
- * 後續若要切換預設變體，須在同一 batch 先清舊的再設新的；多變體與選項維度由後續票擴充，不需要改動這張表的既有欄位。
+ * 後續若要切換預設變體，須在同一 batch 先清舊的再設新的。
+ * 選項值（`option1Value`、`option2Value`）的個數必須等於商品的選項維度個數（由管理 RPC 在寫入的同一句檢查）；
+ * 同商品的選項值組合不可重複。停賣（`discontinuedAt`）的變體不再接受新購買，仍保留供後台與歷史訂單使用。
  */
 export const productVariants = sqliteTable("product_variants", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -34,7 +39,19 @@ export const productVariants = sqliteTable("product_variants", {
   compareAtPriceTwd: integer("compare_at_price_twd"),
   /** 在庫數（On Hand）；只能以增減量調整，不會小於 0。 */
   onHand: integer("on_hand").notNull().default(0),
+  /** 對應商品選項維度的選項值，例如「胡桃色」；空字串表示沒有該維度（讓唯一索引能比對「同一組合」）。 */
+  option1Value: text("option1_value").notNull().default(""),
+  option2Value: text("option2_value").notNull().default(""),
+  /** 停賣時間，UTC epoch 毫秒；null 表示販售中。 */
+  discontinuedAt: integer("discontinued_at"),
+  /**
+   * 選取此變體時顯示的商品圖片（`product_images.id`）；null 表示不指定。
+   * 沒有外鍵（外鍵會讓回復遷移必須重建資料表）：「圖片屬於同一商品」由 `updateVariant` 在寫入的同一句檢查，
+   * 圖片刪除時由 `deleteProductImage` 在同一個 batch 清空。
+   */
+  imageId: text("image_id"),
 }, (table) => [
+  uniqueIndex("product_variants_options_uidx").on(table.productId, table.option1Value, table.option2Value),
   index("product_variants_product_idx").on(table.productId),
   uniqueIndex("product_variants_default_uidx").on(table.productId).where(sql`is_default = 1`),
   // 特價變體只佔少數：部分索引讓「有沒有特價商品」與只看特價的查詢不必掃全表

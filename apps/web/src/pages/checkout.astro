@@ -174,6 +174,12 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         cover.setAttribute("aria-hidden", "true");
         product.appendChild(cover);
         product.appendChild(name);
+        if (line.label) {
+          const label = document.createElement("span");
+          label.className = "summary-variant";
+          label.textContent = line.label;
+          product.appendChild(label);
+        }
         for (const child of [product, cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`, "單價"), cell(String(line.quantity), "數量"), cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`, "小計")]) row.appendChild(child);
         return row;
       }),
@@ -253,6 +259,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   :global(#checkout-lines td) { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border: 0; font-size: var(--text-sm); }
   :global(#checkout-lines td:not(.summary-product)::before) { content: attr(data-label); color: var(--color-muted); }
   :global(#checkout-lines .summary-product) { justify-content: start; }
+  :global(#checkout-lines .summary-variant) { font-weight: 400; font-size: var(--text-sm); color: var(--color-muted); }
   @media (min-width: 64rem) {
     #checkout-content:not([hidden]) { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: var(--space-8); }
     .checkout-summary { grid-column: 2; grid-row: 1 / span 10; position: sticky; top: var(--space-4); }

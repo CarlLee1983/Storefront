@@ -13,6 +13,8 @@ export interface CartItem {
   productId: number;
   /** 加入當下看到的商品名稱。 */
   name: string;
+  /** 加入當下選的變體選項（例如「120 公分 / 胡桃色」），只用來顯示；沒有選項的商品省略。 */
+  label?: string;
   /** 加入當下看到的單價，新台幣正整數元；結帳時用來與最新單價比對。 */
   unitPriceTwd: number;
   /** 加入當下的封面；舊購物車可能沒有。 */
@@ -103,14 +105,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 function parseLine(value: unknown): CartLine | null {
   if (!isRecord(value)) return null;
-  const { variantId, productId, name, unitPriceTwd, quantity } = value;
+  const { variantId, productId, name, label, unitPriceTwd, quantity } = value;
   if (typeof variantId !== "number" || !isPositiveInteger(variantId)) return null;
   if (typeof productId !== "number" || !isPositiveInteger(productId)) return null;
   if (typeof name !== "string") return null;
+  if (label !== undefined && typeof label !== "string") return null;
   if (typeof unitPriceTwd !== "number" || !isPositiveInteger(unitPriceTwd)) return null;
   if (typeof quantity !== "number" || !isPositiveInteger(quantity) || quantity > MAX_QUANTITY) return null;
   const cover = parseCartCover(value.cover);
-  return { variantId, productId, name, unitPriceTwd, quantity, ...(cover ? { cover } : {}) };
+  return { variantId, productId, name, ...(label ? { label } : {}), unitPriceTwd, quantity, ...(cover ? { cover } : {}) };
 }
 
 /**

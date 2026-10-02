@@ -52,7 +52,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                 {orders.data.map((order) => (
                   <tr>
                     <td data-label="訂單"><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
-                    <td data-label="商品"><ul class="order-products">{order.lines.map(line => <li><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName} × {line.quantity}</span></li>)}</ul></td>
+                    <td data-label="商品"><ul class="order-products">{order.lines.map(line => <li><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`} × {line.quantity}</span></li>)}</ul></td>
                     <td data-label="顧客" class="admin-order-email"><span>{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</span></td>
                     <td data-label="成立時間">{formatDateTime(order.createdAt)}</td>
                     <td data-label="訂單狀態"><OrderStatus status={order.status} /></td>

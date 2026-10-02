@@ -28,7 +28,7 @@ export async function orderOf(cookie: string, orderId: number) {
 /** 變體目前的在庫數與可售數量（管理 RPC 讀取）。 */
 export async function stockOf(variantId: number): Promise<{ onHand: number; available: number }> {
   const listed = await app.listProductsForAdmin(await mintAccessJwt());
-  const found = listed.ok ? listed.data.find((product) => product.defaultVariantId === variantId) : undefined;
+  const found = listed.ok ? listed.data.flatMap((product) => product.variants).find((variant) => variant.id === variantId) : undefined;
   if (!found) throw new Error("讀取商品失敗");
   return { onHand: found.onHand, available: found.available };
 }

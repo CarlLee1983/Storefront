@@ -188,6 +188,22 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().listCategoriesForAdmin(jwt);
   }
 
+  setProductOptions(jwt: string, input: unknown) {
+    return this.#admin().setProductOptions(jwt, input);
+  }
+
+  createVariant(jwt: string, input: unknown) {
+    return this.#admin().createVariant(jwt, input);
+  }
+
+  updateVariant(jwt: string, input: unknown) {
+    return this.#admin().updateVariant(jwt, input);
+  }
+
+  setVariantDiscontinued(jwt: string, input: unknown) {
+    return this.#admin().setVariantDiscontinued(jwt, input);
+  }
+
   setProductFeatured(jwt: string, input: unknown) {
     return this.#admin().setProductFeatured(jwt, input);
   }

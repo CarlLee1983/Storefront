@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../admin/access-jwt";
 import { describeFailure } from "../../admin/failure";
 import { dispatchProductForm, FEATURE_INTENT, UNFEATURE_INTENT } from "../../admin/product-form";
+import { summarizeVariants } from "../../admin/variant-summary";
 import AdminLayout from "../../layouts/AdminLayout.astro";
 
 export const prerender = false;
@@ -186,7 +187,9 @@ function paginationUrl(p: number) {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedProducts.map((p) => (
+                  {paginatedProducts.map((p) => {
+                    const stock = summarizeVariants(p);
+                    return (
                     <tr class:list={[{ "is-unlisted": !p.listed }]}>
                       <td class="col-cover" data-label="封面">
                         <div class="product-cover-cell">
@@ -204,13 +207,13 @@ function paginationUrl(p: number) {
                         </div>
                       </td>
                       <td class="col-category" data-label="分類"><span class="badge-category">{p.category?.name ?? "未分類"}</span></td>
-                      <td class="col-num cell-price" data-label="售價">NT$ {priceFormat.format(p.priceTwd)}</td>
-                      <td class="col-num cell-was-price" data-label="原價">{p.compareAtPriceTwd === null ? "—" : `NT$ ${priceFormat.format(p.compareAtPriceTwd)}`}</td>
-                      <td class="col-num" data-label="在庫數">{p.onHand}</td>
-                      <td class="col-num" data-label="保留數">{p.reserved}</td>
+                      <td class="col-num cell-price" data-label="售價">{stock.multiple && stock.minPriceTwd !== stock.maxPriceTwd ? `NT$ ${priceFormat.format(stock.minPriceTwd)} – ${priceFormat.format(stock.maxPriceTwd)}` : `NT$ ${priceFormat.format(stock.minPriceTwd)}`}</td>
+                      <td class="col-num cell-was-price" data-label="原價">{stock.multiple || p.compareAtPriceTwd === null ? "—" : `NT$ ${priceFormat.format(p.compareAtPriceTwd)}`}</td>
+                      <td class="col-num" data-label="在庫數">{stock.onHand}</td>
+                      <td class="col-num" data-label="保留數">{stock.reserved}</td>
                       <td class="col-num cell-available" data-label="可售數量">
-                        <span class:list={["stock-pill", { "is-zero": p.available === 0, "is-low": p.available > 0 && p.available <= 5 }]}>
-                          {p.available}
+                        <span class:list={["stock-pill", { "is-zero": stock.available === 0, "is-low": stock.available > 0 && stock.available <= 5 }]}>
+                          {stock.available}
                         </span>
                       </td>
                       <td class="col-status" data-label="狀態">
@@ -235,16 +238,17 @@ function paginationUrl(p: number) {
                             <input type="hidden" name="intent" value={p.listed ? "unlist" : "relist"} />
                             <button type="submit" class="btn-action">{p.listed ? "下架" : "重新上架"}</button>
                           </form>
-                          <form method="post" class="inline inline-stock-adjust">
+                          {stock.multiple ? <a href={`/admin/products/${p.id}#variants-heading`} class="btn-action">管理變體庫存</a> : <form method="post" class="inline inline-stock-adjust">
                             <input type="hidden" name="variantId" value={p.defaultVariantId} />
                             <input type="hidden" name="intent" value="adjust-stock" />
                             <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="±增減" aria-label={`${p.name}的庫存增減量`} aria-describedby={stockFailureVariantId === p.defaultVariantId ? "listing-error" : undefined} aria-invalid={stockFailureVariantId === p.defaultVariantId ? "true" : undefined} required />
                             <button type="submit" class="btn-action">調整庫存</button>
-                          </form>
+                          </form>}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table></div>
               {totalPages > 1 && (

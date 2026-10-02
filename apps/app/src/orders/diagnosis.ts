@@ -4,6 +4,7 @@ import type { CheckoutLine } from "./input";
 export type CheckoutIssue =
   | { variantId: number; kind: "variant_not_found" }
   | { variantId: number; kind: "unlisted" }
+  | { variantId: number; kind: "discontinued" }
   | { variantId: number; kind: "price_changed"; currentUnitPriceTwd: number }
   | { variantId: number; kind: "insufficient_stock" };
 
@@ -12,12 +13,14 @@ export interface VariantState {
   priceTwd: number;
   /** 所屬商品是否上架中。 */
   listed: boolean;
+  /** 變體是否已停賣。 */
+  discontinued: boolean;
   available: number;
 }
 
 /**
  * 結帳的條件寫入沒成立之後，逐筆找出原因（只影響回應，不影響正確性）。
- * 每筆最多回報一個問題，依序：變體不存在、已下架、價格變動、可售數量不足——
+ * 每筆最多回報一個問題，依序：變體不存在、已下架、已停賣、價格變動、可售數量不足——
  * 顧客要先重新確認價格，才有意義去看數量。順序與輸入的明細一致。
  */
 export function diagnoseLines(lines: CheckoutLine[], states: VariantState[]): CheckoutIssue[] {
@@ -26,6 +29,7 @@ export function diagnoseLines(lines: CheckoutLine[], states: VariantState[]): Ch
     const state = byId.get(line.variantId);
     if (!state) return [{ variantId: line.variantId, kind: "variant_not_found" }];
     if (!state.listed) return [{ variantId: line.variantId, kind: "unlisted" }];
+    if (state.discontinued) return [{ variantId: line.variantId, kind: "discontinued" }];
     if (state.priceTwd !== line.seenUnitPriceTwd) {
       return [{ variantId: line.variantId, kind: "price_changed", currentUnitPriceTwd: state.priceTwd }];
     }

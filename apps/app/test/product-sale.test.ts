@@ -44,8 +44,8 @@ describe("原價", () => {
 
     expect(await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }))).toEqual({ ok: true, data: { id } });
 
-    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, priceTwd: 320, compareAtPriceTwd: 450 }] } });
-    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { priceTwd: 320, compareAtPriceTwd: 450 } });
+    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, priceTwd: 320, compareAtPriceTwd: 450, onSale: true }] } });
+    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ priceTwd: 320, compareAtPriceTwd: 450 })] } });
     expect(await app.listProductsForAdmin(jwt)).toMatchObject({ ok: true, data: [{ id, compareAtPriceTwd: 450 }] });
     expect(await compareAtOf(jwt, id)).toBe(450);
   });
@@ -53,7 +53,7 @@ describe("原價", () => {
   it("沒有原價的商品，前台項目的原價是 null", async () => {
     const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, compareAtPriceTwd: null }] } });
-    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { compareAtPriceTwd: null } });
+    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ compareAtPriceTwd: null })] } });
   });
 
   it.each([[320], [300]])("原價 %i 不高於售價 320：回 invalid_compare_at_price，原價不變", async (compareAt) => {
@@ -89,7 +89,7 @@ describe("原價", () => {
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.updateProduct(jwt, edit(id, 450))).toEqual({ ok: false, reason: "invalid_compare_at_price" });
-    expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { priceTwd: 320, compareAtPriceTwd: 450 } });
+    expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ priceTwd: 320, compareAtPriceTwd: 450 })] } });
   });
 
   it("帶 null 清空原價，結束特價", async () => {

@@ -35,6 +35,30 @@ const compareAtPriceTwd = wholeNumber("原價")
   .positive("原價必須大於 0")
   .max(MAX_PRICE_TWD, `原價不可超過 ${MAX_PRICE_TWD}`);
 
+const MAX_OPTION_NAME_LENGTH = 30;
+const MAX_OPTION_VALUE_LENGTH = 50;
+
+/** 選項維度名稱（例如「顏色」）；維度最多兩個，名稱不可重複。 */
+const optionName = z
+  .string({ error: "選項名稱必須是文字" })
+  .trim()
+  .min(1, "選項名稱不可為空")
+  .max(MAX_OPTION_NAME_LENGTH, `選項名稱不可超過 ${MAX_OPTION_NAME_LENGTH} 個字`);
+
+const optionNames = z
+  .array(optionName, { error: "選項名稱必須是清單" })
+  .max(2, "每個商品最多兩個選項維度")
+  .refine((names) => new Set(names).size === names.length, "選項名稱不可重複");
+
+/** 選項值（例如「胡桃色」）；個數必須等於商品的選項維度個數，由 service 以儲存後的結果檢查。 */
+const optionValue = z
+  .string({ error: "選項值必須是文字" })
+  .trim()
+  .min(1, "選項值不可為空")
+  .max(MAX_OPTION_VALUE_LENGTH, `選項值不可超過 ${MAX_OPTION_VALUE_LENGTH} 個字`);
+
+const optionValues = z.array(optionValue, { error: "選項值必須是清單" }).max(2, "每個商品最多兩個選項維度");
+
 export const createProductInput = z.object({ name, description, priceTwd });
 
 /**
@@ -69,3 +93,26 @@ const trackingNumber = z
 export const shipOrderInput = z.object({ orderId: orderIdInput.shape.orderId, trackingNumber });
 
 export const listOrdersInput = z.object({ status: z.enum(ORDER_STATUSES, { error: "訂單狀態無效" }).optional() });
+
+/**
+ * 設定商品的選項維度名稱。維度個數不變時只改名稱；要增減個數（含從沒有選項開始）時商品只能有一個變體（預設變體），
+ * 並以 `defaultVariantValues` 重設它的選項值。
+ */
+export const setProductOptionsInput = z.object({ id: productId, optionNames, defaultVariantValues: optionValues.optional() });
+
+/** 新增變體：選項值依商品的維度順序；新變體的在庫數為 0，由庫存調整補貨。 */
+export const createVariantInput = z.object({ productId, optionValues, priceTwd, compareAtPriceTwd: compareAtPriceTwd.optional() });
+
+/**
+ * 修改變體：選項值、售價整組送出；`compareAtPriceTwd` 不帶表示不動原價、`null` 表示清空；
+ * `imageId` 不帶表示不動、`null` 表示不指定圖片。
+ */
+export const updateVariantInput = z.object({
+  variantId,
+  optionValues,
+  priceTwd,
+  compareAtPriceTwd: compareAtPriceTwd.nullable().optional(),
+  imageId: z.string({ error: "圖片編號必須是文字" }).min(1, "圖片編號無效").nullable().optional(),
+});
+
+export const setVariantDiscontinuedInput = z.object({ variantId, discontinued: z.boolean({ error: "停賣必須是布林值" }) });

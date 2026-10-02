@@ -57,8 +57,10 @@ export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutReq
       ON CONFLICT (customer_id, idempotency_key) DO NOTHING
     `,
     sql`
-      INSERT INTO order_lines (order_id, product_id, variant_id, product_name, quantity, unit_price_twd)
-      SELECT orders.id, products.id, variant.id, products.name, json_extract(j.value, '$.quantity'), variant.price_twd
+      INSERT INTO order_lines (order_id, product_id, variant_id, product_name, variant_label, quantity, unit_price_twd)
+      SELECT orders.id, products.id, variant.id, products.name,
+        variant.option1_value || CASE WHEN variant.option2_value <> '' THEN ' / ' || variant.option2_value ELSE '' END,
+        json_extract(j.value, '$.quantity'), variant.price_twd
       FROM orders
       JOIN json_each(${linesJson}) j
       JOIN product_variants variant ON variant.id = json_extract(j.value, '$.variantId')
@@ -71,6 +73,7 @@ export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutReq
           LEFT JOIN products current_product ON current_product.id = current.product_id
           WHERE current.id IS NULL
             OR current_product.listed = 0
+            OR current.discontinued_at IS NOT NULL
             OR current.price_twd <> json_extract(wanted.value, '$.seenUnitPriceTwd')
             OR ${availableExpr(sql`current.on_hand`, sql`current.id`)} < json_extract(wanted.value, '$.quantity')
         )
@@ -91,6 +94,7 @@ export async function selectVariantStates(db: DrizzleD1Database, variantIds: num
       id: productVariants.id,
       priceTwd: productVariants.priceTwd,
       listed: products.listed,
+      discontinued: sql<boolean>`${productVariants.discontinuedAt} is not null`.mapWith(Boolean),
       onHand: productVariants.onHand,
       reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     })
@@ -109,7 +113,7 @@ export interface OrderView {
   paymentDeadline: number;
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
-  lines: { productId: number; variantId: number; productName: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
+  lines: { productId: number; variantId: number; productName: string; variantLabel: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
   /** 出貨時附的物流單號；未出貨或出貨時沒附為 null。 */
   trackingNumber: string | null;
   /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
@@ -154,6 +158,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       productId: orderLines.productId,
       variantId: orderLines.variantId,
       productName: orderLines.productName,
+      variantLabel: orderLines.variantLabel,
       quantity: orderLines.quantity,
       unitPriceTwd: orderLines.unitPriceTwd,
       cover: currentCover(sql`${orderLines.productId}`),
@@ -184,9 +189,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       };
       views.set(order.id, view);
     }
-    const { productId, variantId, productName, quantity, unitPriceTwd, cover } = line;
-    if (productId !== null && variantId !== null && productName !== null && quantity !== null && unitPriceTwd !== null) {
-      view.lines.push({ productId, variantId, productName, quantity, unitPriceTwd, cover });
+    const { productId, variantId, productName, variantLabel, quantity, unitPriceTwd, cover } = line;
+    if (productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null) {
+      view.lines.push({ productId, variantId, productName, variantLabel, quantity, unitPriceTwd, cover });
     }
   }
 

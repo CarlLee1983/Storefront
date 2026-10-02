@@ -1,6 +1,6 @@
 ---
 import type { ProductSummary } from "@storefront/app/catalog-types";
-import { saleDisplay } from "../sale/price";
+import { cardPrice } from "../catalog/listing-price";
 import CartToast from "./CartToast.astro";
 
 interface Props {
@@ -12,14 +12,13 @@ interface Props {
 }
 const { products, headingLevel = 2, eagerFirst = true } = Astro.props;
 const Heading = `h${headingLevel}` as "h2" | "h3";
-const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <ul class="product-list">
   {products.map((p, index) => {
-    const sale = saleDisplay(p.priceTwd, p.compareAtPriceTwd);
+    const { text: priceText, sale, hasSaleOption } = cardPrice(p);
     return (
-    <li class:list={["product-card", { "is-sold-out": !p.purchasable, "on-sale": sale }]}>
+    <li class:list={["product-card", { "is-sold-out": !p.purchasable, "on-sale": sale || hasSaleOption }]}>
       <a class="product-link" href={`/products/${p.id}`}>
         <span class="cover-frame">
           {/* 同一個連結的標題已提供商品名稱，封面不再重複朗讀。 */}
@@ -35,16 +34,20 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                 loading={eagerFirst && index === 0 ? "eager" : "lazy"}
               />
             : <span class="cover-placeholder">暫無商品圖片</span>}
-          {!p.purchasable && <span class="sold-out">已售完</span>}
+          {!p.purchasable && <span class="sold-out">{priceText === null ? "已停賣" : "已售完"}</span>}
           {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
         </span>
         <Heading>{p.name}</Heading>
       </a>
       <p class="price">
-        <span class="price-now">NT$ {priceFormat.format(p.priceTwd)}</span>
-        {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {priceFormat.format(sale.compareAtTwd)}</s>}
+        {priceText === null
+          ? <span class="price-now unavailable">目前無法購買</span>
+          : <span class="price-now">{priceText}</span>}
+        {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {new Intl.NumberFormat("zh-TW").format(sale.compareAtTwd)}</s>}
+        {hasSaleOption && <span class="sale-option">有特價選項</span>}
+        {p.hasOptions && p.purchasable && <span class="choose-options">選擇規格</span>}
       </p>
-      {p.purchasable && (
+      {p.purchasable && !p.hasOptions && p.priceTwd !== null && (
         <form class="add-to-cart" data-product-id={p.id} data-variant-id={p.defaultVariantId} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
           <input type="hidden" name="quantity" value="1" />
           <button type="submit" class="add-button" aria-label={`加入購物車：${p.name}`}>
@@ -184,6 +187,10 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     font-size: var(--text-base);
     font-weight: 700;
   }
+  .price .unavailable { color: var(--color-muted); }
+  .sale-option, .choose-options { display: block; font-size: var(--text-sm); font-weight: 500; }
+  .sale-option { color: var(--color-primary); }
+  .choose-options { color: var(--color-muted); }
   .add-to-cart { margin: 0; }
   .add-button {
     position: absolute;

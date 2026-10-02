@@ -8,6 +8,7 @@ import { mintAccessJwt } from "./access";
 
 const db = env.MIGRATION_DB;
 const BEFORE_0013 = 13;
+const THROUGH_0013 = 14;
 
 /** 每個測試從空白資料庫開始（這個檔案的測試共用同一個 MIGRATION_DB，且遷移會改結構，所以整個砍掉重來）。 */
 beforeEach(async () => {
@@ -71,12 +72,12 @@ it("每個商品至多一個預設變體，同商品可有其他變體（由後�
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
   await expect(db.prepare("INSERT INTO product_variants (product_id, is_default, price_twd) VALUES (1, 1, 100)").run()).rejects.toThrow();
-  await db.prepare("INSERT INTO product_variants (product_id, is_default, price_twd) VALUES (1, 0, 100)").run();
+  await db.prepare("INSERT INTO product_variants (product_id, is_default, price_twd, option1_value) VALUES (1, 0, 100, '另一組')").run();
 });
 
 it("回復程序把預設變體寫回商品、明細改回只指向商品，之後可重新套用 0013", async () => {
   await seedLegacy();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0013));
   await db.prepare("UPDATE product_variants SET on_hand = 7, price_twd = 950 WHERE product_id = 1").run();
 
   for (const statement of rollbackSql.split("--> statement-breakpoint")) await db.prepare(statement).run();
@@ -89,7 +90,7 @@ it("回復程序把預設變體寫回商品、明細改回只指向商品，之�
   expect((await db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name IN ('product_variants', 'order_lines_order_variant_uidx')").first<{ n: number }>())!.n).toBe(0);
   expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
 
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0013));
   expect((await db.prepare("SELECT product_id, price_twd, on_hand FROM product_variants ORDER BY product_id").all()).results).toEqual([
     { product_id: 1, price_twd: 950, on_hand: 7 }, { product_id: 2, price_twd: 320, on_hand: 4 },
   ]);
@@ -97,7 +98,7 @@ it("回復程序把預設變體寫回商品、明細改回只指向商品，之�
 
 it("已有非預設變體時回復程序拒絕執行，不破壞資料", async () => {
   await seedLegacy();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0013));
   await db.prepare("INSERT INTO product_variants (product_id, is_default, price_twd) VALUES (1, 0, 100)").run();
 
   const [dropGuard, createGuard, check] = rollbackSql.split("--> statement-breakpoint");
@@ -110,7 +111,7 @@ it("已有非預設變體時回復程序拒絕執行，不破壞資料", async (
 
 it("有商品沒有任何變體時回復程序同樣拒絕執行", async () => {
   await seedLegacy();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0013));
   // 明細參照變體，先移除商品 2 的明細才能刪它的變體
   await db.batch([db.prepare("DELETE FROM order_lines WHERE product_id = 2"), db.prepare("DELETE FROM product_variants WHERE product_id = 2")]);
 

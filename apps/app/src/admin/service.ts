@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
+import { createVariant, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
 import { categoryIdInput, createCategoryInput, updateCategoryInput } from "../categories/input";
 import { deleteCategory, setCategoryImage } from "../categories/manage";
 import { isValidSlug } from "../categories/slug";
@@ -20,7 +21,7 @@ import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, createProductInput, listOrdersInput, productIdInput, setProductFeaturedInput, shipOrderInput, updateProductInput } from "./input";
+import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, productIdInput, setProductFeaturedInput, setProductOptionsInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
   const db = drizzle(d1);
@@ -218,6 +219,26 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           .where(eq(products.id, id)).returning({ id: products.id });
         return updated.length === 0 ? fail("product_not_found") : ok({ id });
       });
+    },
+
+    /** 設定選項維度名稱（最多兩個）；個數改變時商品只能有一個變體，並以 `defaultVariantValues` 重設它的選項值。 */
+    setProductOptions(jwt: unknown, input: unknown) {
+      return authorized(jwt, setProductOptionsInput, input, (_actor, data) => setProductOptions(db, data));
+    },
+
+    /** 新增變體（選項值組合不可與同商品的變體重複，個數須等於維度個數）；在庫數 0，由庫存調整補貨。 */
+    createVariant(jwt: unknown, input: unknown) {
+      return authorized(jwt, createVariantInput, input, (_actor, data) => createVariant(db, data));
+    },
+
+    /** 修改變體的選項值、售價、原價與指定圖片。 */
+    updateVariant(jwt: unknown, input: unknown) {
+      return authorized(jwt, updateVariantInput, input, (_actor, data) => updateVariant(db, data));
+    },
+
+    /** 停賣或恢復販售變體：停賣後不接受新購買，變體與歷史保留；重複操作冪等。 */
+    setVariantDiscontinued(jwt: unknown, input: unknown) {
+      return authorized(jwt, setVariantDiscontinuedInput, input, (_actor, { variantId, discontinued }) => setVariantDiscontinued(db, variantId, discontinued, clock.now()));
     },
 
     /** 庫存調整：只接受增減量，不能覆寫成某個數字。 */

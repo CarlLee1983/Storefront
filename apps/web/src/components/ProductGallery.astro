@@ -56,6 +56,11 @@ const { name, images } = Astro.props;
       if (focus) thumbnails[next]?.focus();
     };
     thumbnails.forEach((button, index) => button.addEventListener("click", () => navigate(index)));
+    // 選取指定了圖片的商品變體時，由商品頁要求圖庫顯示該張（只在有此圖時動作）
+    gallery.addEventListener("gallery:select", event => {
+      const index = (event as CustomEvent<{ index: number }>).detail.index;
+      if (Number.isInteger(index) && index >= 0 && index < slides.length) navigate(index);
+    });
     gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-step]").forEach(button =>
       button.addEventListener("click", () => navigate(selected + Number(button.dataset.galleryStep))));
     gallery.addEventListener("keydown", event => {

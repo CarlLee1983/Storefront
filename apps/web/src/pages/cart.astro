@@ -93,7 +93,7 @@ export const prerender = false;
     const actions = make("div", "line-actions");
     actions.replaceChildren(stepper, remove);
     const main = make("div", "line-main");
-    main.replaceChildren(make("span", "line-name", line.name), make("p", "line-price", `單價 ${money(line.unitPriceTwd)}`), actions);
+    main.replaceChildren(make("span", "line-name", line.name), ...(line.label ? [make("p", "line-variant", line.label)] : []), make("p", "line-price", `單價 ${money(line.unitPriceTwd)}`), actions);
     const subtotal = make("p", "line-subtotal");
     subtotal.replaceChildren(...subtotalText(line));
     item.replaceChildren(cover, main, subtotal);
@@ -281,6 +281,7 @@ export const prerender = false;
   :global(#cart-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-subtle); text-align: center; }
   :global(#cart-lines .line-main) { min-width: 0; }
   :global(#cart-lines .line-name) { display: block; font-weight: 600; }
+  :global(#cart-lines .line-variant) { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-muted); }
   :global(#cart-lines .line-price) { margin: var(--space-1) 0 var(--space-2); font-size: var(--text-sm); color: var(--color-muted); }
   :global(#cart-lines .line-actions) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
   :global(#cart-lines .line-subtotal) { grid-column: 2; margin: 0; font-size: var(--text-lg); font-weight: 700; color: var(--color-text); }

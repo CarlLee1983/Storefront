@@ -18,7 +18,7 @@ describe("預設變體是販售單位", () => {
     expect(await app.getProductForAdmin(jwt, { id: productId })).toMatchObject({
       ok: true, data: { defaultVariantId: variantId, priceTwd: 320, onHand: 6, available: 6 },
     });
-    expect(await app.getProduct({ id: productId })).toMatchObject({ ok: true, data: { defaultVariantId: variantId, priceTwd: 320, available: 6 } });
+    expect(await app.getProduct({ id: productId })).toMatchObject({ ok: true, data: { variants: [{ id: variantId, isDefault: true, optionValues: [], priceTwd: 320, compareAtPriceTwd: null, available: 6, imageId: null }] } });
   });
 
   it("商品與預設變體同時存在：改價、庫存調整都落在預設變體上，且互不影響其他商品", async () => {

@@ -13,6 +13,7 @@ const RPC_METHODS = [
   "confirmPayment",
   "createCategory",
   "createProduct",
+  "createVariant",
   "deleteCategory",
   "deleteProductImage",
   "fetch",
@@ -36,11 +37,14 @@ const RPC_METHODS = [
   "scheduled",
   "setCategoryImage",
   "setProductFeatured",
+  "setProductOptions",
+  "setVariantDiscontinued",
   "shipOrder",
   "startPayment",
   "unlistProduct",
   "updateCategory",
   "updateProduct",
+  "updateVariant",
 ];
 
 describe("RPC 介面", () => {
