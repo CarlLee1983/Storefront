@@ -10,7 +10,7 @@ import { memberSessionCookie } from "../harness/session-cookie";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const PREFIX = "訂單版面";
-const EMAIL = "long.customer.address.for.admin.orders@members.storefront.invalid";
+const EMAIL = `${"a".repeat(64)}@members.storefront.invalid`;
 const NAMES = ["實木落地燈", "玻璃桌燈", "手工陶器", "閱讀單椅"].map(name => `${PREFIX}${name}`);
 
 // Use the same E2E-only D1 state and Wrangler configuration that serve.ts creates.
@@ -94,6 +94,7 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
       }
       await testInfo.attach(`orders-list-${width}`, { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
       await row.getByRole("link", { name: `#${orderId}`, exact: true }).click();
+      await expect(admin.locator(".admin-order-email")).toContainText(EMAIL);
       const lines = admin.getByRole("region", { name: "訂單明細資料表" });
       await expect(lines.getByRole("row")).toHaveCount(5);
       await expect(lines.locator("tbody td[data-label='數量']")).toHaveText(["1", "2", "3", "4"]);

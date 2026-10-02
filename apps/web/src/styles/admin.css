@@ -82,7 +82,7 @@
 .admin-shell .admin-orders th, .admin-shell .admin-orders td, .admin-shell .admin-order-lines th, .admin-shell .admin-order-lines td, .admin-shell .admin-order-payments th, .admin-shell .admin-order-payments td { vertical-align: middle; }
 .admin-shell .admin-orders th, .admin-shell .admin-orders td:first-child, .admin-shell .admin-orders td:nth-child(n+4) { white-space: nowrap; }
 .admin-shell .admin-orders td:nth-child(2) { min-width: 14rem; }
-.admin-shell .admin-orders td:nth-child(3), .admin-shell .admin-order-email { white-space: normal; overflow-wrap: normal; word-break: normal; }
+.admin-shell .admin-orders td:nth-child(3), .admin-shell .admin-order-email { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
 .admin-shell .admin-orders td:nth-child(6), .admin-shell .admin-order-lines td:nth-child(n+2):nth-child(-n+4), .admin-shell .admin-order-payments td:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .admin-shell .admin-order-payments td:nth-child(3) strong { display: block; white-space: normal; }
 
@@ -97,7 +97,8 @@
   .admin-shell .admin-orders td:first-child, .admin-shell .admin-order-lines td:first-child, .admin-shell .admin-order-payments td:first-child { border-bottom: 1px solid var(--color-border); }
   .admin-shell .admin-orders td:nth-child(2), .admin-shell .admin-order-lines td:first-child { display: block; min-width: 0; }
   .admin-shell .admin-orders td:nth-child(2)::before, .admin-shell .admin-order-lines td:first-child::before { display: block; margin-bottom: var(--space-2); }
-  .admin-shell .admin-orders td:nth-child(3) { overflow-wrap: normal; word-break: normal; }
+  .admin-shell .admin-orders td:nth-child(3) { overflow-wrap: anywhere; word-break: normal; }
+  .admin-shell .admin-orders td:nth-child(3) span { min-width: 0; }
   .admin-shell .admin-order-payments td:nth-child(3) { display: block; }
   .admin-shell .admin-order-payments td:nth-child(3)::before { display: block; }
 }
