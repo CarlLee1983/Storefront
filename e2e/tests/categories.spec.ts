@@ -76,6 +76,10 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await expect(page).toHaveURL(/\/categories\/e2e-living$/);
   await expect(page.getByRole("heading", { level: 1, name: LIVING.name })).toBeVisible();
   await expect(page.getByRole("main").getByText(LIVING.description)).toBeVisible();
+  // 分類尚未設定圖片時，分享卡使用品牌圖片。
+  for (const selector of ['meta[property="og:image"]', 'meta[name="twitter:image"]']) {
+    await expect(page.locator(selector)).toHaveAttribute("content", `${BASE_URL}/brand/share.png`);
+  }
   await expect(page.getByText("共 1 件商品")).toBeVisible();
   await expect(page.getByText("已顯示 1 / 1 件")).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
@@ -128,7 +132,7 @@ test("沒有分類不能上架並顯示原因；沒有上架商品的分類不�
   for (const path of [`/categories/${empty.slug}`, "/categories/no-such-category", "/categories/Bad_Slug"]) {
     const response = await page.goto(path);
     expect(response?.status(), path).toBe(404);
-    await expect(page.getByRole("heading", { level: 1, name: "找不到頁面" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "找不到這個頁面" })).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations, path).toEqual([]);
   }
 });

@@ -11,7 +11,7 @@ test("店裡沒有上架商品時，首頁不出現精選區、分類方塊與�
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(page.getByRole("region", { name: "精選商品" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "選購分類" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "依空間選物" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: "特價" })).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations, "空店面首頁").toEqual([]);
 });

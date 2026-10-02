@@ -5,7 +5,7 @@ import { checkoutEntry } from "../../checkout/entry";
 import Layout from "../../layouts/Layout.astro";
 import OrderStatus from "../../orders/OrderStatus.astro";
 import OrderLines from "../../orders/OrderLines.astro";
-import { formatDateTime } from "../../orders/labels";
+import { customerShipmentSummary, formatDateTime } from "../../orders/labels";
 
 export const prerender = false;
 
@@ -21,19 +21,19 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <Layout title="我的訂單" noindex>
-  {orders.data.length === 0 && <div class="empty"><h2>還沒有訂單</h2><p>目前沒有訂單。<a href="/">去逛逛商品</a></p></div>}
+  {orders.data.length === 0 && <div class="empty"><h2>還沒有訂單</h2><p>挑選喜歡的商品，結帳後就能在這裡查看訂單。</p><a href="/products">全部商品</a></div>}
   <ul class="orders">
     {orders.data.map(order => <li class="order-card">
-      <div class="heading"><h2><a href={`/orders/${order.id}`}>訂單 #{order.id}</a></h2><p>訂單狀態：<OrderStatus status={order.status} /></p></div>
+      <div class="heading"><h2><a href={`/orders/${order.id}`}>訂單 #{order.id}</a></h2><p>訂單狀態：<OrderStatus status={order.status} customer /></p></div>
       <p class="created">成立時間：{formatDateTime(order.createdAt)}</p>
       <OrderLines lines={order.lines} />
-      {order.status === "shipped" && <p>物流單號：{order.trackingNumber ?? "（未附）"}</p>}
-      <p class="total">總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong></p>
+      {order.status === "shipped" && <p>{customerShipmentSummary(null, order.trackingNumber)}</p>}
+      <p class="total">總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（含稅、免運）</p>
       {order.status === "pending_payment" && <div class="payment">
         <p>付款期限：<time datetime={new Date(order.paymentDeadline).toISOString()}>{formatDateTime(order.paymentDeadline)}</time>（台北時間）</p>
         <form method="post" action={`/orders/${order.id}/pay`}><button type="submit" aria-label={`訂單 #${order.id} 前往付款`}>前往付款</button></form>
       </div>}
-      <a class="detail" href={`/orders/${order.id}`}>查看訂單 #{order.id} 詳情</a>
+      <a class="detail" href={`/orders/${order.id}`} aria-label={`查看訂單 #${order.id} 詳情`}>查看訂單詳情</a>
     </li>)}
   </ul>
 </Layout>

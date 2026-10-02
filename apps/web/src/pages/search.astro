@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { MAX_QUERY_LENGTH } from "@storefront/app/catalog-listing";
 import ProductListing from "../components/ProductListing.astro";
 import SearchForm from "../components/SearchForm.astro";
 import Layout from "../layouts/Layout.astro";
@@ -14,15 +15,17 @@ const { q } = state;
 if (q === undefined) return Astro.redirect("/products", 302);
 const result = await env.APP.listProducts({ q, inStock: state.inStock, onSale: state.onSale, sort: state.sort, page: state.page });
 // 關鍵字是否合法（例如長度上限）一律以 App 的驗證為準
-const queryError = !result.ok && result.reason === "invalid_input" ? result.fields.q?.[0] : undefined;
+const queryError = !result.ok && result.reason === "invalid_input" && Object.hasOwn(result.fields, "q")
+  ? q.length > MAX_QUERY_LENGTH ? "搜尋文字太長，請縮短後再試。" : "搜尋文字無法使用，請修改後再試。"
+  : undefined;
 if (queryError !== undefined) Astro.response.status = 400;
 ---
 
-<Layout title={queryError === undefined ? `搜尋：${q}` : "搜尋"} noindex>
-  <SearchForm id="search-page-q" label="重新搜尋" value={queryError === undefined ? q : ""} />
+<Layout title={queryError === undefined ? `搜尋：${q}` : "搜尋"} headTitle={queryError === undefined ? `搜尋「${q}」｜靜物` : undefined} description={queryError === undefined ? `搜尋靜物商品中與「${q}」相關的家具與器物。` : undefined} noindex>
+  <SearchForm id="search-page-q" label="重新搜尋" value={q} />
   {
     queryError !== undefined ? (
-      <p class="error" role="alert">{queryError}，請修改後再試。</p>
+      <p class="error" role="alert">{queryError}</p>
     ) : (
       <ProductListing q={q} result={result} />
     )

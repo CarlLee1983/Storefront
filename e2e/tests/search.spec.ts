@@ -87,14 +87,14 @@ test.describe("桌機搜尋", () => {
   test("沒有結果時顯示提示與前往全部商品的連結；%、_ 當成一般文字", async ({ page }) => {
     await page.goto("/search?q=%25_%25");
     await expect(page.getByText("找不到符合「%_%」的商品")).toBeVisible();
-    await page.getByRole("link", { name: "前往全部商品" }).click();
+    await page.locator(".listing-empty").getByRole("link", { name: "全部商品" }).click();
     await expect(page).toHaveURL(/\/products$/);
   });
 
   test("搜尋有命中但開了只看有貨而沒有結果：說明原因並可清除篩選", async ({ page }) => {
     const q = `${SEED_PREFIX} 邊桌`;
     await page.goto(`/search?q=${encodeURIComponent(q)}&instock=1`);
-    await expect(page.getByText(`沒有符合「${q}」且有貨的商品`)).toBeVisible();
+    await expect(page.getByText(`找不到符合「${q}」的商品。試著清除篩選條件。`)).toBeVisible();
     await page.getByRole("link", { name: "清除篩選" }).click();
     await expect(page).not.toHaveURL(/instock/);
     await expect(page).toHaveURL(/\/search\?q=/);
@@ -107,7 +107,7 @@ test.describe("桌機搜尋", () => {
 
     const response = await page.goto(`/search?q=${"a".repeat(51)}`);
     expect(response?.status()).toBe(400);
-    await expect(page.getByRole("alert")).toContainText("不可超過 50 字");
+    await expect(page.getByRole("alert")).toHaveText("搜尋文字太長，請縮短後再試。");
   });
 
   test("axe：搜尋結果頁、沒有結果、打開的搜尋 dialog 都零違規", async ({ page }) => {

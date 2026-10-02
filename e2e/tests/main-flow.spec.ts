@@ -165,12 +165,24 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await expectSaleCard(featured);
   await featured.getByRole("link").filter({ has: page.getByRole("heading", { name: PRODUCT.name, exact: true }) }).click();
   await expect(page.getByRole("heading", { level: 1, name: PRODUCT.name })).toBeVisible();
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", `${PRODUCT.name}｜靜物`);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", PRODUCT.description);
+  const productOgImage = await page.locator('meta[property="og:image"]').getAttribute("content");
+  const productCover = await page.getByRole("region", { name: `${PRODUCT.name}的商品圖片` }).locator(".gallery-slide img").first().getAttribute("srcset");
+  expect(productOgImage).toBe(new URL(productCover!.split(", ").at(-1)!.split(" ")[0]!, BASE_URL).href);
+  expect((await page.request.get(productOgImage!)).status()).toBe(200);
   await page.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: CATEGORY.name }).click();
   await expect(page).toHaveURL(categoryUrl);
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", `${CATEGORY.name}｜靜物`);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", `在靜物探索${CATEGORY.name}商品。${CATEGORY.description}`);
+  const categoryOgImage = await page.locator('meta[property="og:image"]').getAttribute("content");
+  expect((await page.request.get(categoryOgImage!)).status()).toBe(200);
   await page.goto("/");
-  const tile = page.getByRole("region", { name: "選購分類" }).getByRole("link", { name: new RegExp(CATEGORY.name) });
+  const tile = page.getByRole("region", { name: "依空間選物" }).getByRole("link", { name: new RegExp(CATEGORY.name) });
   // 分類圖片是裝飾性的（alt=""），沒有 img 角色
   await expect(tile.locator("img")).toBeVisible();
+  const categoryImage = await tile.locator("img").getAttribute("srcset");
+  expect(categoryOgImage).toBe(new URL(categoryImage!.split(", ").at(-1)!.split(" ")[0]!, BASE_URL).href);
   await tile.click();
   await expect(page).toHaveURL(categoryUrl);
   await page.goto("/");
@@ -229,7 +241,8 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   // 8. 從全部商品進入詳情、圖庫、加入購物車 → 購物車頁 → 結帳 → 訂單頁待付款
   await page.goto("/products");
   const productItem = page.getByRole("listitem").filter({ hasText: PRODUCT.name });
-  const cover = productItem.getByRole("img", { name: `${PRODUCT.name}的封面` });
+  const cover = productItem.getByAltText(PRODUCT.name, { exact: true });
+  await expect(cover).toHaveAttribute("aria-hidden", "true");
   await expect(cover).toBeVisible();
   await expect.poll(() => cover.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(cover).toHaveAttribute("srcset", /320w.*640w.*1280w/);
@@ -265,7 +278,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   const add = information.getByRole("button", { name: "加入購物車", exact: true });
   await tabTo(page, add);
   await page.keyboard.press("Enter");
-  await expect(information.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  await expect(information.getByRole("status")).toHaveText("已加入購物車，目前 1 件。");
   await expect(add).toBeFocused();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await testInfo.attach("keyboard-add-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
@@ -275,7 +288,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   const cartSummary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
   await expect(cartSummary).toContainText(/總金額\s*NT\$ 1,200/);
   for (const text of ["新台幣", "含稅", "免運"]) await expect(cartSummary).toContainText(text);
-  await expect(page.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("src", coverSrc);
+  await expect(page.getByRole("img", { name: PRODUCT.name, exact: true })).toHaveAttribute("src", coverSrc);
   await audit(page, testInfo, "populated-cart-mobile");
   await page.getByRole("link", { name: "前往結帳" }).click();
 
@@ -283,6 +296,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await page.getByLabel("收件人姓名").fill("E2E 收件人");
   await page.getByLabel("收件人電話").fill("0912345678");
   await page.getByLabel("收件地址").fill("台北市中正區（E2E 示意地址）");
+  await expect(page.locator("#checkout-lines .cart-cover")).toHaveAttribute("aria-hidden", "true");
   await audit(page, testInfo, "populated-checkout-mobile");
   await page.getByRole("button", { name: "送出訂單" }).click();
 
@@ -309,7 +323,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   await expect(page).toHaveURL(`${BASE_URL}${orderPath}`);
   await expect(page.getByText("訂單狀態：已付款")).toBeVisible();
-  await expect(page.getByText("已收到付款，訂單已付款。")).toBeVisible();
+  await expect(page.getByText("已收到付款，訂單目前為已付款。")).toBeVisible();
 
   // webhook 確實被 Web 驗簽並回 2xx：閘道主控頁「這一筆付款」的投遞紀錄是 HTTP 200（驗簽失敗會是 401）
   await gatewayConsole.goto(`${GATEWAY_URL}/console`);
@@ -336,12 +350,12 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await page.goto("/orders");
   const customerOrder = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(`#${orderId}\\b`) }) });
   await expect(customerOrder).toContainText("已出貨");
-  await expect(customerOrder.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("srcset", coverSrcset);
+  await expect(customerOrder.getByRole("img", { name: PRODUCT.name, exact: true })).toHaveAttribute("srcset", coverSrcset);
   await audit(page, testInfo, "populated-orders-mobile");
   await page.goto(orderPath);
   await expect(page.getByText("訂單狀態：已出貨")).toBeVisible();
   await expect(page.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
-  await expect(page.getByRole("img", { name: `${PRODUCT.name}的封面`, exact: true })).toHaveAttribute("srcset", coverSrcset);
+  await expect(page.getByRole("img", { name: PRODUCT.name, exact: true })).toHaveAttribute("srcset", coverSrcset);
   for (const width of [320, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

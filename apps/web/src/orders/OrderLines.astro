@@ -7,7 +7,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 <ul class="order-lines" aria-label="訂單明細">
   {lines.map(line => <li>
-    <OrderCover cover={line.cover} name={line.productName} />
+    <OrderCover cover={line.cover} name={line.productName} customer />
     <div class="description"><strong>{line.productName}</strong><p>單價（下單當時）：NT$ {priceFormat.format(line.unitPriceTwd)}<br />數量：{line.quantity}</p></div>
     <p class="subtotal">小計：<strong>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</strong></p>
   </li>)}

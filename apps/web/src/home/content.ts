@@ -14,33 +14,41 @@ export interface HeroSlide {
   image: HomeImage;
   title: string;
   description: string;
+  href: string;
+  linkText: string;
 }
 
 const heroImage = (n: number, alt: string): HomeImage => ({ name: `hero-${n}`, widths: [640, 1024, 1600], width: 1600, height: 914, alt });
 
 export const HERO_SLIDES: HeroSlide[] = [
   {
-    image: heroImage(1, "陽光灑落的客廳，胡桃木單椅與黑色石材邊几"),
-    title: "為日常挑一張好椅子",
-    description: "胡桃木與織布面的單椅、邊几，讓客廳慢下來。",
+    image: heroImage(1, "日光照進客廳，胡桃木單椅擺在右側。"),
+    title: "留一個位置給自己",
+    description: "一張單椅與留白的牆面，讓客廳也有慢下來的角落。",
+    href: "/categories/living",
+    linkText: "逛客廳選物",
   },
   {
-    image: heroImage(2, "餐廳裡的橡木圓桌、編繩餐椅與黑色吊燈"),
-    title: "把餐桌留給好好吃飯的時刻",
-    description: "橡木圓桌、編繩餐椅與一盞低垂的燈。",
+    image: heroImage(2, "餐廳中的圓桌、餐椅與吊燈。"),
+    title: "把時間留在餐桌上",
+    description: "從餐桌、座椅到器皿，讓每日的相聚多一點從容。",
+    href: "/categories/dining",
+    linkText: "逛餐廳選物",
   },
   {
-    image: heroImage(3, "工作桌上的朱紅檯燈、書堆與花器"),
-    title: "工作桌上也值得有一點顏色",
-    description: "原木桌面、朱紅檯燈與安靜的書堆。",
+    image: heroImage(3, "木書桌上有朱紅色檯燈與書本，左側是留白的牆面。"),
+    title: "整理出專注的角落",
+    description: "一張桌、一盞燈，替每天的想法留出空間。",
+    href: "/categories/workspace",
+    linkText: "逛工作區選物",
   },
 ];
 
 export const EDITORIAL_BANNER = {
   image: { name: "banner", widths: [480, 800, 1122], width: 1122, height: 1402, alt: "橡木桌上的陶罐與橄欖枝" } satisfies HomeImage,
-  title: "選一件，用很久",
-  description: "每一件都經過挑選，只留下耐看、耐用，值得放進家裡的選物。",
-  linkText: "逛逛全部商品",
+  title: "日常，從喜歡的物件開始",
+  description: "一盞燈、一只器皿，從每天會碰觸的地方慢慢挑起。",
+  linkText: "全部商品",
 };
 
 export function imageSrcset({ name, widths }: Pick<HomeImage, "name" | "widths">): string {

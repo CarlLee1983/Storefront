@@ -107,7 +107,7 @@ test("管理員拒絕不高於售價的原價，設定合法原價後顧客在�
 
   // 加入購物車後，購物車只記得售價，不顯示原價
   await information.getByRole("button", { name: "加入購物車", exact: true }).click();
-  await expect(information.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  await expect(information.getByRole("status")).toHaveText("已加入購物車，目前 1 件。");
   await page.goto("/cart");
   await expect(page.getByRole("main")).toContainText("NT$ 320");
   await expect(page.getByRole("main")).not.toContainText("450");

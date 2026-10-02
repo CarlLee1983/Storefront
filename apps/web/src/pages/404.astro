@@ -1,9 +1,10 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import NotFoundContent from "../components/NotFoundContent.astro";
 export const prerender = false;
 Astro.response.status = 404;
 ---
 
-<Layout title="找不到頁面">
-  <p>這個網址不存在，或頁面已經移動。</p><p><a href="/">回首頁</a></p>
+<Layout title="找不到這個頁面" headTitle="找不到頁面｜靜物" noindex>
+  <NotFoundContent />
 </Layout>

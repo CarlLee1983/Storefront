@@ -14,7 +14,7 @@ const count = HERO_SLIDES.length;
         <div class="hero-copy">
           <h2>{slide.title}</h2>
           <p>{slide.description}</p>
-          <a class="button-link" href="/products">開始選購</a>
+          <a class="button-link" href={slide.href}>{slide.linkText}</a>
         </div>
         <div class="hero-media">
           <img

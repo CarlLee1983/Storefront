@@ -11,7 +11,7 @@ if (Astro.locals.customer) {
 ---
 
 <Layout title="登入" noindex>
-  <p>用 LINE 或 Google 登入。兩種方式是各自獨立的帳號，不會合併。</p>
+  <p>使用 LINE 或 Google 登入。兩種方式是各自獨立的帳號，不會合併；結帳後請用原本的方式登入查看訂單。</p>
   <p id="error" class="error" role="alert" hidden></p>
   <p>
     <button type="button" data-provider="line" data-next={next}>用 LINE 登入</button>
@@ -30,7 +30,7 @@ if (Astro.locals.customer) {
           return;
         }
         const error = document.querySelector<HTMLElement>("#error")!;
-        error.textContent = "登入暫時無法使用，請稍後再試。";
+        error.textContent = "目前無法登入，請稍後再試。";
         error.hidden = false;
       });
     }
