@@ -1,5 +1,5 @@
 import { env, exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
 import { checkoutInput, createStockedListing, newKey } from "./checkout-helpers";
 import { signInCustomer } from "./customers";
@@ -8,6 +8,9 @@ import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { adminOrder, APPOINTMENT, shipRemaining } from "./shipment-helpers";
 
 const app = exports.default;
+
+// 每個測試都要建商品、上傳圖片與下單，全套並行時會比預設 5 秒慢（比照 ba457e3）
+vi.setConfig({ testTimeout: 30_000 });
 
 /** 成立一張已付款的訂單，回傳顧客 cookie、訂單編號與變體編號。 */
 async function paidOrder(name = "alice", options?: { onHand?: number; quantity?: number }) {
@@ -82,15 +85,17 @@ describe("管理員交運（整批）", () => {
     expect((await adminOrder(orderId)).shipments).toMatchObject([{ trackingNumber: "TW-123_456/AB 7" }]);
   });
 
-  it.each(["pending_payment", "expired", "cancelled"])("%s 的訂單不能交運：order_not_shippable，狀態不變", async (status) => {
+  it("待付款、已逾期、已取消的訂單不能交運：order_not_shippable，狀態不變", async () => {
     const cookie = await signInCustomer("alice");
     const { orderId } = await placeMugOrder(cookie);
-    await forceOrderStatus(orderId, status);
 
-    expect(await shipRemaining(orderId)).toEqual({ ok: false, reason: "order_not_shippable" });
-
-    expect(await adminOrder(orderId)).toMatchObject({ status, shipments: [] });
+    for (const status of ["pending_payment", "expired", "cancelled"]) {
+      await forceOrderStatus(orderId, status);
+      expect(await shipRemaining(orderId)).toEqual({ ok: false, reason: "order_not_shippable" });
+      expect(await adminOrder(orderId)).toMatchObject({ status, shipments: [] });
+    }
   });
+
 
   it("已出貨的訂單不能再交運、不能撤回：order_not_shippable，批次不變", async () => {
     const { orderId } = await paidOrder();
@@ -391,10 +396,13 @@ describe("交運的保護邊界", () => {
     expect((await adminOrder(orderId)).shipments).toMatchObject([{ id: 900, trackingNumber: "OLD" }]);
   });
 
-  it.each(["pending_payment", "expired", "cancelled", "shipped"])("%s 的訂單即使輸入缺時段也先回 order_not_shippable", async (status) => {
+  it("pending_payment／expired／cancelled／shipped 的訂單即使輸入缺時段也先回 order_not_shippable", async () => {
     const { orderId, tableLine } = await paidMixedOrder();
-    await forceOrderStatus(orderId, status);
 
-    expect(await shipRemaining(orderId, { items: [{ orderLineId: tableLine.id, quantity: 1 }] })).toEqual({ ok: false, reason: "order_not_shippable" });
+    for (const status of ["pending_payment", "expired", "cancelled", "shipped"]) {
+      await forceOrderStatus(orderId, status);
+      expect(await shipRemaining(orderId, { items: [{ orderLineId: tableLine.id, quantity: 1 }] })).toEqual({ ok: false, reason: "order_not_shippable" });
+    }
   });
+
 });
