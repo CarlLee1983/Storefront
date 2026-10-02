@@ -1,5 +1,5 @@
 import { toNumber, toText } from "../shared/form-values";
-import { categoryFormToInput, categoryIdFromSelect } from "./category-form";
+import { categoryIdFromSelect } from "./category-form";
 
 /** 新增商品表單 → RPC 輸入；不判斷內容是否合法，由 App 驗證。 */
 export function productFormToInput(form: FormData) {
@@ -46,21 +46,18 @@ export const UNFEATURE_INTENT = "unfeature";
 export type ListingAction = "unlist" | "relist";
 
 export type ProductFormDispatch =
-  | { kind: "create" }
   | { kind: "listing"; action: ListingAction; id: number }
   | { kind: "featured"; featured: boolean; id: number }
   | { kind: "stock"; input: ReturnType<typeof stockAdjustFormToInput> }
-  | { kind: "create-category"; input: ReturnType<typeof categoryFormToInput> }
   | { kind: "invalid" };
 
 /**
- * 後台清單頁 POST 的分派：沒有 `intent` 欄位才是新增；有 `intent` 就必須是合法的下架／重新上架／精選切換／庫存調整／建立分類，
- * 否則是 invalid（頁面不呼叫任何 RPC），避免被竄改的表單落到新增。
+ * 後台清單頁只接受明確的清單操作；新增商品由獨立路由處理。
+ * 不認得或缺少 intent 時不呼叫任何變更 RPC。
  */
 export function dispatchProductForm(form: FormData): ProductFormDispatch {
   const intent = form.get("intent");
-  if (intent === null) return { kind: "create" };
-  if (intent === "create-category") return { kind: "create-category", input: categoryFormToInput(form) };
+  if (intent === null) return { kind: "invalid" };
   const id = parseProductId(toText(form.get("id")));
   if (id === null) return { kind: "invalid" };
   if (intent === "adjust-stock") return { kind: "stock", input: stockAdjustFormToInput(form, id) };

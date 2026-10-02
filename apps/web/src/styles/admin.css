@@ -18,6 +18,57 @@
 .admin-shell .admin-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); }
 .admin-shell .category-preview { max-width: 100%; height: auto; max-height: 12rem; object-fit: contain; }
 
+.admin-shell .admin-products table { table-layout: auto; min-width: 0; }
+.admin-shell .admin-products th, .admin-shell .admin-products td { white-space: nowrap; overflow-wrap: normal; vertical-align: middle; }
+.admin-shell .admin-products th:nth-child(2), .admin-shell .admin-products td:nth-child(2) { width: 18%; min-width: 8rem; white-space: normal; overflow-wrap: anywhere; }
+.admin-shell .admin-products th:nth-child(n+4):nth-child(-n+8), .admin-shell .admin-products td:nth-child(n+4):nth-child(-n+8) { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-shell .admin-products td:last-child { width: 1%; }
+.admin-shell .admin-products .admin-actions, .admin-shell .admin-products .admin-actions form { flex-wrap: nowrap; }
+.admin-shell .admin-products input[name="delta"] { width: 9rem; flex: 0 0 9rem; }
+@media (min-width: 48rem) {
+  .admin-shell .admin-products th, .admin-shell .admin-products td { padding-inline: .375rem; }
+}
+
+.admin-shell .admin-categories table { table-layout: auto; min-width: 0; }
+.admin-shell .admin-categories th, .admin-shell .admin-categories td { vertical-align: middle; }
+.admin-shell .admin-categories th:nth-child(n+5):nth-child(-n+6), .admin-shell .admin-categories td:nth-child(n+5):nth-child(-n+6) { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-shell .admin-categories td:nth-child(4) { max-width: 20rem; }
+.admin-shell .admin-categories th:nth-child(n+7), .admin-shell .admin-categories td:nth-child(n+7) { width: 1%; white-space: nowrap; }
+.admin-shell .admin-categories th:last-child, .admin-shell .admin-categories td:last-child { border-left: 1px solid var(--color-border); padding-left: var(--space-3); }
+
+@media (max-width: 47.999rem) {
+  .admin-shell .admin-products { overflow-x: visible; }
+  .admin-shell .admin-products table { display: block; width: 100%; min-width: 0; }
+  .admin-shell .admin-products thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .admin-shell .admin-products tbody { display: grid; gap: var(--space-4); }
+  .admin-shell .admin-products tbody tr { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: var(--space-3); min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .admin-shell .admin-products td { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); grid-column: 1 / -1; min-width: 0; width: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; font-variant-numeric: normal; }
+  .admin-shell .admin-products td::before { content: attr(data-label); flex: 0 0 auto; font-weight: 700; }
+  .admin-shell .admin-products td:first-child { grid-column: 1; grid-row: 1; padding: 0; border: 0; }
+  .admin-shell .admin-products td:first-child::before, .admin-shell .admin-products td:nth-child(2)::before { content: none; }
+  .admin-shell .admin-products td:first-child img { display: block; }
+  .admin-shell .admin-products td:nth-child(2) { grid-column: 2; grid-row: 1; align-self: center; width: auto; min-width: 0; font-weight: 700; }
+  .admin-shell .admin-products td:nth-child(n+4):nth-child(-n+8) { text-align: left; }
+  .admin-shell .admin-products td:nth-child(10) { flex-wrap: wrap; }
+  .admin-shell .admin-products td:last-child { display: block; width: auto; }
+  .admin-shell .admin-products td:last-child::before { display: block; margin-bottom: var(--space-2); }
+  .admin-shell .admin-products .admin-actions, .admin-shell .admin-products .admin-actions form { flex-wrap: wrap; }
+  .admin-shell .admin-products .admin-actions form:last-child { width: 100%; }
+  .admin-shell .admin-products input[name="delta"] { flex: 1 1 9rem; min-width: 9rem; }
+
+  .admin-shell .admin-categories { overflow-x: visible; }
+  .admin-shell .admin-categories table { display: block; width: 100%; }
+  .admin-shell .admin-categories thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .admin-shell .admin-categories tbody { display: grid; gap: var(--space-4); }
+  .admin-shell .admin-categories tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .admin-shell .admin-categories td { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; width: auto; max-width: none; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  .admin-shell .admin-categories td::before { content: attr(data-label); flex: 0 0 auto; font-weight: 700; }
+  .admin-shell .admin-categories td:first-child { justify-content: flex-start; }
+  .admin-shell .admin-categories td:nth-child(n+5):nth-child(-n+6) { text-align: left; }
+  .admin-shell .admin-categories td:nth-child(n+7) { width: auto; }
+  .admin-shell .admin-categories td:last-child { border-left: 0; border-top: 1px solid var(--color-border); padding: var(--space-3) var(--space-1) var(--space-1); margin-top: var(--space-2); }
+}
+
 .admin-shell #product-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-4); padding: 0; list-style: none; }
 .admin-shell #product-images li { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); min-width: 0; }
 .admin-shell #product-images img { display: block; width: 100%; height: 9rem; object-fit: contain; margin-bottom: var(--space-2); }

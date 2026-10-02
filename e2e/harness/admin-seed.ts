@@ -42,7 +42,7 @@ export async function seedListedProducts(
   category: { slug: string; name: string; description: string },
   products: SeedProduct[],
 ): Promise<number[]> {
-  await post(adminContext.request, "/admin", { intent: "create-category", categoryName: category.name, categoryDescription: category.description, categorySlug: category.slug });
+  await post(adminContext.request, "/admin/categories", { intent: "create-category", categoryName: category.name, categoryDescription: category.description, categorySlug: category.slug });
   return seedListedProductsInCategory(adminContext, category.name, products);
 }
 
@@ -51,7 +51,7 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
   const admin = adminContext.request;
   const covers = await renderCovers(adminContext);
   // 依序新增，編號才會跟著名稱順序遞增
-  for (const { name, priceTwd } of products) await post(admin, "/admin", { name, description: `${name}的說明`, priceTwd: String(priceTwd) });
+  for (const { name, priceTwd } of products) await post(admin, "/admin/products/new", { name, description: `${name}的說明`, priceTwd: String(priceTwd) });
 
   const html = await (await admin.get("/admin")).text();
   const ids = products.map(({ name }) => {

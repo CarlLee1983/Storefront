@@ -11,7 +11,7 @@ const adminContext = await browser.newContext({ baseURL: BASE_URL, extraHTTPHead
 const admin = await adminContext.newPage();
 const name = `Lighthouse 手工花器 ${Date.now()}`;
 try {
-  await admin.goto("/admin");
+  await admin.goto("/admin/products/new");
   await admin.getByLabel("名稱", { exact: true }).fill(name);
   await admin.getByLabel("說明", { exact: true }).fill("日常選物，三張商品圖片的本機驗收資料。");
   await admin.getByLabel("單價（新台幣整數元）").fill("680");

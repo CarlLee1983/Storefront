@@ -47,6 +47,7 @@ const values = {
       <p class="error" role="alert">找不到這個商品。</p>
     ) : (
       <>
+        {Astro.url.searchParams.get("saved") === "created" && <p role="status">已新增商品。</p>}
         {failure && <p class="error" role="alert">{failure.message}</p>}
         <form method="post">
           <label>

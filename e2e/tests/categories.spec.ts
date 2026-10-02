@@ -7,12 +7,13 @@ import { BASE_URL } from "../harness/constants";
 const LIVING = { slug: "e2e-living", name: "E2E客廳", description: "分類頁測試用的一行說明" };
 
 async function createProduct(admin: Page, name: string) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/products/new");
   await admin.getByLabel("名稱", { exact: true }).fill(name);
   await admin.getByLabel("說明", { exact: true }).fill("分類測試商品");
   await admin.getByLabel("單價（新台幣整數元）").fill("880");
   await admin.getByRole("button", { name: "新增商品", exact: true }).click();
-  await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await expect(admin.getByRole("status").filter({ hasText: "已新增商品。" })).toHaveText("已新增商品。");
+  await admin.goto("/admin");
 }
 
 async function uploadCover(admin: Page, name: string) {
@@ -40,6 +41,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await withAdmin(browser, async (admin) => {
     await createCategory(admin, LIVING);
     await expect(admin.getByRole("status")).toHaveText("已建立分類。");
+    await expect(admin).toHaveURL(/\/admin\/categories\?saved=created$/);
     const categoryRow = admin.getByRole("row", { name: new RegExp(LIVING.slug) });
     await expect(categoryRow).toContainText(LIVING.name);
     await expect(categoryRow.getByRole("cell", { name: "0", exact: true })).toHaveCount(2);
@@ -62,6 +64,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
     await expect(productRow).toContainText(LIVING.name);
     await productRow.getByRole("button", { name: "重新上架" }).click();
     await expect(productRow).toContainText("上架中");
+    await admin.goto("/admin/categories");
     await expect(admin.getByRole("row", { name: new RegExp(LIVING.slug) }).getByRole("cell", { name: "1", exact: true })).toHaveCount(2);
   });
 

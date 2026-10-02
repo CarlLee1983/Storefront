@@ -1,9 +1,10 @@
 ---
 import { env } from "cloudflare:workers";
+import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "@storefront/app/category-slug";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { parseCategoryId } from "../../../admin/category-form";
-import { describeFailure, logFailure } from "../../../admin/failure";
-import { toText } from "../../../shared/form-values";
+import { categoryFormToInput, parseCategoryId } from "../../../admin/category-form";
+import { describeFailure, logFailure, type Failure } from "../../../admin/failure";
+import { formToRecord, toText } from "../../../shared/form-values";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 
 export const prerender = false;
@@ -12,13 +13,28 @@ export const prerender = false;
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 let unauthorized = false;
 let deleteError = "";
+let createFailure: Failure | undefined;
+let submitted: Record<string, string> = {};
 
 const UNAVAILABLE = "操作失敗，請稍後再試";
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
+  const intent = form.get("intent");
   const id = parseCategoryId(toText(form.get("id")));
-  if (form.get("intent") !== "delete" || id === null) {
+  if (intent === "create-category") {
+    submitted = formToRecord(form);
+    try {
+      const result = await env.APP.createCategory(jwt, categoryFormToInput(form));
+      if (result.ok) return Astro.redirect("/admin/categories?saved=created", 303);
+      if (result.reason === "unauthorized") unauthorized = true;
+      else createFailure = describeFailure(result, "建立分類失敗，請稍後再試");
+    } catch (cause) {
+      logFailure("admin_category_create_failed", cause);
+      Astro.response.status = 503;
+      createFailure = { message: "建立分類失敗，請稍後再試", fields: {} };
+    }
+  } else if (intent !== "delete" || id === null) {
     // 被竄改或不認得的表單：不呼叫任何 RPC
     Astro.response.status = 400;
     deleteError = UNAVAILABLE;
@@ -51,6 +67,7 @@ if (!unauthorized) {
 }
 if (unauthorized || (categories && !categories.ok)) Astro.response.status = 403;
 const SAVED_MESSAGES: Record<string, string> = {
+  created: "已建立分類。",
   updated: "已儲存分類。",
   deleted: "已刪除分類。",
 };
@@ -65,33 +82,55 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
       <>
         {savedMessage && <p role="status">{savedMessage}</p>}
         {deleteError && <p class="error" role="alert">{deleteError}</p>}
-        <p>新增分類請至<a href="/admin">商品管理</a>頁。只有沒有任何商品（不分上架與否）的分類可以刪除。</p>
+        <p>只有沒有任何商品（不分上架與否）的分類可以刪除。</p>
+        <h2>新增分類</h2>
+        {createFailure && <p class="error" role="alert">{createFailure.message}</p>}
+        <form method="post">
+          <input type="hidden" name="intent" value="create-category" />
+          <label>
+            分類名稱
+            <input name="categoryName" value={submitted.categoryName ?? ""} required />
+            {createFailure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            分類說明（一行）
+            <input name="categoryDescription" value={submitted.categoryDescription ?? ""} required />
+            {createFailure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            網址代稱（小寫英文、數字與連字號，建立後不能修改）
+            <input name="categorySlug" value={submitted.categorySlug ?? ""} required pattern={SLUG_PATTERN.source} maxlength={MAX_SLUG_LENGTH} />
+            {createFailure?.fields.slug?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <button type="submit">建立分類</button>
+        </form>
+        <h2>分類列表</h2>
         {categories?.ok && categories.data.length === 0 && <p>目前沒有分類。</p>}
         {
           categories?.ok && categories.data.length > 0 && (
-            <div class="table-scroll" tabindex="0" role="region" aria-label="分類資料表"><table>
+            <div class="table-scroll admin-categories" tabindex="0" role="region" aria-label="分類資料表"><table>
               <thead>
-                <tr><th>圖片</th><th>名稱</th><th>代稱</th><th>說明</th><th>商品數</th><th>上架商品數</th><th>操作</th></tr>
+                <tr><th>圖片</th><th>名稱</th><th>代稱</th><th>說明</th><th>商品數</th><th>上架商品數</th><th>操作</th><th>刪除</th></tr>
               </thead>
               <tbody>
                 {categories.data.map((c) => (
                   <tr>
-                    <td>{c.image ? <img src={`/images/${c.image.variants[0]!.key}`} class="admin-thumb" width="64" height="48" alt={`${c.name}的分類圖片`} loading="lazy" /> : <span>尚無圖片</span>}</td>
-                    <td>{c.name}</td>
-                    <td>{c.slug}</td>
-                    <td>{c.description}</td>
-                    <td>{c.productCount}</td>
-                    <td>{c.listedProductCount}</td>
-                    <td>
-                      <div class="admin-actions">
+                    <td data-label="圖片">{c.image ? <img src={`/images/${c.image.variants[0]!.key}`} class="admin-thumb" width="64" height="48" alt={`${c.name}的分類圖片`} loading="lazy" /> : <span>尚無圖片</span>}</td>
+                    <td data-label="名稱">{c.name}</td>
+                    <td data-label="代稱">{c.slug}</td>
+                    <td data-label="說明">{c.description}</td>
+                    <td data-label="商品數">{c.productCount}</td>
+                    <td data-label="上架商品數">{c.listedProductCount}</td>
+                    <td data-label="操作">
                         <a href={`/admin/categories/${c.id}`} aria-label={`修改${c.name}（含圖片）`}>修改與圖片</a>
+                    </td>
+                    <td data-label="刪除" class="admin-category-delete">
                         <form method="post" class="inline" data-confirm={`確定刪除分類「${c.name}」？`}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="name" value={c.name} />
                           <input type="hidden" name="intent" value="delete" />
                           <button type="submit" aria-label={`刪除${c.name}`}>刪除</button>
                         </form>
-                      </div>
                     </td>
                   </tr>
                 ))}

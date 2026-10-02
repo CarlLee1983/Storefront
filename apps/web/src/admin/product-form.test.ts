@@ -65,8 +65,8 @@ describe("parseProductId", () => {
 });
 
 describe("dispatchProductForm", () => {
-  it("沒有 intent 欄位的表單是新增商品", () => {
-    expect(dispatchProductForm(form({ name: "馬克杯", description: "", priceTwd: "320" }))).toEqual({ kind: "create" });
+  it("清單不再接受沒有 intent 的新增表單", () => {
+    expect(dispatchProductForm(form({ name: "馬克杯", description: "", priceTwd: "320" }))).toEqual({ kind: "invalid" });
   });
 
   it("下架與重新上架的表單解析出動作與商品編號", () => {
@@ -127,11 +127,8 @@ describe("分類相關", () => {
     expect(productFormToInput(form({ name: "馬克杯", description: "", priceTwd: "320", categoryId: "4" }))).not.toHaveProperty("categoryId");
   });
 
-  it("建立分類的表單以 intent 分派", () => {
-    expect(dispatchProductForm(form({ intent: "create-category", categoryName: "客廳", categoryDescription: "沙發", categorySlug: "living" }))).toEqual({
-      kind: "create-category",
-      input: { name: "客廳", description: "沙發", slug: "living" },
-    });
+  it("商品清單不再接受建立分類", () => {
+    expect(dispatchProductForm(form({ intent: "create-category", categoryName: "客廳", categoryDescription: "沙發", categorySlug: "living" }))).toEqual({ kind: "invalid" });
   });
 
   it.each([

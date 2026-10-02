@@ -6,12 +6,12 @@ import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-fea
 import { BASE_URL } from "../harness/constants";
 
 async function createProduct(admin: Page, name: string, stock: number) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/products/new");
   await admin.getByLabel("名稱", { exact: true }).fill(name);
   await admin.getByLabel("說明", { exact: true }).fill("為日常挑選的好物，簡單而耐用。");
   await admin.getByLabel("單價（新台幣整數元）").fill("680");
   await admin.getByRole("button", { name: "新增商品" }).click();
-  await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await expect(admin.getByRole("status").filter({ hasText: "已新增商品。" })).toHaveText("已新增商品。");
   await assignSharedCategory(admin, name);
   let row = admin.getByRole("row", { name: new RegExp(name) });
   if (stock) {

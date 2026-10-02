@@ -1,0 +1,65 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { describeFailure, type Failure } from "../../../admin/failure";
+import { productFormToInput } from "../../../admin/product-form";
+import { formToRecord } from "../../../shared/form-values";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let failure: Failure | undefined;
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = formToRecord(form);
+  if (form.has("intent")) {
+    Astro.response.status = 400;
+    failure = describeFailure({ reason: "invalid_input" }, "新增商品失敗，請稍後再試");
+  } else {
+    const result = await env.APP.createProduct(jwt, productFormToInput(form));
+    if (result.ok) return Astro.redirect(`/admin/products/${result.data.id}?saved=created`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeFailure(result, "新增商品失敗，請稍後再試");
+  }
+}
+
+// GET 與被拒絕的表單也必須由 App 驗證權限；Web 不自行判斷 JWT。
+const access = unauthorized ? null : await env.APP.listProductsForAdmin(jwt);
+if (unauthorized || (access && !access.ok)) Astro.response.status = 403;
+---
+
+<AdminLayout title="新增商品">
+  {Astro.response.status === 403 ? (
+    <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+  ) : (
+    <>
+      <p>新增商品預設下架，建立後可上傳圖片並設定分類。</p>
+      {failure && <p class="error" role="alert">{failure.message}</p>}
+      <form method="post">
+        <label>
+          名稱
+          <input name="name" value={submitted.name ?? ""} required />
+          {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+        </label>
+        <label>
+          說明
+          <textarea name="description" rows="3">{submitted.description ?? ""}</textarea>
+          {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+        </label>
+        <label>
+          單價（新台幣整數元）
+          <input name="priceTwd" type="number" min="1" step="1" value={submitted.priceTwd ?? ""} required />
+          {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
+        </label>
+        <div class="admin-actions">
+          <button type="submit">新增商品</button>
+          <a href="/admin">取消</a>
+        </div>
+      </form>
+    </>
+  )}
+</AdminLayout>
