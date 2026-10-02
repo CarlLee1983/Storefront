@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { CHECKOUT_CONTACT_PATH } from "../account/contact";
 import { loginUrl } from "../auth/customer";
 import { describeCheckoutFailure, type CheckoutFailure } from "../checkout/failure";
 import { checkoutEntry } from "../checkout/entry";
@@ -14,6 +15,13 @@ export const prerender = false;
 const entry = checkoutEntry(Astro.locals.customer, Astro.url);
 if (entry.kind === "redirect") {
   return Astro.redirect(entry.location, 303);
+}
+
+// 首次結帳前須有已驗證的聯絡 email：還沒有就先到帳戶頁驗證（購物車在瀏覽器，不會遺失）
+if (Astro.request.method === "GET") {
+  const contact = await env.APP.getMyContact(Astro.request.headers.get("cookie") ?? "");
+  if (!contact.ok) return Astro.redirect(loginUrl(Astro.url), 303);
+  if (!contact.data.verifiedEmail) return Astro.redirect(CHECKOUT_CONTACT_PATH, 303);
 }
 
 let failure: CheckoutFailure | undefined;
@@ -31,6 +39,7 @@ if (Astro.request.method === "POST") {
   if (result.ok) placedOrderId = result.data.orderId;
   // session 在填表期間失效：導回登入，登入後回到結帳（購物車還在瀏覽器）
   if (!result.ok && result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+  if (!result.ok && result.reason === "contact_email_unverified") return Astro.redirect(CHECKOUT_CONTACT_PATH, 303);
   if (!result.ok) failure = describeCheckoutFailure(result, result.reason === "invalid_input" ? checkoutValidationIssues(input) : []);
   resetKey = !result.ok && result.reason === "idempotency_key_reused";
 }

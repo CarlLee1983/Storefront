@@ -1,0 +1,50 @@
+---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../auth/customer";
+import { checkoutEntry } from "../../checkout/entry";
+import { describeVerifyFailure } from "../../account/contact";
+import Layout from "../../layouts/Layout.astro";
+import { toText } from "../../shared/form-values";
+
+export const prerender = false;
+
+// 驗證連結要在收信的那位顧客登入時開啟：未登入導去登入，登入後回到這個連結
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+
+const token = Astro.url.searchParams.get("token") ?? "";
+let failure: string | undefined;
+
+// 驗證要顧客按下確認（POST），不在打開連結時就變更資料：預覽或預取連結不會誤驗證
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const result = await env.APP.verifyContactEmail(Astro.request.headers.get("cookie") ?? "", { token: toText(form.get("token")) });
+  if (!result.ok && result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+  if (result.ok) return Astro.redirect("/account?verified=1", 303);
+  failure = describeVerifyFailure(result);
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="驗證聯絡 email" noindex>
+  <div class="card">
+    {failure
+      ? <p class="error" role="alert">{failure}</p>
+      : <p>按下確認後，信中的地址會成為你的聯絡 email，訂單通知會寄到這個地址。</p>}
+    {token && !failure && <form method="post" action="/account/verify">
+      <input type="hidden" name="token" value={token} />
+      <button type="submit">確認驗證</button>
+    </form>}
+    {!token && !failure && <p class="error" role="alert">驗證連結無效，請從<a href="/account/mailbox">我的信箱</a>重新開啟。</p>}
+    <p><a href="/account">回帳戶頁</a></p>
+  </div>
+</Layout>
+
+<style>
+  .card { max-width: 28rem; padding: var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-subtle); }
+  .card button { width: 100%; }
+  .card a { display: inline-flex; align-items: center; min-height: 44px; }
+  @media (min-width: 40rem) { .card button { width: auto; min-width: 10rem; } }
+</style>

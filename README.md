@@ -34,6 +34,18 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 設定缺漏只讓登入不可用（`/api/auth/*` 回 503），其餘頁面照常。部署流程會在 migration 之前用 `apps/app/scripts/check-auth-deploy.ts` 檢查 `BETTER_AUTH_URL` 與 secrets 名稱是否齊全。本機開發見 `apps/app/.dev.vars.example`。
 
+## 聯絡 email 與模擬信箱
+
+顧客在帳戶頁（`/account`）驗證或更換聯絡 email，並在自己的模擬信箱（`/account/mailbox`）讀驗證信。聯絡 email 與登入身分各自獨立：LINE 與 Google 不合併，登入識別 email（含 LINE 的 placeholder）不會被當作已驗證的聯絡資料。首次結帳前須有已驗證的聯絡 email：結帳 RPC 回 `contact_email_unverified`，`/checkout` 會導去 `/account?reason=checkout`（購物車在瀏覽器，不受影響）。資料在 Migration `0016_contact_mailbox.sql`（`contact_verifications`、`mail_messages`、`mail_deliveries`、`mail_controls`）。
+
+- 顧客 RPC（皆以 cookie 驗身分，查詢一律限定該顧客）：`getMyContact`、`requestContactEmail`、`verifyContactEmail`、`listMyMail`、`getMyMail`。管理 RPC（需 Access JWT）：`listMailForAdmin`、`resendMail`、`setMailDeliveryFailure`；後台頁面是 `/admin/mail`。
+- 驗證：送出新地址會取代前一筆未完成的請求，驗證連結 24 小時內有效；新地址驗證成功才成為通知收件地址，在此之前既有已驗證地址不變。驗證連結要登入收信的那位顧客後開啟並按「確認驗證」（連結本身不變更資料），別人的憑證與不存在的憑證同樣回 `invalid_token`。
+- 信件內容不可變，每次投遞（含重送）記錄實際收件地址，換址不改寫歷史。只有送達的信會出現在顧客信箱；管理員看得到每次投遞的結果與收件地址，但看不到內文與驗證憑證。重送是同一封信的新投遞：驗證信只有在它的驗證請求仍有效時可重送（寄到它要驗證的地址），其他種類的信寄到顧客目前已驗證的地址。
+- 演練控制：管理員可開啟「投遞失敗」，之後每次投遞（含重送）都失敗，直到關閉；狀態存在 `mail_controls`（沒有這一列等於正常）。新增通知種類只需在 `apps/app/src/contact/mail.ts` 的 `MAIL_KINDS` 加值並寫入 `mail_messages`／`mail_deliveries`，資料表不需改動。
+- 部署順序沿用先 migration、再 App、再 Web。0016 只新增資料表，舊 App 與舊 Web 不受影響；但新 App 搭配舊 Web 時，舊結帳頁遇到 `contact_email_unverified` 只會顯示通用的結帳失敗訊息，應壓短窗口。上線後尚未驗證聯絡 email 的既有顧客（含已有訂單者）下次結帳前都須先驗證。
+- 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0016_contact_mailbox.down.sql`；已有驗證請求、信件或投遞紀錄時守門檢查讓回復失敗（顧客已驗證的聯絡 email 會隨之消失），須先確認這些資料可以捨棄。回復前須一併回復會呼叫這些 RPC 的 Web 與 App，以及 E2E 的會員種子資料。測試見 `apps/app/test/contact-email.test.ts`、`admin-mail.test.ts`、`checkout-contact.test.ts`、`contact-mailbox-migration.test.ts`；手機與桌機的操作（含顧客隔離與管理員控制）由 `e2e/tests/contact-mailbox.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。E2E 與測試用的會員需自行安排一筆已驗證的聯絡 email 才能結帳（`e2e/harness/serve.ts` 的種子會員已含；`apps/app/test/customers.ts` 的 `signInCustomer` 預設寫入）。
+- 尚未涵蓋（後續票）：地址簿，以及下單、付款等交易通知（信箱與投遞紀錄已可沿用）。
+
 ## 付款
 
 顧客在訂單頁按「前往付款」→ App 向閘道建立付款 → 導向閘道付款頁；結果由兩條路徑確認，共用同一個冪等的「套用付款結果」（以閘道事件 ID 去重）：閘道 webhook（Web 的 `POST /api/payments/webhook`，驗簽後轉給 App）為主，顧客被導回 `/orders/:id/payment-return?paymentId=…` 時 App 再主動向閘道查詢一次。付款成功依訂單當下的狀態分流（都只由搶到事件 ID 的那次呼叫執行一次）：待付款轉已付款；已逾期則在同一個 batch 內以條件式語句「重新保留」庫存（每一筆明細的可售數量都夠才轉已付款並扣在庫數，全有全無），見 ADR 0001；重新保留不到、落在已取消的訂單、或同一張訂單的第二筆成功付款，則付款記為成功、訂單不動，並在 batch 之外向閘道退款。退款結果記在付款上：狀態 `refunded`／`refund_failed`、原因 `late_success_unreclaimable`／`cancelled_order`／`duplicate_success`、時間。退款失敗只記錄與結構化 log（`payment_refund_failed`），不自動重試，管理員之後在後台處理；閘道退款是冪等的。

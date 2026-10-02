@@ -46,7 +46,7 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
     const identity = crypto.randomUUID();
     const token = `admin-orders-${identity}`;
     const now = Date.now();
-    writeFixture(`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES ('${identity}', '訂單版面顧客', '${EMAIL}', 0, ${now}, ${now}); INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id) VALUES ('${identity}', ${now + 86_400_000}, '${token}', ${now}, ${now}, '${identity}');`);
+    writeFixture(`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES ('${identity}', '訂單版面顧客', '${EMAIL}', 0, ${now}, ${now}); INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id) VALUES ('${identity}', ${now + 86_400_000}, '${token}', ${now}, ${now}, '${identity}'); INSERT INTO contact_verifications (customer_id, email, token, created_at, expires_at, verified_at) VALUES ('${identity}', 'admin-orders-contact@members.storefront.invalid', 'admin-orders-contact-${identity}', ${now}, ${now + 86_400_000}, ${now});`);
     await customerContext.addCookies([memberSessionCookie({ token })]);
     await customer.goto("/cart");
     const variantIds = await defaultVariantIds(adminContext.request, ids);

@@ -1,7 +1,7 @@
 ---
 import { LOGIN_PATH, loginUrl } from "../auth/customer";
 
-// 桌機 header 與手機抽屜共用的帳號區：已登入顯示我的訂單、顧客名與登出，未登入顯示登入連結
+// 桌機 header 與手機抽屜共用的帳號區：已登入顯示我的訂單、帳戶、顧客名與登出，未登入顯示登入連結
 interface Props {
   customer: { name: string } | null | undefined;
   url: URL;
@@ -13,6 +13,7 @@ const { customer, url } = Astro.props;
   customer ? (
     <>
       <a href="/orders">我的訂單</a>
+      <a href="/account">帳戶</a>
       <span class="customer-name">{customer.name}</span>
       <button type="button" class="button-secondary" data-sign-out>登出</button>
     </>
