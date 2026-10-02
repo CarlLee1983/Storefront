@@ -58,7 +58,7 @@ export interface GatewayPayment {
 
 export interface RefundInput {
   gatewayPaymentId: string;
-  /** 退款的冪等鍵；本站放本地退款紀錄的編號（見 `refundGatewayId`）。 */
+  /** 退款的冪等鍵；本站放退款紀錄的 `gateway_refund_id`。 */
   refundId: string;
   amountTwd: number;
 }

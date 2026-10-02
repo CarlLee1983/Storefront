@@ -17,6 +17,7 @@ CREATE TABLE `refunds` (
 	`order_id` integer NOT NULL,
 	`payment_id` integer NOT NULL,
 	`reason` text NOT NULL,
+	`gateway_refund_id` text DEFAULT '' NOT NULL,
 	`amount_twd` integer NOT NULL,
 	`goods_twd` integer NOT NULL,
 	`shipping_twd` integer NOT NULL,
@@ -33,16 +34,20 @@ CREATE TABLE `refunds` (
 --> statement-breakpoint
 CREATE INDEX `refunds_order_idx` ON `refunds` (`order_id`);--> statement-breakpoint
 CREATE INDEX `refunds_payment_idx` ON `refunds` (`payment_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `refunds_payment_reason_uidx` ON `refunds` (`payment_id`) WHERE "refunds"."reason" IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success');--> statement-breakpoint
+CREATE UNIQUE INDEX `refunds_gateway_refund_uidx` ON `refunds` (`gateway_refund_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `refunds_payment_reason_uidx` ON `refunds` (`payment_id`,`reason`) WHERE "refunds"."reason" IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success');--> statement-breakpoint
 -- 舊的整筆退款結果（payments.status 為 refunded／refund_failed）搬進逐筆退款：金額取付款實收，拆成商品款與訂單的運費快照；
--- 原因沿用 refund_reason（沒有時照 refundReasonFor 的規則由訂單狀態推得），時間沿用 refund_at。refunded → succeeded，refund_failed → failed。
-INSERT INTO `refunds` (`order_id`, `payment_id`, `reason`, `amount_twd`, `goods_twd`, `shipping_twd`, `status`, `created_at`, `settled_at`)
+-- 原因沿用 refund_reason（沒有時照 refundReasonFor 的規則由訂單狀態推得），時間沿用 refund_at。refunded → succeeded。
+-- 舊的 refund_failed 分不出是閘道明確失敗還是結果不明（舊版逾時也記成 refund_failed，閘道可能其實已退款），所以一律搬成 unknown：
+-- 重試時先向閘道查證（gateway_refund_id 為 legacy_<閘道付款 ID>，對得上閘道 0002 搬來的退款），確認沒退才送出。
+INSERT INTO `refunds` (`order_id`, `payment_id`, `reason`, `gateway_refund_id`, `amount_twd`, `goods_twd`, `shipping_twd`, `status`, `created_at`, `settled_at`)
 SELECT p.`order_id`, p.`id`,
   COALESCE(p.`refund_reason`, CASE o.`status` WHEN 'expired' THEN 'late_success_unreclaimable' WHEN 'cancelled' THEN 'cancelled_order' ELSE 'duplicate_success' END),
+  'legacy_' || p.`gateway_payment_id`,
   p.`amount_twd`,
   p.`amount_twd` - MIN(o.`standard_shipping_fee_twd` + o.`large_shipping_fee_twd`, p.`amount_twd`),
   MIN(o.`standard_shipping_fee_twd` + o.`large_shipping_fee_twd`, p.`amount_twd`),
-  CASE p.`status` WHEN 'refunded' THEN 'succeeded' ELSE 'failed' END,
+  CASE p.`status` WHEN 'refunded' THEN 'succeeded' ELSE 'unknown' END,
   COALESCE(p.`refund_at`, p.`created_at`),
   CASE p.`status` WHEN 'refunded' THEN COALESCE(p.`refund_at`, p.`created_at`) END
 FROM `payments` p JOIN `orders` o ON o.`id` = p.`order_id`

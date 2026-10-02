@@ -7,7 +7,7 @@ import { payments, refundAttempts, refunds } from "./schema";
 import type { RefundAttemptAction, RefundAttemptOutcome, RefundReason, RefundStatus } from "./shared";
 
 /**
- * 卡在 processing 的退款（程序中斷、沒記下結果）過了這麼久就視為租約過期：不再阻擋同單其他退款，並可由下一次操作先查證再接手。
+ * 卡在 processing 的退款（程序中斷、沒記下結果）過了這麼久就視為租約過期，可由下一次操作先查證再接手（它仍阻擋同單其他退款，直到查證結案）。
  * 一次操作最久是一次查證加一次送出（各最多 `GATEWAY_TIMEOUT_MS`），所以遠大於它。
  */
 export const REFUND_CLAIM_LEASE_MS = 60_000;
@@ -18,14 +18,56 @@ export interface RefundToRun {
   orderId: number;
   paymentId: number;
   gatewayPaymentId: string;
+  /** 向閘道送出與查證用的退款 ID（冪等鍵）。 */
+  gatewayRefundId: string;
   amountTwd: number;
   status: RefundStatus;
   claimedAt: number | null;
 }
 
 /**
- * 登記一筆付款層級原因（遲到、已取消、重複，見 `refundReasonFor`）的整筆退款，單句條件寫入：付款必須是 succeeded、
- * 不是讓訂單成立的那一筆、這筆付款還沒有任何退款（額度還在）才寫入，金額取自付款本身，拆成商品款與原運費（取自訂單的運費快照）。
+ * 承諾一筆退款的額度條件（寫進 INSERT … SELECT 的 WHERE）：付款是 succeeded，且這筆付款所有已登記退款的金額
+ * （含 pending、processing、unknown、failed、succeeded——除 succeeded 外都是仍佔用額度的承諾，ADR 0007）加上這一筆不超過實收。
+ * `p` 是付款的別名。D1 逐句執行，並行的承諾只有先到的那句看得到空間。
+ */
+function withinQuotaSql(amount: SQL): SQL {
+  return sql`p.status = 'succeeded' AND (SELECT COALESCE(SUM(r.amount_twd), 0) FROM refunds r WHERE r.payment_id = p.id) + ${amount} <= p.amount_twd`;
+}
+
+/** 登記後補上閘道退款 ID：同一個 batch 內、INSERT 之後，只補還是空字串的列（只可能是這次寫入的那一列）。 */
+const assignGatewayRefundIdSql = sql`UPDATE refunds SET gateway_refund_id = 'rf_' || id WHERE gateway_refund_id = ''`;
+
+export interface RefundCommitment {
+  paymentId: number;
+  reason: RefundReason;
+  amountTwd: number;
+  goodsTwd: number;
+  shippingTwd: number;
+}
+
+/**
+ * 承諾（登記）一筆退款：單句條件寫入，額度條件見 `withinQuotaSql`；付款必須屬於同一張訂單的收款，退款綁定該筆付款，不跨收款。
+ * 部分取消與發票折讓（#116、#121、#122）要新增退款一律走這裡，不要先讀額度再寫（讀寫之間會超額）。
+ * 回傳新退款的編號；額度不足、付款不是 succeeded，或同一付款同一原因已有退款（唯一索引）回 null。
+ */
+export async function commitRefund(d1: D1Database, commitment: RefundCommitment, now: number): Promise<number | null> {
+  const { paymentId, reason, amountTwd, goodsTwd, shippingTwd } = commitment;
+  const [inserted] = await batchAtEffectiveNow(d1, now, [
+    sql`
+      INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at)
+      SELECT p.order_id, p.id, ${reason}, ${amountTwd}, ${goodsTwd}, ${shippingTwd}, 'pending', ${effectiveNow}
+      FROM payments p
+      WHERE p.id = ${paymentId} AND ${withinQuotaSql(sql`${amountTwd}`)}
+      ON CONFLICT DO NOTHING
+    `,
+    assignGatewayRefundIdSql,
+  ]);
+  return inserted!.meta.changes > 0 ? inserted!.meta.last_row_id : null;
+}
+
+/**
+ * 登記一筆付款層級原因（遲到、已取消、重複，見 `refundReasonFor`）的整筆退款，單句條件寫入：額度條件同 `commitRefund`（整筆金額，
+ * 所以這筆付款不能已有其他退款），且付款不是讓訂單成立的那一筆；金額取自付款本身，拆成商品款與原運費（取自訂單的運費快照）。
  * 重送或事件補寫撞到唯一索引時不重複登記，回既有那筆。回傳退款編號；付款不是 succeeded 或額度已被占用回 null。
  */
 export async function registerPaymentRefund(d1: D1Database, paymentId: number, reason: RefundReason, now: number): Promise<number | null> {
@@ -37,11 +79,11 @@ export async function registerPaymentRefund(d1: D1Database, paymentId: number, r
         MIN(o.standard_shipping_fee_twd + o.large_shipping_fee_twd, p.amount_twd),
         'pending', ${effectiveNow}
       FROM payments p JOIN orders o ON o.id = p.order_id
-      WHERE p.id = ${paymentId} AND p.status = 'succeeded'
+      WHERE p.id = ${paymentId} AND ${withinQuotaSql(sql`p.amount_twd`)}
         AND o.paid_by_payment_id IS NOT p.id
-        AND NOT EXISTS (SELECT 1 FROM refunds r WHERE r.payment_id = p.id)
       ON CONFLICT DO NOTHING
     `,
+    assignGatewayRefundIdSql,
   ]);
   if (inserted!.meta.changes > 0) return inserted!.meta.last_row_id;
   const [existing] = await drizzle(d1).select({ id: refunds.id }).from(refunds).where(and(eq(refunds.paymentId, paymentId), eq(refunds.reason, reason)));
@@ -55,6 +97,7 @@ export async function selectRefundToRun(db: DrizzleD1Database, refundId: number)
       orderId: refunds.orderId,
       paymentId: refunds.paymentId,
       gatewayPaymentId: payments.gatewayPaymentId,
+      gatewayRefundId: refunds.gatewayRefundId,
       amountTwd: refunds.amountTwd,
       status: refunds.status,
       claimedAt: refunds.claimedAt,
@@ -80,11 +123,13 @@ export function actionFor(refund: Pick<RefundToRun, "status" | "claimedAt">, now
   }
 }
 
-/** 同張訂單上，這筆之外有沒有「結果不明」或「租約內仍在送出」的退款：有就不能開始這一筆（ADR 0007：不明阻擋後筆、同單不並行）。 */
-function otherUncertainSql(orderIdSql: SQL, selfIdSql: SQL, now: number) {
+/**
+ * 同張訂單上，這筆之外有沒有「結果不明」或「進行中」的退款：有就不能開始這一筆（ADR 0007：不明阻擋後筆、同單不並行）。
+ * 不看租約：卡住的 processing 也可能其實已送出，所以仍阻擋；租約只決定那一筆本身能不能被接手查證（見 `actionFor`）。
+ */
+function otherUncertainSql(orderIdSql: SQL, selfIdSql: SQL) {
   return sql`EXISTS (
-    SELECT 1 FROM refunds other WHERE other.order_id = ${orderIdSql} AND other.id <> ${selfIdSql}
-      AND (other.status = 'unknown' OR (other.status = 'processing' AND other.claimed_at > ${now - REFUND_CLAIM_LEASE_MS}))
+    SELECT 1 FROM refunds other WHERE other.order_id = ${orderIdSql} AND other.id <> ${selfIdSql} AND other.status IN ('unknown', 'processing')
   )`;
 }
 
@@ -97,14 +142,14 @@ export async function claimRefund(d1: D1Database, refund: RefundToRun, now: numb
     sql`
       UPDATE refunds SET status = 'processing', claimed_at = ${now}
       WHERE id = ${refund.id} AND status = ${refund.status} AND claimed_at IS ${refund.claimedAt}
-        AND NOT ${otherUncertainSql(sql`refunds.order_id`, sql`refunds.id`, now)}
+        AND NOT ${otherUncertainSql(sql`refunds.order_id`, sql`refunds.id`)}
     `,
   ]);
   return claimed!.meta.changes > 0;
 }
 
 /** 同張訂單上有沒有其他不明或進行中的退款（搶不到執行權時，用來說明是「等前筆」還是「同時有人在處理」）。 */
-export async function hasOtherUncertainRefund(db: DrizzleD1Database, refund: RefundToRun, now: number): Promise<boolean> {
+export async function hasOtherUncertainRefund(db: DrizzleD1Database, refund: RefundToRun): Promise<boolean> {
   const [row] = await db
     .select({ one: sql<number>`1` })
     .from(refunds)
@@ -112,7 +157,7 @@ export async function hasOtherUncertainRefund(db: DrizzleD1Database, refund: Ref
       and(
         eq(refunds.orderId, refund.orderId),
         ne(refunds.id, refund.id),
-        sql`(${refunds.status} = 'unknown' OR (${refunds.status} = 'processing' AND ${refunds.claimedAt} > ${now - REFUND_CLAIM_LEASE_MS}))`,
+        inArray(refunds.status, ["unknown", "processing"]),
       ),
     );
   return row !== undefined;
@@ -231,13 +276,13 @@ export interface RefundTodo extends AdminRefund {
 }
 
 /** 管理員的退款待辦：所有尚未成功的退款（結果不明的在前，其次明確失敗、等待與處理中），同順位舊的在前。 */
-export async function selectRefundTodos(db: DrizzleD1Database, now: number): Promise<{ refunds: RefundTodo[]; omitted: number }> {
+export async function selectRefundTodos(db: DrizzleD1Database): Promise<{ refunds: RefundTodo[]; omitted: number }> {
   const open = ne(refunds.status, "succeeded");
   const rows = await db
     .select({
       orderId: refunds.orderId,
       ...summaryColumns,
-      blocked: sql<number>`CASE WHEN ${otherUncertainSql(sql`refunds.order_id`, sql`refunds.id`, now)} THEN 1 ELSE 0 END`,
+      blocked: sql<number>`CASE WHEN ${otherUncertainSql(sql`refunds.order_id`, sql`refunds.id`)} THEN 1 ELSE 0 END`,
     })
     .from(refunds)
     .where(open)
@@ -250,19 +295,3 @@ export async function selectRefundTodos(db: DrizzleD1Database, now: number): Pro
     refunds: withLog.map((refund, index) => ({ ...refund, blocked: rows[index]!.blocked === 1 })),
   };
 }
-
-/**
- * 這筆付款還能退多少：付款實收減去所有退款（含尚未成功的，它們仍占額度，ADR 0007）。
- * 部分取消與發票折讓（#116、#121、#122）承諾新退款前以它確認額度。
- */
-export async function selectRefundableTwd(db: DrizzleD1Database, paymentId: number): Promise<number | undefined> {
-  const [row] = await db
-    .select({
-      // 欄位一律寫全名：drizzle 在單表查詢裡會省略表名，子查詢內會被解析成 refunds 自己的欄位
-      refundable: sql<number>`payments.amount_twd - COALESCE((SELECT SUM(r.amount_twd) FROM refunds r WHERE r.payment_id = payments.id), 0)`,
-    })
-    .from(payments)
-    .where(and(eq(payments.id, paymentId), eq(payments.status, "succeeded")));
-  return row?.refundable;
-}
-

@@ -359,7 +359,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     async listRefundsToHandle(jwt: unknown) {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
-      return ok(await selectRefundTodos(db, clock.now()));
+      return ok(await selectRefundTodos(db));
     },
 
     /** 重試一筆退款：明確失敗的直接重送，結果不明的先向閘道查證再決定；操作者記在嘗試紀錄上。 */

@@ -5,7 +5,7 @@
 SELECT 'paid_without_succeeded_payment' AS exception, ord.id AS order_id, NULL AS variant_id
 FROM orders ord
 WHERE ord.status = 'paid'
-  AND NOT EXISTS (SELECT 1 FROM payments pay WHERE pay.id = ord.paid_by_payment_id AND pay.status IN ('succeeded', 'refunded', 'refund_failed'));
+  AND NOT EXISTS (SELECT 1 FROM payments pay WHERE pay.id = ord.paid_by_payment_id AND pay.status = 'succeeded');
 
 -- 2. 可售量為負：在庫數低於待付款與已付款保留的總和，表示加回後仍對不上（舊資料已超賣或手動改過庫存）
 SELECT 'negative_available' AS exception, NULL AS order_id, variant.id AS variant_id

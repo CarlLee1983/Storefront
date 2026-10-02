@@ -50,8 +50,8 @@ function seedRefund(orderId: string, status: "failed" | "unknown"): void {
   const code = status === "failed" ? "refund_failed" : "unreachable";
   const now = Date.now();
   writeFixture(
-    `INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at) ` +
-      `SELECT order_id, id, 'duplicate_success', amount_twd, amount_twd, 0, '${status}', ${now} FROM payments WHERE order_id = ${orderId} AND status = 'succeeded'; ` +
+    `INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at) ` +
+      `SELECT order_id, id, 'duplicate_success', 'rf_e2e_' || order_id, amount_twd, amount_twd, 0, '${status}', ${now} FROM payments WHERE order_id = ${orderId} AND status = 'succeeded'; ` +
       `INSERT INTO refund_attempts (refund_id, at, actor, action, outcome, code) SELECT id, ${now}, 'system', 'send', '${outcome}', '${code}' FROM refunds WHERE order_id = ${orderId};`,
   );
 }

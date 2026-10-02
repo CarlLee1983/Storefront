@@ -1,4 +1,4 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { PAYMENT_TTL_MS } from "./config";
 import { events, payments, refunds } from "./schema";
@@ -97,7 +97,7 @@ export async function attemptRefund(
        SELECT ?1, ?2, ?3, 'succeeded', ?4
        WHERE (SELECT COALESCE(SUM(amount_twd), 0) FROM refunds WHERE payment_id = ?2 AND status = 'succeeded') + ?3
          <= (SELECT amount_twd FROM payments WHERE id = ?2 AND status = 'succeeded')
-       ON CONFLICT (id) DO UPDATE SET status = 'succeeded' WHERE refunds.status = 'failed'`,
+       ON CONFLICT (id) DO UPDATE SET status = 'succeeded' WHERE refunds.status = 'failed' AND refunds.payment_id = excluded.payment_id AND refunds.amount_twd = excluded.amount_twd`,
     )
     .bind(refundId, payment.id, amountTwd, nowMs)
     .run();
@@ -121,7 +121,7 @@ export async function latestEventId(db: Db, paymentId: string): Promise<string |
   const rows = await db
     .select({ id: events.id })
     .from(events)
-    .where(eq(events.paymentId, paymentId))
+    .where(and(eq(events.paymentId, paymentId), inArray(events.type, ["payment.succeeded", "payment.failed"])))
     .orderBy(sql`${events}.rowid desc`)
     .limit(1);
   return rows[0]?.id ?? null;

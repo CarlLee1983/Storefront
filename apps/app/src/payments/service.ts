@@ -21,7 +21,7 @@ import {
 } from "./queries";
 import { deliverNoticeSafely } from "../contact/notify";
 import { paymentExpiresAt } from "../orders/payment-deadline";
-import { isExplicitRefundFailure, refundGatewayId, refundReasonFor } from "./refund";
+import { isExplicitRefundFailure, refundReasonFor } from "./refund";
 import {
   actionFor,
   claimRefund,
@@ -77,7 +77,7 @@ export function createPaymentService(
 
   /**
    * 執行（或重試）一筆退款，首次退款與管理員重試共用；`actor` 是 `system` 或管理員 email，記在每次嘗試上。
-   * 閘道退款以本地退款紀錄的編號為冪等鍵，所以重送不會多退；流程（ADR 0007）：
+   * 閘道退款以退款紀錄的 `gateway_refund_id` 為冪等鍵，所以重送不會多退；流程（ADR 0007）：
    * 1. 搶執行權（`claimRefund`）：同張訂單一次最多一筆在送出，且同單有「結果不明」的退款時其他筆不能開始（`refund_blocked`）。
    * 2. 結果不明（或程序中斷而租約過期）的退款先向閘道查證，不盲目重送：閘道說已成功就記成功；說失敗或從未收過，才確定沒退成，接著送出；查證本身失敗仍是不明。
    * 3. 送出：成功記成功；閘道明確拒絕記失敗（保留額度、列待辦、後筆可前進）；連不上、逾時、回應異常記不明。
@@ -93,7 +93,7 @@ export function createPaymentService(
     if (action === "done") return ok({ status: "succeeded" as RefundStatus });
     if (action === "busy") return fail("refund_in_progress");
     if (!(await claimRefund(d1, refund, startedAt))) {
-      return fail((await hasOtherUncertainRefund(db, refund, startedAt)) ? "refund_blocked" : "refund_in_progress");
+      return fail((await hasOtherUncertainRefund(db, refund)) ? "refund_blocked" : "refund_in_progress");
     }
 
     const record = (step: { action: RefundAttemptAction; outcome: "succeeded" | "failed" | "unknown" | "not_found"; code?: string; status: "succeeded" | "failed" | "unknown" | null }) =>
@@ -107,7 +107,7 @@ export function createPaymentService(
     if (action === "verify") {
       let found;
       try {
-        found = await gateway.getRefund(refund.gatewayPaymentId, refundGatewayId(refundId));
+        found = await gateway.getRefund(refund.gatewayPaymentId, refund.gatewayRefundId);
       } catch (error) {
         logGatewayError("getRefund", error);
         await record({ action: "verify", outcome: "unknown", code: error instanceof GatewayError ? error.code : undefined, status: "unknown" });
@@ -126,7 +126,7 @@ export function createPaymentService(
     }
 
     try {
-      const sent = await gateway.refund({ gatewayPaymentId: refund.gatewayPaymentId, refundId: refundGatewayId(refundId), amountTwd: refund.amountTwd });
+      const sent = await gateway.refund({ gatewayPaymentId: refund.gatewayPaymentId, refundId: refund.gatewayRefundId, amountTwd: refund.amountTwd });
       if (sent.status !== "succeeded" || !refundMatches(sent, refund)) {
         await record({ action: "send", outcome: "unknown", code: "gateway_mismatch", status: "unknown" });
         return finish("unknown");
@@ -144,7 +144,7 @@ export function createPaymentService(
 
   /** 閘道回的退款 ID、付款與金額必須與本地紀錄一致，否則不信任這個回應（結果當作不明）。 */
   function refundMatches(gatewayRefund: { refundId: string; paymentId: string; amountTwd: number }, refund: RefundToRun): boolean {
-    if (gatewayRefund.refundId === refundGatewayId(refund.id) && gatewayRefund.paymentId === refund.gatewayPaymentId && gatewayRefund.amountTwd === refund.amountTwd) return true;
+    if (gatewayRefund.refundId === refund.gatewayRefundId && gatewayRefund.paymentId === refund.gatewayPaymentId && gatewayRefund.amountTwd === refund.amountTwd) return true;
     console.error(JSON.stringify({ event: "refund_gateway_mismatch", refundId: refund.id, orderId: refund.orderId }));
     return false;
   }

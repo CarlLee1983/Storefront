@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drizzle } from "drizzle-orm/d1";
-import { registerPaymentRefund, selectRefundableTwd } from "../src/payments/refunds";
+import { commitRefund, registerPaymentRefund } from "../src/payments/refunds";
 import { ADMIN_EMAIL, mintAccessJwt } from "./access";
 import { DEFAULT_SHIPPING_TWD } from "./checkout-helpers";
 import { signInCustomer } from "./customers";
@@ -111,7 +111,7 @@ describe("明確失敗：保留額度與待辦，後筆可前進，重試沿用�
     expect((await todos()).refunds).toMatchObject([{ id: refunds[0]!.id, status: "failed", blocked: false, attempts: [{ outcome: "failed", code: "refund_failed" }] }]);
     // 失敗那筆仍佔用整筆額度：這筆付款不能再登記另一筆退款
     const firstPaymentId = refunds[0]!.paymentId;
-    expect(await selectRefundableTwd(db, firstPaymentId)).toBe(0);
+    expect(await commitRefund(env.DB, { paymentId: firstPaymentId, reason: "duplicate_success", amountTwd: 1, goodsTwd: 1, shippingTwd: 0 }, Date.now())).toBeNull();
     expect(await registerPaymentRefund(env.DB, firstPaymentId, "duplicate_success", Date.now())).toBeNull();
     expect(await registerPaymentRefund(env.DB, firstPaymentId, "cancelled_order", Date.now())).toBe(refunds[0]!.id);
     expect(await adminRefunds(orderId)).toHaveLength(2);
@@ -217,7 +217,7 @@ describe("結果不明：先查再決定，阻擋同單後筆", () => {
   });
 
   it("程序中斷卡在 processing：租約內視為進行中（擋住後筆、拒絕重複執行），租約過期後先查證再接手", async () => {
-    const { orderId, gateway, first, settleFirst } = await twoLatePayments();
+    const { orderId, gateway, first, settleFirst, settleSecond } = await twoLatePayments();
     gateway.loseNextRefundResponse();
     await app.applyPaymentResult(settleFirst());
     const [stuck] = await adminRefunds(orderId);
@@ -225,10 +225,42 @@ describe("結果不明：先查再決定，阻擋同單後筆", () => {
 
     expect(await retry(stuck!.id)).toEqual({ ok: false, reason: "refund_in_progress" });
 
+    // 租約過期只讓卡住的那一筆能被接手查證；同單後筆仍然被擋，直到它查證結案
+    await app.applyPaymentResult(settleSecond());
+    const second = (await adminRefunds(orderId))[1]!;
     await env.DB.prepare("UPDATE refunds SET claimed_at = 0 WHERE id = ?").bind(stuck!.id).run();
+    expect(await retry(second.id)).toEqual({ ok: false, reason: "refund_blocked" });
     expect(await retry(stuck!.id)).toEqual({ ok: true, data: { status: "succeeded" } });
+    expect(await retry(second.id)).toEqual({ ok: true, data: { status: "succeeded" } });
     expect(gateway.refundedTwd(first)).toBeGreaterThan(0);
-    expect(gateway.refundRequests).toHaveLength(1);
+    expect(gateway.refundRequests).toHaveLength(2);
+  });
+
+  it("0024 搬來的舊退款（unknown、legacy_ 開頭的閘道退款 ID）：閘道其實已退款時，重試查證後成功，不送新退款", async () => {
+    const { orderId, totalTwd, gateway, first, settleFirst } = await twoLatePayments();
+    gateway.failNext("refund", 503);
+    await app.applyPaymentResult(settleFirst());
+    const [legacy] = await adminRefunds(orderId);
+    await env.DB.prepare("UPDATE refunds SET gateway_refund_id = ? WHERE id = ?").bind(`legacy_${first}`, legacy!.id).run();
+    gateway.refunds.set(`${first}/legacy_${first}`, { refundId: `legacy_${first}`, paymentId: first, amountTwd: totalTwd, status: "succeeded" });
+    const requestsBefore = gateway.refundRequests.length;
+
+    expect(await retry(legacy!.id)).toEqual({ ok: true, data: { status: "succeeded" } });
+
+    expect(gateway.refundRequests).toHaveLength(requestsBefore);
+    expect((await adminRefunds(orderId))[0]!.attempts.at(-1)).toMatchObject({ action: "verify", outcome: "succeeded" });
+  });
+
+  it("舊退款閘道從未收過：查證後才用同一個 legacy_ 退款 ID 送出", async () => {
+    const { orderId, gateway, first, settleFirst } = await twoLatePayments();
+    gateway.failNext("refund", 503);
+    await app.applyPaymentResult(settleFirst());
+    const [legacy] = await adminRefunds(orderId);
+    await env.DB.prepare("UPDATE refunds SET gateway_refund_id = ? WHERE id = ?").bind(`legacy_${first}`, legacy!.id).run();
+
+    expect(await retry(legacy!.id)).toEqual({ ok: true, data: { status: "succeeded" } });
+
+    expect(gateway.refundRequests.map(({ refundId }) => refundId)).toEqual([`legacy_${first}`]);
   });
 });
 
@@ -310,5 +342,39 @@ describe("權限與可見範圍", () => {
 
     expect(await service.retryRefund(failed!.id, ADMIN_EMAIL)).toEqual({ ok: false, reason: "payment_unavailable" });
     expect((await adminRefunds(orderId))[0]!.status).toBe("failed");
+  });
+});
+
+describe("承諾退款額度（#116、#121、#122 共用的單句條件寫入）", () => {
+  it("並行承諾不超過實收：三筆各 300 對上 740 的付款，只有兩筆寫入", async () => {
+    const { first, settleFirst } = await twoLatePayments();
+    // 讓這筆付款成為訂單的支付者（不登記整筆退款），再直接承諾部分退款
+    await env.DB.prepare("UPDATE orders SET status = 'paid'").run();
+    await app.applyPaymentResult(settleFirst());
+    const payment = (await env.DB.prepare("SELECT id, amount_twd FROM payments WHERE gateway_payment_id = ?").bind(first).first<{ id: number; amount_twd: number }>())!;
+    await env.DB.prepare("DELETE FROM refund_attempts").run();
+    await env.DB.prepare("DELETE FROM refunds").run();
+    const commit = (reason: "late_success_unreclaimable" | "cancelled_order" | "duplicate_success", amountTwd: number) =>
+      commitRefund(env.DB, { paymentId: payment.id, reason, amountTwd, goodsTwd: amountTwd, shippingTwd: 0 }, Date.now());
+
+    const results = await Promise.all([commit("late_success_unreclaimable", 300), commit("cancelled_order", 300), commit("duplicate_success", 300)]);
+
+    expect(results.filter((id) => id !== null)).toHaveLength(2);
+    const total = (await env.DB.prepare("SELECT SUM(amount_twd) AS total FROM refunds").first<{ total: number }>())!.total;
+    expect(total).toBe(600);
+    expect(total).toBeLessThanOrEqual(payment.amount_twd);
+    // 新紀錄的閘道退款 ID 在同一個 batch 寫入
+    expect((await env.DB.prepare("SELECT gateway_refund_id AS g, id FROM refunds").all<{ g: string; id: number }>()).results.every((row) => row.g === `rf_${row.id}`)).toBe(true);
+  });
+
+  it("佔用額度含尚未成功的退款：失敗那筆仍占額度，不足的承諾回 null", async () => {
+    const { orderId, gateway, settleFirst } = await twoLatePayments();
+    gateway.failNextRefundExplicitly();
+    await app.applyPaymentResult(settleFirst());
+    const [failed] = await adminRefunds(orderId);
+
+    const over = await commitRefund(env.DB, { paymentId: failed!.paymentId, reason: "duplicate_success", amountTwd: 1, goodsTwd: 1, shippingTwd: 0 }, Date.now());
+
+    expect(over).toBeNull();
   });
 });

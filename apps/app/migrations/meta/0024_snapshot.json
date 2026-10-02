@@ -1920,6 +1920,14 @@
           "notNull": true,
           "autoincrement": false
         },
+        "gateway_refund_id": {
+          "name": "gateway_refund_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
         "amount_twd": {
           "name": "amount_twd",
           "type": "integer",
@@ -1986,10 +1994,18 @@
           ],
           "isUnique": false
         },
+        "refunds_gateway_refund_uidx": {
+          "name": "refunds_gateway_refund_uidx",
+          "columns": [
+            "gateway_refund_id"
+          ],
+          "isUnique": true
+        },
         "refunds_payment_reason_uidx": {
           "name": "refunds_payment_reason_uidx",
           "columns": [
-            "payment_id"
+            "payment_id",
+            "reason"
           ],
           "isUnique": true,
           "where": "\"refunds\".\"reason\" IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success')"

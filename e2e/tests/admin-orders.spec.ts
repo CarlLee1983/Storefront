@@ -70,7 +70,7 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
     await customer.getByRole("button", { name: "送出", exact: true }).click();
     await expect(customer.getByText("訂單狀態：已付款")).toBeVisible();
     // A failed refund is an operational state the UI must expose; keep the data in D1 so production queries derive needsAttention.
-    writeFixture(`INSERT INTO payments (order_id, gateway_payment_id, amount_twd, status, created_at, expires_at) VALUES (${orderId}, 'admin-orders-refund-${identity}', 20400, 'succeeded', ${now}, ${now + 600000}); INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at) VALUES (${orderId}, (SELECT id FROM payments WHERE gateway_payment_id = 'admin-orders-refund-${identity}'), 'duplicate_success', 20400, 20400, 0, 'failed', ${now});`);
+    writeFixture(`INSERT INTO payments (order_id, gateway_payment_id, amount_twd, status, created_at, expires_at) VALUES (${orderId}, 'admin-orders-refund-${identity}', 20400, 'succeeded', ${now}, ${now + 600000}); INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at) VALUES (${orderId}, (SELECT id FROM payments WHERE gateway_payment_id = 'admin-orders-refund-${identity}'), 'duplicate_success', 'rf_e2e_${identity}', 20400, 20400, 0, 'failed', ${now});`);
 
     for (const width of [1280, 375]) {
       await admin.setViewportSize({ width, height: 900 });

@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setNow } from "./clock";
 import { api, bearer, captureWebhooks, createPayment, resetDb, submitPayPage } from "./helpers";
@@ -76,6 +77,15 @@ describe("付款結果事件的 eventId（與 webhook 相同的冪等鍵）", ()
 
     expect((await getStatus(paid.paymentId)).body.data.eventId).toBe(webhooks[0]!.event.eventId);
     expect(webhooks).toHaveLength(2);
+  });
+
+  it("eventId 只取成功／失敗事件：舊的 payment.refunded 事件列不會被當成最近事件", async () => {
+    const webhooks = captureWebhooks();
+    const { paymentId } = await createPayment();
+    await submitPayPage(paymentId, { outcome: "success", timing: "immediate" });
+    await env.DB.prepare("INSERT INTO events (id, payment_id, type, body, created_at) VALUES ('evt_legacy_refund', ?, 'payment.refunded', '{}', 1)").bind(paymentId).run();
+
+    expect((await getStatus(paymentId)).body.data.eventId).toBe(webhooks[0]!.event.eventId);
   });
 
   it("延遲回呼還沒送出時，eventId 已經可以查到（之後 webhook 用同一個）", async () => {

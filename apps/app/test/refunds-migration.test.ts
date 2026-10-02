@@ -37,14 +37,14 @@ async function seedLegacy() {
   ]);
 }
 
-it("0024 把舊的整筆退款結果搬成逐筆退款（金額取實收並拆成商品款與運費、原因與時間沿用），付款回到 succeeded，其餘付款與待辦原樣保留", async () => {
+it("0024 把舊的整筆退款結果搬成逐筆退款（金額取實收並拆成商品款與運費、原因與時間沿用、閘道退款 ID 為 legacy_<閘道付款 ID>），舊的 refund_failed 一律搬成 unknown，付款回到 succeeded，其餘付款與待辦原樣保留", async () => {
   await seedLegacy();
 
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
-  expect(await rows("SELECT order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at, settled_at FROM refunds ORDER BY id")).toEqual([
-    { order_id: 1, payment_id: 1, reason: "late_success_unreclaimable", amount_twd: 1000, goods_twd: 300, shipping_twd: 700, status: "succeeded", created_at: 50, settled_at: 50 },
-    { order_id: 2, payment_id: 2, reason: "cancelled_order", amount_twd: 1000, goods_twd: 1000, shipping_twd: 0, status: "failed", created_at: 60, settled_at: null },
+  expect(await rows("SELECT order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at, settled_at FROM refunds ORDER BY id")).toEqual([
+    { order_id: 1, payment_id: 1, reason: "late_success_unreclaimable", gateway_refund_id: "legacy_gw_1", amount_twd: 1000, goods_twd: 300, shipping_twd: 700, status: "succeeded", created_at: 50, settled_at: 50 },
+    { order_id: 2, payment_id: 2, reason: "cancelled_order", gateway_refund_id: "legacy_gw_2", amount_twd: 1000, goods_twd: 1000, shipping_twd: 0, status: "unknown", created_at: 60, settled_at: null },
   ]);
   expect(await rows("SELECT id, order_id, status FROM payments ORDER BY id")).toEqual([
     { id: 1, order_id: 1, status: "succeeded" }, { id: 2, order_id: 2, status: "succeeded" }, { id: 3, order_id: 3, status: "succeeded" }, { id: 4, order_id: 3, status: "pending" },
@@ -67,18 +67,19 @@ it("重建後付款編號不重用，付款狀態 CHECK 不再接受 refunded", 
   expect(await rows("SELECT id FROM payments WHERE gateway_payment_id = 'gw_new_succeeded'")).toEqual([{ id: 5 }]);
 });
 
-it("退款的狀態、原因與金額拆分受 CHECK 限制，付款層級原因的整筆退款一筆付款最多一筆", async () => {
+it("退款的狀態、原因與金額拆分受 CHECK 限制，付款層級原因每個原因一筆付款最多一筆", async () => {
   await seedLegacy();
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
+  let sequence = 0;
   const insert = (paymentId: number, reason: string, amount: number, goods: number, shipping: number, status = "pending") =>
-    db.prepare("INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at) VALUES (3, ?, ?, ?, ?, ?, ?, 0)").bind(paymentId, reason, amount, goods, shipping, status);
+    db.prepare("INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at) VALUES (3, ?, ?, ?, ?, ?, ?, ?, 0)").bind(paymentId, reason, `rf_t${(sequence += 1)}`, amount, goods, shipping, status);
   await expect(insert(3, "made_up", 10, 10, 0).run()).rejects.toThrow();
   await expect(insert(3, "duplicate_success", 10, 10, 0, "made_up").run()).rejects.toThrow();
   await expect(insert(3, "duplicate_success", 10, 5, 4).run()).rejects.toThrow();
   await expect(insert(3, "duplicate_success", 0, 0, 0).run()).rejects.toThrow();
   await insert(3, "duplicate_success", 10, 10, 0).run();
-  await expect(insert(3, "cancelled_order", 10, 10, 0).run()).rejects.toThrow();
+  await expect(insert(3, "duplicate_success", 10, 10, 0).run()).rejects.toThrow();
 });
 
 it("回復程序把逐筆退款寫回付款上的結果，之後可重新套用 0024", async () => {
@@ -96,13 +97,13 @@ it("回復程序把逐筆退款寫回付款上的結果，之後可重新套用 
   expect(await rows("SELECT name FROM sqlite_master WHERE name IN ('refunds', 'refund_attempts')")).toEqual([]);
   expect(await rows("PRAGMA foreign_key_check")).toEqual([]);
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
-  expect(await rows("SELECT payment_id, status FROM refunds ORDER BY id")).toEqual([{ payment_id: 1, status: "succeeded" }, { payment_id: 2, status: "failed" }]);
+  expect(await rows("SELECT payment_id, status FROM refunds ORDER BY id")).toEqual([{ payment_id: 1, status: "succeeded" }, { payment_id: 2, status: "unknown" }]);
 });
 
-it("0024 之後有退款嘗試紀錄、部分退款或結果不明的退款時，回復的守門檢查讓整段失敗且資料不動", async () => {
+it("0024 之後有尚未送出的退款、部分退款或退款嘗試紀錄時，回復的守門檢查讓整段失敗且資料不動", async () => {
   await seedLegacy();
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
-  await db.prepare("INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at) VALUES (3, 3, 'duplicate_success', 400, 400, 0, 'unknown', 0)").run();
+  await db.prepare("INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at) VALUES (3, 3, 'duplicate_success', 'rf_9', 400, 400, 0, 'pending', 0)").run();
 
   await expect(db.batch(rollbackStatements())).rejects.toThrow();
   expect(await rows("SELECT count(*) AS n FROM refunds")).toEqual([{ n: 3 }]);
