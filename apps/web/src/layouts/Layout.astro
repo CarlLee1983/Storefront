@@ -106,10 +106,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
         <p>為日常挑選的家具與器物。</p>
         <nav aria-label="頁尾導覽">
           <a href="/products">全部商品</a>
-          <a href="/categories/living">客廳</a>
-          <a href="/categories/dining">餐廳</a>
-          <a href="/categories/bedroom">臥室</a>
-          <a href="/categories/workspace">工作區</a>
+          <CategoryLinks categories={categories} current={currentCategory} />
           <a href="/orders">我的訂單</a>
           <a href="/about">關於</a>
           <a href="/faq">常見問題</a>
