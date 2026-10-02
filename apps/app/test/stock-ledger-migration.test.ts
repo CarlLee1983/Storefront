@@ -130,6 +130,8 @@ it("流水裡有遷移以外的紀錄，或扣回後會變負數時，回復的�
   const [dropGuard, createGuard, check] = rollbackSql.split("--> statement-breakpoint");
 
   await db.prepare("INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, actor, reason, created_at) VALUES (1, 'adjustment', 1, 13, 'a@example.test', '補貨', 0)").run();
+  await expect(db.prepare("UPDATE stock_movements SET delta = 99").run()).rejects.toThrow(/append-only/);
+  await expect(db.prepare("DELETE FROM stock_movements").run()).rejects.toThrow(/append-only/);
   await db.prepare("UPDATE product_variants SET on_hand = 13 WHERE id = 1").run();
   await db.prepare(dropGuard!).run();
   await db.prepare(createGuard!).run();
@@ -137,6 +139,7 @@ it("流水裡有遷移以外的紀錄，或扣回後會變負數時，回復的�
   expect(await onHandOf(1)).toBe(13);
 
   await db.prepare("DROP TABLE rollback_guard").run();
+  await db.prepare("DROP TRIGGER stock_movements_no_delete").run(); // 只為安排前置狀態；正式資料不會被刪
   await db.prepare("DELETE FROM stock_movements WHERE kind = 'adjustment'").run();
   await db.prepare("UPDATE product_variants SET on_hand = 4 WHERE id = 1").run(); // 低於已付款的 5 件
   await db.prepare(dropGuard!).run();

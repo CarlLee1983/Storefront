@@ -107,6 +107,21 @@ describe("遲到的付款成功：重新保留", () => {
     expect(await stockOf(plate)).toEqual({ onHand: 2, available: 1 });
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });
+
+  it("庫存被另一張已付款未出貨的訂單占住：遲到付款重新保留不到，退款（late_success_unreclaimable），在庫數維持 1", async () => {
+    const { alice, orderId, variantId, gateway, event, gatewayPaymentId } = await lateSuccessSetup({ onHand: 1, quantity: 1 });
+    const bob = await signInCustomer("bob");
+    const bobOrder = await placeOrderAt(bob, variantId, 1, T0 + PAYMENT_WINDOW_MS + 6_000);
+    await forceOrderStatus(bobOrder.orderId, "paid");
+    expect(await stockOf(variantId)).toEqual({ onHand: 1, available: 0 });
+
+    const result = await app.applyPaymentResult(event);
+
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "expired" } });
+    expect(await stockOf(variantId)).toEqual({ onHand: 1, available: 0 });
+    expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "refunded", refundReason: "late_success_unreclaimable" }]);
+    expect(gateway.refunded).toEqual([gatewayPaymentId]);
+  });
 });
 
 describe("退款的結果與觸發", () => {

@@ -1,4 +1,4 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_EMAIL, mintAccessJwt } from "./access";
 import { createStockedListing } from "./checkout-helpers";
@@ -177,6 +177,15 @@ describe("庫存流水", () => {
     expect(second.items.map((item) => item.reason)).toEqual(["第 1 次"]);
     expect(second.nextBeforeId).toBeNull();
     expect((await movements()).items).toHaveLength(4);
+  });
+
+  it("流水只增不改不刪由資料庫保證：直接 UPDATE 或 DELETE 都被拒", async () => {
+    const { variantId } = await createStockedListing("馬克杯", 320, 2);
+
+    await expect(env.DB.prepare("UPDATE stock_movements SET delta = 99 WHERE variant_id = ?").bind(variantId).run()).rejects.toThrow(/append-only/);
+    await expect(env.DB.prepare("DELETE FROM stock_movements WHERE variant_id = ?").bind(variantId).run()).rejects.toThrow(/append-only/);
+
+    expect((await movements({ variantId })).items).toMatchObject([{ delta: 2, onHandAfter: 2 }]);
   });
 
   it("只有管理員讀得到流水", async () => {

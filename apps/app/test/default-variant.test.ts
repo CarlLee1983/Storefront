@@ -44,7 +44,7 @@ describe("預設變體是販售單位", () => {
     expect(await app.getProductForAdmin(jwt, { id: productId })).toMatchObject({ ok: true, data: { name: "馬克杯", priceTwd: 320, compareAtPriceTwd: 400 } });
   });
 
-  it("結帳用變體編號：訂單明細記下變體與商品，付款扣的是該變體的在庫", async () => {
+  it("結帳用變體編號：訂單明細記下變體與商品，下單保留的是該變體的可售數量", async () => {
     const alice = await signInCustomer("alice");
     const { variantId, orderId } = await placeMugOrder(alice, { onHand: 5, quantity: 2 });
 

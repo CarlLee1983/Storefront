@@ -1,9 +1,15 @@
 import { env } from "cloudflare:workers";
+import migration0020 from "../migrations/0020_stock_ledger.sql?raw";
 
 /** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、投遞紀錄、信件、驗證請求、付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
 export async function resetDb(): Promise<void> {
+  // 庫存流水有禁止刪改的 trigger（0020）：測試清理時暫時拿掉，清完用遷移裡同一份定義還原
+  const triggers = migration0020.split("--> statement-breakpoint").filter((statement) => statement.includes("CREATE TRIGGER"));
   await env.DB.batch([
+    env.DB.prepare("DROP TRIGGER IF EXISTS stock_movements_no_delete"),
+    env.DB.prepare("DROP TRIGGER IF EXISTS stock_movements_no_update"),
     env.DB.prepare("DELETE FROM stock_movements"),
+    ...triggers.map((statement) => env.DB.prepare(statement.replace(/^[\s\S]*?(CREATE TRIGGER)/, "$1").trim())),
     env.DB.prepare("DELETE FROM mail_deliveries"),
     env.DB.prepare("DELETE FROM mail_messages"),
     env.DB.prepare("DELETE FROM mail_controls"),

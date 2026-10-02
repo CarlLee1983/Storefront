@@ -14,6 +14,10 @@ CREATE TABLE `stock_movements` (
 --> statement-breakpoint
 CREATE INDEX `stock_movements_variant_idx` ON `stock_movements` (`variant_id`,`id`);--> statement-breakpoint
 CREATE INDEX `stock_movements_order_idx` ON `stock_movements` (`order_id`);--> statement-breakpoint
+-- 流水只增不改不刪由資料庫保證（回復時整張表連同 trigger 一起 DROP）
+CREATE TRIGGER `stock_movements_no_update` BEFORE UPDATE ON `stock_movements` BEGIN SELECT RAISE(ABORT, 'stock_movements is append-only'); END;
+--> statement-breakpoint
+CREATE TRIGGER `stock_movements_no_delete` BEFORE DELETE ON `stock_movements` BEGIN SELECT RAISE(ABORT, 'stock_movements is append-only'); END;--> statement-breakpoint
 -- 保留式遷移（ADR 0006、設計 Q22）：舊系統在付款時就扣了在庫數，新模型付款只轉為保留、交運才扣。
 -- 舊已付未出貨：在庫數加回，同時因為「已付款」狀態本身就是保留，所以可售量不變；舊已出貨不加回（已實際離倉）。
 -- 先逐單逐變體寫流水（在庫數尚未更新，用視窗函式累加出每筆之後的在庫數），再一次更新在庫數。
