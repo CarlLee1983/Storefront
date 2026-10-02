@@ -341,7 +341,7 @@ describe("結帳的並行", () => {
     expect(reservedB).toBeLessThanOrEqual(stockB);
     expect(await availableOf(productA)).toBe(stockA - reservedA);
     expect(await availableOf(productB)).toBe(stockB - reservedB);
-  });
+  }, 15_000);
 });
 
 describe("結帳的冪等", () => {

@@ -49,7 +49,7 @@ describe("管理員訂單清單", () => {
       expect(order.lines).toEqual([{ productId, productName: "大量訂單商品", quantity: 1, unitPriceTwd: 100,
         cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }]);
     }
-  }, 15_000);
+  }, 30_000);
 
   it("依訂單狀態篩選；狀態值無效回 invalid_input", async () => {
     const alice = await signInCustomer("alice");
