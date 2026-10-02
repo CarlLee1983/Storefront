@@ -32,7 +32,7 @@ import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { decideCancellationInput } from "../cancellations/input";
 import { decideCancellation } from "../cancellations/decide";
-import { selectCancellationsToReview, selectOrderCancellations } from "../cancellations/queries";
+import { selectApprovedWithoutRefund, selectCancellationsToReview, selectOrderCancellations } from "../cancellations/queries";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
@@ -358,11 +358,14 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, reconcilePaymentInput, input, (actor, { paymentId }) => reconcilePayment(paymentId, actor.email));
     },
 
-    /** 退款待辦：所有尚未成功的退款（結果不明、明確失敗、等待與處理中），含每次嘗試的紀錄與操作者。 */
+    /**
+     * 退款待辦：所有尚未成功的退款（結果不明、明確失敗、等待與處理中），含每次嘗試的紀錄與操作者；
+     * 另列 `unregisteredCancellations`：已核准取消卻沒有登記退款的案件（到訂單頁「重新登記退款」）。
+     */
     async listRefundsToHandle(jwt: unknown) {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
-      return ok(await selectRefundTodos(db));
+      return ok({ ...(await selectRefundTodos(db)), unregisteredCancellations: await selectApprovedWithoutRefund(db) });
     },
 
     /** 重試一筆退款：明確失敗的直接重送，結果不明的先向閘道查證再決定；操作者記在嘗試紀錄上。 */

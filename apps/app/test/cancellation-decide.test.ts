@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { commitRefund } from "../src/payments/refunds";
 import { mintAccessJwt } from "./access";
 import { approveOk, decide, paidMixedOrder, requestCancelOk } from "./cancellation-helpers";
-import { resetDb } from "./db";
+import { resetDb, seedPayment } from "./db";
 import { orderOf, stockOf } from "./payment-helpers";
 import { adminOrder, APPOINTMENT, shipRemaining } from "./shipment-helpers";
 
@@ -181,6 +181,42 @@ describe("審核取消：退款失敗與同單逐筆", () => {
     const order = await adminOrder(orderId);
     expect(order.cancellations).toMatchObject([{ status: "approved", refund: null }]);
     expect(order.refunds).toHaveLength(1);
+    // 款項沒有任何退款在處理：列進退款待辦，通知不承諾退款完成會另行通知
+    const todos = await app.listRefundsToHandle(await mintAccessJwt());
+    expect(todos).toMatchObject({ ok: true, data: { unregisteredCancellations: [{ id: requestId, orderId, goodsTwd: 320, shippingTwd: 0, refund: null }] } });
+    const mail = await app.listMyMail(cookie);
+    const notice = mail.ok ? mail.data.find((message) => message.kind === "cancellation_approved") : undefined;
+    const body = await app.getMyMail(cookie, { messageId: notice!.id });
+    expect(body).toMatchObject({ ok: true, data: { body: expect.stringContaining("客服會與你聯繫") } });
+    expect(body).not.toMatchObject({ data: { body: expect.stringContaining("退款完成會另行通知") } });
+
+    // 額度釋出後重送核准（「重新登記退款」）登記並執行這一案的退款，離開待辦
+    await env.DB.prepare("DELETE FROM refunds WHERE reason = 'cancelled_order'").run();
+    expect(await approveOk(requestId)).toMatchObject({ replayed: true, refund: { status: "succeeded" } });
+    expect(await app.listRefundsToHandle(await mintAccessJwt())).toMatchObject({ ok: true, data: { unregisteredCancellations: [] } });
+  });
+
+  it("訂單沒有讓它成立的付款（paid_by_payment_id 為空）時核准照常成立、不登記退款，列進退款待辦", async () => {
+    const { cookie, orderId, mugLine } = await paidMixedOrder();
+    await env.DB.prepare("UPDATE orders SET paid_by_payment_id = NULL WHERE id = ?").bind(orderId).run();
+    const requestId = await requestCancelOk(cookie, orderId, [{ orderLineId: mugLine.id, quantity: 1 }]);
+
+    expect(await approveOk(requestId)).toMatchObject({ decision: "approved", refund: null });
+
+    const todos = await app.listRefundsToHandle(await mintAccessJwt());
+    expect(todos).toMatchObject({ ok: true, data: { unregisteredCancellations: [{ id: requestId, orderId }] } });
+  });
+
+  it("全部取消後（已取消、原本由某筆付款支付）又收到另一筆成功付款：整筆退款，原因是重複付款而不是取消時的付款", async () => {
+    const { cookie, orderId, totalTwd, gateway, mugLine, tableLine } = await paidMixedOrder();
+    await approveOk(await requestCancelOk(cookie, orderId, [{ orderLineId: mugLine.id, quantity: 3 }, { orderLineId: tableLine.id, quantity: 1 }]));
+    expect((await adminOrder(orderId)).status).toBe("cancelled");
+    const second = await seedPayment(orderId, "pending", "pay_second", totalTwd);
+    gateway.adopt(second, { amountTwd: totalTwd, merchantReference: String(orderId) });
+
+    await app.applyPaymentResult(gateway.settle(second, "succeeded"));
+
+    expect((await refundsOf(orderId)).map((refund) => refund.reason)).toEqual(["cancellation", "duplicate_success"]);
   });
 
   it("同一案重複核准（含並行）只登記一筆退款、只寄一封通知，不重退", async () => {

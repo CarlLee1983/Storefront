@@ -148,7 +148,9 @@ export function insertCancellationApprovedNotice(requestId: number): SQL {
     SELECT orders.customer_id, 'cancellation_approved', '訂單 #' || orders.id || ' 的取消申請已核准',
       '訂單 #' || orders.id || ' 的取消申請已核准：' || ${cancellationItemsText} || '。這些商品不會再出貨，保留已釋放。' ||
       '應退款 NT$' || (cr.goods_twd + cr.standard_shipping_twd + cr.large_shipping_twd) || '（商品款 NT$' || cr.goods_twd || '、運費 NT$' || (cr.standard_shipping_twd + cr.large_shipping_twd) || '），' ||
-      '退款完成會另行通知；各筆退款的進度請至訂單頁查看。',
+      CASE WHEN EXISTS (SELECT 1 FROM refunds WHERE refunds.cancellation_request_id = cr.id)
+        THEN '退款完成會另行通知；各筆退款的進度請至訂單頁查看。'
+        ELSE '這筆退款目前還不能自動辦理，客服會與你聯繫處理。' END,
       'cancellation:' || cr.id || ':approved', ${effectiveNow}
     FROM cancellation_requests cr JOIN orders ON orders.id = cr.order_id
     WHERE cr.id = ${requestId} AND cr.status = 'approved'

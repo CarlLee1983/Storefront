@@ -133,3 +133,14 @@ export async function selectCancellationsToReview(db: DrizzleD1Database): Promis
   const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)` }).from(cancellationRequests).where(pending);
   return { cancellations, omitted: Math.max(0, total - cancellations.length) };
 }
+
+/**
+ * 已核准、應退金額大於 0、卻沒有對應退款紀錄的取消案（核准時可退額度被占用，或訂單沒有「讓訂單成立的付款」可綁定）：
+ * 取消結果不變（ADR 0007），但款項還沒有任何退款在處理，必須列進退款待辦由人處理（重送核准會再嘗試登記）。
+ */
+export async function selectApprovedWithoutRefund(db: DrizzleD1Database): Promise<AdminCancellationView[]> {
+  const unregistered = sql`${cancellationRequests.status} = 'approved'
+    AND ${cancellationRequests.goodsTwd} + ${cancellationRequests.standardShippingTwd} + ${cancellationRequests.largeShippingTwd} > 0
+    AND NOT EXISTS (SELECT 1 FROM refunds WHERE refunds.cancellation_request_id = ${cancellationRequests.id})`;
+  return selectViews(db, unregistered, REVIEW_LIMIT);
+}

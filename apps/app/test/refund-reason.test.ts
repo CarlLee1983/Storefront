@@ -10,11 +10,15 @@ describe("refundReasonFor：付款成功沒讓訂單轉已付款時的退款原�
     ["partially_shipped", "duplicate_success"],
     ["shipped", "duplicate_success"],
   ] as const)("訂單 %s → %s", (status, reason) => {
-    expect(refundReasonFor(status)).toBe(reason);
+    expect(refundReasonFor(status, false)).toBe(reason);
+  });
+
+  it("已取消但原本由某筆付款支付（已付款後全部取消）：另一筆成功付款是 duplicate_success", () => {
+    expect(refundReasonFor("cancelled", true)).toBe("duplicate_success");
   });
 
   it("待付款不可能發生（付款成功一定讓待付款訂單轉走）：不退款", () => {
-    expect(refundReasonFor("pending_payment")).toBeNull();
+    expect(refundReasonFor("pending_payment", false)).toBeNull();
   });
 });
 

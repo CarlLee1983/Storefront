@@ -1,9 +1,10 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { orderIdInput } from "../orders/input";
-import type { OrderStatus } from "../orders/schema";
+import { orders, type OrderStatus } from "../orders/schema";
 import type { PaymentStatus } from "./schema";
 import { applyPaymentResultInput, confirmPaymentInput } from "./input";
 import { diagnoseStart } from "./diagnosis";
@@ -157,7 +158,8 @@ export function createPaymentService(
    */
   async function refundUnsettledPayment(payment: { id: number; orderId: number; gatewayPaymentId: string }, orderStatus: OrderStatus) {
     const { id, orderId, gatewayPaymentId } = payment;
-    const reason = refundReasonFor(orderStatus);
+    const [paidOrder] = await db.select({ paidBy: orders.paidByPaymentId }).from(orders).where(eq(orders.id, orderId));
+    const reason = refundReasonFor(orderStatus, paidOrder?.paidBy != null);
     if (!reason) {
       console.error(JSON.stringify({ event: "payment_refund_skipped", orderId, gatewayPaymentId, orderStatus }));
       return;

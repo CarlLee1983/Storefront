@@ -180,10 +180,20 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                         </div>
                       </form>
                     ) : (
+                      <>
                       <p>
                         {formatDateTime(request.decidedAt!)} 由 {request.decidedBy} 審核{request.decisionNote && `：${request.decisionNote}`}
-                        {request.status === "approved" && request.goodsTwd !== null && <><br />應退商品款 NT$ {priceFormat.format(request.goodsTwd)}、運費 NT$ {priceFormat.format(request.shippingTwd ?? 0)}；{request.refund ? `退款 #${request.refund.id}：${refundStatusLabel(request.refund.status)}` : "退款尚未登記（可退額度被其他退款占用）"}</>}
+                        {request.status === "approved" && request.goodsTwd !== null && <><br />應退商品款 NT$ {priceFormat.format(request.goodsTwd)}、運費 NT$ {priceFormat.format(request.shippingTwd ?? 0)}；{request.refund ? `退款 #${request.refund.id}：${refundStatusLabel(request.refund.status)}` : "退款尚未登記（可退額度被其他退款占用，或訂單沒有可綁定的成功付款）"}</>}
                       </p>
+                      {request.status === "approved" && !request.refund && (request.goodsTwd ?? 0) + (request.shippingTwd ?? 0) > 0 && (
+                        <form method="post">
+                          <input type="hidden" name="intent" value="decide-cancellation" />
+                          <input type="hidden" name="requestId" value={request.id} />
+                          <input type="hidden" name="decision" value="approve" />
+                          <button type="submit" class="button-secondary">重新登記退款</button>
+                        </form>
+                      )}
+                      </>
                     )
                   }
                 </li>

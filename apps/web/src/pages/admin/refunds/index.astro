@@ -41,6 +41,16 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           這裡列出所有尚未成功的退款。同一張訂單的退款一次只執行一筆：<strong>結果不明</strong>的退款要先向閘道查證（不會盲目重送），
           期間同單的後筆退款會等待；<strong>明確失敗</strong>的退款額度仍保留，可直接重試，同單的後筆退款不受影響。重試沿用同一筆退款，不會重複退款。
         </p>
+        {listing.data.unregisteredCancellations.length > 0 && (
+          <div role="region" aria-label="已核准取消但未登記退款">
+            <p class="error" role="alert">以下取消案已核准，但還沒有登記退款（可退額度被其他退款占用，或訂單沒有可綁定的成功付款），款項尚未處理：</p>
+            <ul>
+              {listing.data.unregisteredCancellations.map((request) => (
+                <li>取消申請 #{request.id}：應退 NT$ {priceFormat.format((request.goodsTwd ?? 0) + (request.shippingTwd ?? 0))}，<a href={`/admin/orders/${request.orderId}#cancellations`}>訂單 #{request.orderId}（前往重新登記退款）</a></li>
+              ))}
+            </ul>
+          </div>
+        )}
         {listing.data.omitted > 0 && <p class="error" role="alert">另有 {listing.data.omitted} 筆待處理的退款未列出。</p>}
         {listing.data.refunds.length === 0 && <p>目前沒有待處理的退款。</p>}
         {listing.data.refunds.length > 0 && (
