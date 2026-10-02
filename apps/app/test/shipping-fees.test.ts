@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { checkoutInput, createStockedListing, newKey } from "./checkout-helpers";
@@ -7,6 +8,8 @@ import { resetDb } from "./db";
 import { installFakeGateway } from "./fake-gateway";
 import { setNow } from "./clock";
 import { orderOf, startPaymentFor } from "./payment-helpers";
+import { placeOrderIfAvailable } from "../src/orders/queries";
+import { selectShippingRates } from "../src/shipping/queries";
 import { app } from "./release-helpers";
 
 beforeEach(async () => {
@@ -199,13 +202,16 @@ describe("下單、金流與通知金額一致", () => {
 });
 
 describe("試算運費與管理", () => {
-  it("費率列缺少時不靜默免運：讀取費率拋錯、含該類型的結帳整批失敗且不留訂單", async () => {
+  it("費率列缺少時不靜默免運：讀取費率拋錯、含該類型的結帳 batch 失敗且不留訂單", async () => {
+    // 直接呼叫模組而不經 RPC：錯誤跨 RPC 邊界拋出時 workerd 會另外回報未處理例外，污染測試結果
     const alice = await signInCustomer("alice");
+    const { customer } = await app.getCustomerSession(alice);
     const big = await table();
+    const input = checkoutInput([{ variantId: big.variantId, quantity: 1, seenUnitPriceTwd: 6000 }]);
     await env.DB.prepare("DELETE FROM shipping_rates WHERE delivery_type = 'large'").run();
     try {
-      await expect(app.getShippingRates(await mintAccessJwt())).rejects.toThrow();
-      await expect(checkout(alice, [{ variantId: big.variantId, quantity: 1, seenUnitPriceTwd: 6000 }], 0)).rejects.toThrow();
+      await expect(selectShippingRates(drizzle(env.DB))).rejects.toThrow("缺少配送類型 large");
+      await expect(placeOrderIfAvailable(env.DB, { ...input, customerId: customer!.customerId, requestHash: "h" }, Date.now())).rejects.toThrow();
       expect((await env.DB.prepare("SELECT count(*) AS n FROM orders").first<{ n: number }>())!.n).toBe(0);
     } finally {
       await env.DB.prepare("INSERT INTO shipping_rates (delivery_type, fee_twd) VALUES ('large', 600)").run();
