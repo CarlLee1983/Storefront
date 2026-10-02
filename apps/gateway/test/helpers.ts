@@ -13,6 +13,7 @@ export const send = (path: string, init?: RequestInit) => gateway.fetch(new Requ
 /** 每個測試開始前清空閘道的資料；只做測試隔離，斷言一律走 HTTP。 */
 export async function resetDb(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM refunds"),
     env.DB.prepare("DELETE FROM deliveries"),
     env.DB.prepare("DELETE FROM events"),
     env.DB.prepare("DELETE FROM payments"),
