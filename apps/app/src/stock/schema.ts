@@ -1,0 +1,34 @@
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { productVariants } from "../catalog/schema";
+import { orders } from "../orders/schema";
+
+/** 庫存流水的來源：管理員調整、交運扣庫、遷移加回（ADR 0006）。後續票（退貨入倉、報廢）再加新來源。 */
+export const STOCK_MOVEMENT_KINDS = ["adjustment", "dispatch", "migration"] as const;
+export type StockMovementKind = (typeof STOCK_MOVEMENT_KINDS)[number];
+
+/**
+ * 庫存流水（Stock Ledger）：變體「在庫數」的每一次變動，只增不改不刪。
+ * 保留（待付款、已付款待出貨）由訂單狀態推導，不寫流水；付款只轉換保留性質，不改在庫數，所以不會出現在這裡。
+ * 每筆都在改動在庫數的同一個 batch 內寫入，且與該句條件一致，所以流水加總永遠等於在庫數的變化。
+ * 新增來源不加 CHECK（否則遷移要重建資料表），合法值由寫入端限定。
+ */
+export const stockMovements = sqliteTable("stock_movements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  variantId: integer("variant_id").notNull().references(() => productVariants.id),
+  kind: text("kind").$type<StockMovementKind>().notNull(),
+  /** 在庫數的增減量（交運為負）。 */
+  delta: integer("delta").notNull(),
+  /** 這筆變動之後的在庫數，供逐筆核對。 */
+  onHandAfter: integer("on_hand_after").notNull(),
+  /** 交運扣庫時對應的訂單；調整為 null；遷移加回記舊已付款訂單。 */
+  orderId: integer("order_id").references(() => orders.id),
+  /** 操作人：管理員 email；系統動作（遷移）為 `system:<名稱>`。 */
+  actor: text("actor").notNull(),
+  /** 原因：調整由管理員填寫，交運與遷移為固定說明。 */
+  reason: text("reason").notNull(),
+  /** 變動時間，高水位的有效時間（UTC epoch 毫秒）。 */
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  index("stock_movements_variant_idx").on(table.variantId, table.id),
+  index("stock_movements_order_idx").on(table.orderId),
+]);

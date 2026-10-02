@@ -99,7 +99,26 @@ const stockDelta = wholeNumber("增減量")
   .min(-MAX_STOCK_DELTA, `增減量不可小於 -${MAX_STOCK_DELTA}`)
   .max(MAX_STOCK_DELTA, `增減量不可超過 ${MAX_STOCK_DELTA}`);
 
-export const adjustStockInput = z.object({ variantId, delta: stockDelta });
+const MAX_STOCK_REASON_LENGTH = 200;
+
+/** 庫存調整的原因（補貨、盤損…）：必填，trim 後不可為空；寫進庫存流水供稽核。 */
+const stockReason = z
+  .string({ error: "原因必須是文字" })
+  .trim()
+  .min(1, "請填寫調整原因")
+  .max(MAX_STOCK_REASON_LENGTH, `原因不可超過 ${MAX_STOCK_REASON_LENGTH} 個字`);
+
+export const adjustStockInput = z.object({ variantId, delta: stockDelta, reason: stockReason });
+
+const MAX_MOVEMENTS_PAGE = 200;
+
+/** 庫存流水查詢：可依變體或訂單篩選，以游標（上一頁最後一筆的編號）分頁，一頁預設 50 筆。 */
+export const listStockMovementsInput = z.object({
+  variantId: variantId.optional(),
+  orderId: orderIdInput.shape.orderId.optional(),
+  beforeId: wholeNumber("游標").min(1, "游標無效").optional(),
+  limit: wholeNumber("每頁筆數").min(1, "每頁至少 1 筆").max(MAX_MOVEMENTS_PAGE, `每頁不可超過 ${MAX_MOVEMENTS_PAGE} 筆`).default(50),
+});
 
 const MAX_TRACKING_NUMBER_LENGTH = 100;
 

@@ -18,7 +18,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
   beforeEach(resetDb);
   afterEach(() => vi.restoreAllMocks());
 
-  it("閘道說付款成功（webhook 還沒到）：套用結果，訂單轉為已付款、在庫數扣除", async () => {
+  it("閘道說付款成功（webhook 還沒到）：套用結果，訂單轉為已付款、保留轉為已付款保留、在庫數不動", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
@@ -29,7 +29,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
 
     expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "paid" } });
     expect((await orderOf(alice, orderId)).status).toBe("paid");
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("閘道說付款失敗：付款記為失敗，訂單仍是待付款", async () => {
@@ -106,7 +106,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
     });
   });
 
-  it("webhook 已先套用：導回查詢與它共用事件 ID，回同一結果，在庫數只扣一次", async () => {
+  it("webhook 已先套用：導回查詢與它共用事件 ID，回同一結果，已付款保留只有一份、可售只減一次", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
@@ -116,10 +116,10 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
     const confirmed = await app.confirmPayment(alice, { orderId, gatewayPaymentId });
 
     expect(confirmed).toEqual(webhook);
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
-  it("webhook 與導回同時送達（Promise.all）：結果一致，在庫數只扣一次", async () => {
+  it("webhook 與導回同時送達（Promise.all）：結果一致，已付款保留只有一份、可售只減一次", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
@@ -133,7 +133,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
 
     expect(webhook).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "paid" } });
     expect(confirmed).toEqual(webhook);
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("付款不屬於這張訂單（是同一位顧客另一張訂單的付款）：payment_not_found，不套用", async () => {

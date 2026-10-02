@@ -44,9 +44,9 @@ export function productUpdateFormToInput(form: FormData, id: number) {
   };
 }
 
-/** 庫存調整表單 → RPC 輸入；庫存以商品變體為單位，增減量（+20、-3）轉成數字，是否合法由 App 驗證。 */
+/** 庫存調整表單 → RPC 輸入；庫存以商品變體為單位，增減量（+20、-3）轉成數字，原因照送，是否合法由 App 驗證。 */
 export function stockAdjustFormToInput(form: FormData, variantId: number) {
-  return { variantId, delta: toNumber(form.get("delta")) };
+  return { variantId, delta: toNumber(form.get("delta")), reason: toText(form.get("reason")) };
 }
 
 /** 網址上的商品編號與表單上的編號；不是正整數就回傳 null（頁面顯示找不到）。 */

@@ -100,6 +100,7 @@ test("桌機商品表格容納 32 件商品，操作與庫存錯誤維持可用�
 
     const before = await geometry(row);
     await input.fill("0");
+    await row.getByLabel(`${LONG_NAME}的庫存調整原因`).fill("E2E 補貨");
     await actions[3]!.click();
     await expect(admin.getByRole("alert")).toContainText("增減量");
     await expect(row.getByLabel(`${LONG_NAME}的庫存增減量`)).toHaveAttribute("aria-describedby", "listing-error");
@@ -155,6 +156,7 @@ test("手機商品卡片可完成庫存、上下架與精選操作，768px 回�
     await admin.screenshot({ path: "/tmp/storefront-admin-products-375.png", fullPage: true });
 
     await card.getByLabel(`${name}的庫存增減量`).fill("+3");
+    await card.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
     await card.getByRole("button", { name: "調整庫存" }).click();
     await expect(admin).toHaveURL(/saved=stock/);
     await expect(card.locator("td").nth(7)).toHaveText("8");

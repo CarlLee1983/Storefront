@@ -82,7 +82,7 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
       },
     });
     expect(upload.status(), `上傳 ${name} 的封面`).toBe(201);
-    if (stock > 0) await post(admin, "/admin", { intent: "adjust-stock", variantId: rows[index]!.variantId, delta: `+${stock}` });
+    if (stock > 0) await post(admin, "/admin", { intent: "adjust-stock", variantId: rows[index]!.variantId, delta: `+${stock}`, reason: "E2E 補貨" });
   }));
 
   // 依序上架：上架時間才會跟著名稱順序遞增

@@ -109,7 +109,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
     expect(await listedNeedsAttention(orderId)).toBe(false);
   });
 
-  it("已逾期的訂單上有一筆舊的成功付款 B（沒有退款紀錄），遲到成功的 A 重新保留成功：在庫數扣除，旗標標在 B、不標 A（不論編號大小）", async () => {
+  it("已逾期的訂單上有一筆舊的成功付款 B（沒有退款紀錄），遲到成功的 A 重新保留成功：保留轉為已付款保留、在庫數不動，旗標標在 B、不標 A（不論編號大小）", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
@@ -121,7 +121,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
 
     await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
 
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     const payments = await adminPayments(orderId);
     expect(payments).toMatchObject([
       { status: "succeeded", needsAttention: true }, // B：訂單不是由它支付

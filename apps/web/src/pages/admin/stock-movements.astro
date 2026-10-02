@@ -1,0 +1,67 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import { movementKindLabel, olderMovementsUrl, parseMovementFilter } from "../../admin/stock-form";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { formatDateTime } from "../../orders/labels";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const filter = parseMovementFilter(Astro.url.searchParams);
+const movements = await env.APP.listStockMovements(jwt, filter);
+if (!movements.ok) Astro.response.status = 403;
+const filtered = filter.variantId !== undefined || filter.orderId !== undefined;
+---
+
+<AdminLayout title="庫存流水">
+  {
+    !movements.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        <p>在庫數的每一次變動，新的在前。付款只把待付款保留轉為已付款保留，不改在庫數，所以不在這裡；交運時才扣實體在庫。</p>
+        <form method="get" class="admin-filter">
+          <label class="filter-field">
+            變體編號
+            <input name="variantId" type="text" inputmode="numeric" value={filter.variantId ?? ""} />
+          </label>
+          <label class="filter-field">
+            訂單編號
+            <input name="orderId" type="text" inputmode="numeric" value={filter.orderId ?? ""} />
+          </label>
+          <div class="filter-actions">
+            <button type="submit" class="btn-filter-submit">篩選</button>
+            {filtered && <a href="/admin/stock-movements" class="btn-filter-reset">清除條件</a>}
+          </div>
+        </form>
+        {movements.data.items.length === 0 && <p>沒有符合的庫存流水。</p>}
+        {
+          movements.data.items.length > 0 && (
+            <div class="table-scroll admin-stock-ledger" tabindex="0" role="region" aria-label="庫存流水資料表"><table>
+              <thead>
+                <tr><th>時間</th><th>商品</th><th>來源</th><th>增減</th><th>調整後在庫</th><th>訂單</th><th>操作人</th><th>原因</th></tr>
+              </thead>
+              <tbody>
+                {movements.data.items.map((item) => (
+                  <tr>
+                    <td data-label="時間">{formatDateTime(item.createdAt)}</td>
+                    <td data-label="商品"><a href={`/admin/stock-movements?variantId=${item.variantId}`}>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}</a></td>
+                    <td data-label="來源">{movementKindLabel(item.kind)}</td>
+                    <td data-label="增減">{item.delta > 0 ? `+${item.delta}` : item.delta}</td>
+                    <td data-label="調整後在庫">{item.onHandAfter}</td>
+                    <td data-label="訂單">{item.orderId === null ? "—" : <a href={`/admin/orders/${item.orderId}`}>#{item.orderId}</a>}</td>
+                    <td data-label="操作人">{item.actor}</td>
+                    <td data-label="原因">{item.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )
+        }
+        {movements.data.nextBeforeId !== null && <p><a href={olderMovementsUrl(filter, movements.data.nextBeforeId)} class="btn-action">較舊的流水</a></p>}
+      </>
+    )
+  }
+</AdminLayout>

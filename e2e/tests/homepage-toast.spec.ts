@@ -16,6 +16,7 @@ async function createProduct(admin: Page, name: string, stock: number) {
   let row = admin.getByRole("row", { name: new RegExp(name) });
   if (stock) {
     await row.getByLabel(`${name}的庫存增減量`).fill(String(stock));
+    await row.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
     await row.getByRole("button", { name: "調整庫存" }).click();
     await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
   }

@@ -530,6 +530,16 @@
   align-items: center;
   gap: 4px;
 }
+.admin-shell .inline-stock-adjust input[name="reason"] {
+  width: 7rem;
+  flex: 0 1 7rem;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  font-size: 0.8125rem;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--color-border);
+}
 .admin-shell .inline-stock-adjust input[name="delta"] {
   width: 4.5rem;
   flex: 0 0 4.5rem;
@@ -704,6 +714,12 @@
 .admin-shell .admin-orders td:nth-child(6), .admin-shell .admin-order-lines td:nth-child(n+2):nth-child(-n+4), .admin-shell .admin-order-payments td:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .admin-shell .admin-order-payments td:nth-child(3) strong { display: block; white-space: normal; }
 
+/* 庫存流水：桌機是表格，手機每筆疊成一張卡片（與訂單表同一套 data-label 做法） */
+.admin-shell .admin-stock-ledger table { table-layout: auto; min-width: 0; }
+.admin-shell .admin-stock-ledger th, .admin-shell .admin-stock-ledger td { vertical-align: middle; }
+.admin-shell .admin-stock-ledger td:nth-child(4), .admin-shell .admin-stock-ledger td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-shell .admin-stock-ledger td:nth-child(7), .admin-shell .admin-stock-ledger td:nth-child(8) { overflow-wrap: anywhere; }
+
 @media (max-width: 47.999rem) {
   .admin-shell .admin-orders, .admin-shell .admin-order-lines, .admin-shell .admin-order-payments { overflow-x: visible; }
   .admin-shell .admin-orders table, .admin-shell .admin-order-lines table, .admin-shell .admin-order-payments table { display: block; width: 100%; }
@@ -719,4 +735,12 @@
   .admin-shell .admin-orders td:nth-child(3) span { min-width: 0; }
   .admin-shell .admin-order-payments td:nth-child(3) { display: block; }
   .admin-shell .admin-order-payments td:nth-child(3)::before { display: block; }
+  .admin-shell .admin-stock-ledger { overflow-x: visible; }
+  .admin-shell .admin-stock-ledger table { display: block; width: 100%; }
+  .admin-shell .admin-stock-ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .admin-shell .admin-stock-ledger tbody { display: grid; gap: var(--space-4); }
+  .admin-shell .admin-stock-ledger tbody tr { display: grid; min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .admin-shell .admin-stock-ledger td { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); min-width: 0; width: auto; border: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .admin-shell .admin-stock-ledger td::before { content: attr(data-label); flex: 0 0 auto; font-weight: 700; }
+  .admin-shell .admin-stock-ledger td:first-child { border-bottom: 1px solid var(--color-border); }
 }

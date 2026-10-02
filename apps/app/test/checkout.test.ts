@@ -277,8 +277,8 @@ describe("保留（待付款訂單的訂單明細）", () => {
     await app.checkout(cookie, checkoutInput([{ variantId: mug.variantId, quantity: 3, seenUnitPriceTwd: 320 }]));
     const jwt = await mintAccessJwt();
 
-    expect(await app.adjustStock(jwt, { variantId: mug.variantId, delta: -8 })).toEqual({ ok: false, reason: "insufficient_stock" });
-    expect(await app.adjustStock(jwt, { variantId: mug.variantId, delta: -7 })).toEqual({ ok: true, data: { onHand: 3, available: 0 } });
+    expect(await app.adjustStock(jwt, { variantId: mug.variantId, delta: -8, reason: "測試調整" })).toEqual({ ok: false, reason: "insufficient_stock" });
+    expect(await app.adjustStock(jwt, { variantId: mug.variantId, delta: -7, reason: "測試調整" })).toEqual({ ok: true, data: { onHand: 3, available: 0 } });
   });
 });
 
@@ -368,7 +368,7 @@ describe("結帳的冪等", () => {
     const bob = await signInCustomer("bob");
     const input = checkoutInput([{ variantId: mug.variantId, quantity: 2, seenUnitPriceTwd: 320 }]);
     const first = await app.checkout(alice, input);
-    await app.adjustStock(await mintAccessJwt(), { variantId: mug.variantId, delta: 1 });
+    await app.adjustStock(await mintAccessJwt(), { variantId: mug.variantId, delta: 1, reason: "測試調整" });
     await app.checkout(bob, checkoutInput([{ variantId: mug.variantId, quantity: 1, seenUnitPriceTwd: 320 }]));
 
     expect(await app.checkout(alice, input)).toEqual(first);

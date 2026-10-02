@@ -8,8 +8,11 @@ import type { DeliveryType } from "../shipping/types";
 export const ORDER_STATUSES = ["pending_payment", "paid", "shipped", "expired", "cancelled"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** 待付款：訂單的訂單明細在此狀態時，其數量就是「保留」（見 `catalog/stock.ts`）。 */
+/** 待付款：訂單的訂單明細在此狀態時，其數量就是「待付款保留」（見 `catalog/stock.ts`）。 */
 export const PENDING_PAYMENT = "pending_payment" satisfies OrderStatus;
+
+/** 已付款：尚未交運，明細數量是「已付款待出貨保留」，仍在實體在庫中（ADR 0006）。 */
+export const PAID = "paid" satisfies OrderStatus;
 
 /** 已逾期：付款期限過了仍未付款，由 Cron 轉入；遲到的付款成功仍可轉為已付款（ADR 0001）。 */
 export const EXPIRED = "expired" satisfies OrderStatus;

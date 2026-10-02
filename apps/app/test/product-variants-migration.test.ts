@@ -43,8 +43,9 @@ it("0013 把每個既有商品轉為預設變體，價格、原價、庫存、�
 
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
+  // 0020 把舊已付款訂單（特價桌 1 件）加回在庫數：10 → 11
   expect((await db.prepare("SELECT product_id, is_default, price_twd, compare_at_price_twd, on_hand FROM product_variants ORDER BY product_id").all()).results).toEqual([
-    { product_id: 1, is_default: 1, price_twd: 900, compare_at_price_twd: 1200, on_hand: 10 },
+    { product_id: 1, is_default: 1, price_twd: 900, compare_at_price_twd: 1200, on_hand: 11 },
     { product_id: 2, is_default: 1, price_twd: 320, compare_at_price_twd: null, on_hand: 4 },
   ]);
   // 舊的明細逐筆指向該商品的預設變體；數量、單價與名稱快照原樣保留（已出貨那張的 300 不被現價 320 改寫）
@@ -61,10 +62,10 @@ it("0013 把每個既有商品轉為預設變體，價格、原價、庫存、�
   ]);
   expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
 
-  // 待付款訂單的保留仍然佔住可售數量：在庫 4、保留 2、可售 2，沒有因遷移多出可售量
+  // 待付款訂單的保留仍然佔住可售數量：在庫 4、保留 2、可售 2，沒有因遷移多出可售量；特價桌的已付款訂單（1 件）由 0020 加回在庫並轉為已付款保留，可售量同樣不變
   const jwt = await mintAccessJwt();
   expect(await admin().getProductForAdmin(jwt, { id: 2 })).toMatchObject({ ok: true, data: { priceTwd: 320, onHand: 4, reserved: 2, available: 2 } });
-  expect(await admin().getProductForAdmin(jwt, { id: 1 })).toMatchObject({ ok: true, data: { priceTwd: 900, compareAtPriceTwd: 1200, onHand: 10, reserved: 0, available: 10 } });
+  expect(await admin().getProductForAdmin(jwt, { id: 1 })).toMatchObject({ ok: true, data: { priceTwd: 900, compareAtPriceTwd: 1200, onHand: 11, reserved: 1, available: 10 } });
 });
 
 it("每個商品至多一個預設變體，同商品可有其他變體（由後續票使用）", async () => {

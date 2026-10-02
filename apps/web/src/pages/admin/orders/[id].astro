@@ -57,7 +57,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </div>
             <div>
               <p class="admin-order-email"><strong>顧客：</strong>{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</p>
-              {order.status === "shipped" && <p><strong>物流進度：</strong>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>}
+              {order.status === "shipped" && <p><strong>物流進度：</strong>{shipmentSummary(order.shippedAt, order.trackingNumber)}（<a href={`/admin/stock-movements?orderId=${order.id}`}>庫存流水</a>）</p>}
             </div>
           </div>
           {
@@ -65,13 +65,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               <div class="admin-ship-panel">
                 <h3>出貨處理</h3>
                 {failure && <p class="error" role="alert">{failure.message}</p>}
-                <form method="post" onsubmit="return confirm('確定要標為已出貨嗎？出貨後無法撤回。')">
+                <form method="post" onsubmit="return confirm('確定要標為已出貨嗎？出貨後會扣除實體在庫，無法撤回。')">
                   <label>
                     物流單號（可留空）
                     <input name="trackingNumber" value={submitted.trackingNumber ?? ""} maxlength="100" placeholder="例如：SF12345678" />
                     {failure?.fields.trackingNumber?.map((m) => <span class="error">{m}</span>)}
                   </label>
-                  <p><small>出貨後狀態將變更為已出貨，無法撤回。</small></p>
+                  <p><small>出貨後狀態將變更為已出貨並扣除實體在庫，無法撤回。</small></p>
                   <button type="submit" class="button-primary">確認出貨</button>
                 </form>
               </div>

@@ -51,7 +51,7 @@ describe("遲到的付款成功：重新保留", () => {
   beforeEach(resetDb);
   afterEach(() => vi.restoreAllMocks());
 
-  it("有庫存：已逾期的訂單轉為已付款，在庫數扣除，不退款", async () => {
+  it("有庫存：已逾期的訂單轉為已付款，轉為已付款保留（在庫數不動），不退款", async () => {
     const { alice, orderId, variantId, gateway, event } = await lateSuccessSetup({ onHand: 10, quantity: 2 });
     expect((await orderOf(alice, orderId)).status).toBe("expired");
     expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 10 });
@@ -59,7 +59,7 @@ describe("遲到的付款成功：重新保留", () => {
     const result = await app.applyPaymentResult(event);
 
     expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "paid" } });
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
     expect(order.payments).toMatchObject([{ status: "succeeded", refundReason: null }]);
@@ -166,7 +166,7 @@ describe("退款的結果與觸發", () => {
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });
 
-  it("同一訂單第二筆成功付款：在庫數只扣一次，第二筆退款（duplicate_success），第一筆維持成功", async () => {
+  it("同一訂單第二筆成功付款：已付款保留只有一份、可售只減一次，第二筆退款（duplicate_success），第一筆維持成功", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId, totalTwd } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
@@ -179,7 +179,7 @@ describe("退款的結果與觸發", () => {
     const result = await app.applyPaymentResult(gateway.settle(second, "succeeded"));
 
     expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "paid" } });
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
     expect(order.payments).toMatchObject([
@@ -253,7 +253,7 @@ describe("遲到的付款成功與結帳搶最後一件：兩種先後各自的�
   afterEach(() => vi.restoreAllMocks());
 
   // 並行測試只驗不變量：實測時兩邊的先後並不平均（結帳要先驗 session，幾乎總是落後），不能靠它保證兩種結果都走過，所以各寫一個確定先後的測試。
-  it("重新保留先到：訂單轉已付款、在庫數扣除，之後的結帳因可售數量不足被拒", async () => {
+  it("重新保留先到：訂單轉已付款、轉為已付款保留（在庫數不動），之後的結帳因可售數量不足被拒", async () => {
     const { alice, orderId, variantId, gateway, event } = await lateSuccessSetup({ onHand: 1, quantity: 1 });
     const bob = await signInCustomer("bob");
 
@@ -262,7 +262,7 @@ describe("遲到的付款成功與結帳搶最後一件：兩種先後各自的�
 
     expect(checkout).toMatchObject({ ok: false, reason: "checkout_rejected" });
     expect((await orderOf(alice, orderId)).status).toBe("paid");
-    expect(await stockOf(variantId)).toEqual({ onHand: 0, available: 0 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 1, available: 0 });
     expect(gateway.refunded).toEqual([]);
   });
 
@@ -347,7 +347,9 @@ describe("遲到的付款成功與結帳搶最後一件並行", () => {
       expect(aliceHasIt !== bobProducts.has(variantId), `商品 ${variantId} 應恰好一方拿到`).toBe(true);
       const stock = stocks.data.find((product) => product.id === variantId)!;
       expect(stock.available, `商品 ${variantId} 可售數量不可為負`).toBeGreaterThanOrEqual(0);
-      expect(stock.onHand).toBe(aliceHasIt ? 0 : 1);
+      // 付款不扣實體在庫（ADR 0006），那一件由已付款保留或 Bob 的待付款保留占用
+      expect(stock.onHand).toBe(1);
+      expect(stock.available).toBe(0);
       expect(gateway.refunded.includes(gatewayPaymentId)).toBe(!aliceHasIt);
     }
   }, 60_000);

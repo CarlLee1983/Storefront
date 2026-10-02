@@ -36,7 +36,7 @@ export async function createOptionListing(name: string, optionNames: string[], s
     await app.updateVariant(jwt, { variantId: defaultId, optionValues: first!.values, priceTwd: first!.priceTwd, compareAtPriceTwd: first!.compareAtPriceTwd });
   }
   for (const [index, spec] of specs.entries()) {
-    if (spec.onHand > 0) await app.adjustStock(jwt, { variantId: variantIds[index]!, delta: spec.onHand });
+    if (spec.onHand > 0) await app.adjustStock(jwt, { variantId: variantIds[index]!, delta: spec.onHand, reason: "測試補貨" });
     if (spec.discontinued) await app.setVariantDiscontinued(jwt, { variantId: variantIds[index]!, discontinued: true });
   }
   const image = await uploadAndList(jwt, productId);

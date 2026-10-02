@@ -41,6 +41,7 @@ const RPC_METHODS = [
   "listOrdersForAdmin",
   "listProducts",
   "listProductsForAdmin",
+  "listStockMovements",
   "relistProduct",
   "reorderProductImages",
   "requestContactEmail",

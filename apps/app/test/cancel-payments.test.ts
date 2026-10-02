@@ -48,7 +48,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
     expect(order.payments).toMatchObject([{ status: "succeeded" }]);
-    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     expect(gateway.refunded).toEqual([]);
   });
 

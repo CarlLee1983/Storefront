@@ -27,7 +27,7 @@ describe("預設變體是販售單位", () => {
     const pen = await createStockedListing("原子筆", 45, 9);
 
     await app.updateProduct(jwt, { id: mug.productId, name: "馬克杯", description: "新", priceTwd: 350 });
-    await app.adjustStock(jwt, { variantId: mug.variantId, delta: -1 });
+    await app.adjustStock(jwt, { variantId: mug.variantId, delta: -1, reason: "測試調整" });
 
     expect(await app.getProductForAdmin(jwt, { id: mug.productId })).toMatchObject({ ok: true, data: { priceTwd: 350, onHand: 5 } });
     expect(await app.getProductForAdmin(jwt, { id: pen.productId })).toMatchObject({ ok: true, data: { priceTwd: 45, onHand: 9 } });

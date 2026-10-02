@@ -184,11 +184,12 @@ function productRow(page: Page, name: string) {
   return page.getByRole("row").filter({ has: page.getByRole("cell", { name, exact: true }) });
 }
 
-/** 庫存只能以增減量調整。 */
-export async function adjustStock(page: Page, name: string, delta: number) {
+/** 庫存只能以增減量調整，並須填寫原因（寫進庫存流水）。 */
+export async function adjustStock(page: Page, name: string, delta: number, reason = "示範資料補貨") {
   await openAdmin(page, "/admin");
   const row = productRow(page, name);
   await row.getByLabel(`${name}的庫存增減量`).fill(delta > 0 ? `+${delta}` : String(delta));
+  await row.getByLabel(`${name}的庫存調整原因`).fill(reason);
   await submitAndExpect(page, row.getByRole("button", { name: "調整庫存" }), "已調整庫存。");
 }
 

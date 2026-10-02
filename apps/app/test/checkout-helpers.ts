@@ -17,7 +17,7 @@ export async function createStockedListing(name: string, priceTwd: number, onHan
   const created = await app.createProduct(jwt, { name, description: `${name}的說明`, priceTwd, deliveryType });
   if (!created.ok) throw new Error("新增商品失敗");
   const variantId = await defaultVariantIdOf(created.data.id);
-  if (onHand > 0) await app.adjustStock(jwt, { variantId, delta: onHand });
+  if (onHand > 0) await app.adjustStock(jwt, { variantId, delta: onHand, reason: "測試補貨" });
   await uploadAndList(jwt, created.data.id);
   return { productId: created.data.id, variantId };
 }

@@ -181,7 +181,7 @@ describe("startPayment：發起付款", () => {
       expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "expired" }, { status: "pending" }]);
     });
 
-    it("閘道說它已成功（webhook 沒送到）：套用結果（訂單轉已付款、在庫數扣除），回 payment_already_succeeded，不建立新付款", async () => {
+    it("閘道說它已成功（webhook 沒送到）：套用結果（訂單轉已付款、保留轉為已付款保留、在庫數不動），回 payment_already_succeeded，不建立新付款", async () => {
       const { alice, orderId, variantId, gateway, old } = await withUncancellablePayment();
       gateway.settle(old, "succeeded");
 
@@ -191,7 +191,7 @@ describe("startPayment：發起付款", () => {
       const order = await orderOf(alice, orderId);
       expect(order.status).toBe("paid");
       expect(order.payments).toMatchObject([{ status: "succeeded" }]);
-      expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+      expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     });
 
     it("閘道回的金額與本站不符：不套用，payment_in_progress，不建立新付款", async () => {

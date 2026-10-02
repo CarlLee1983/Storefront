@@ -102,6 +102,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   const productRow = admin.getByRole("row", { name: new RegExp(PRODUCT.name) });
   await productRow.getByLabel(`${PRODUCT.name}的庫存增減量`).fill("+5");
+  await productRow.getByLabel(`${PRODUCT.name}的庫存調整原因`).fill("E2E 補貨");
   await productRow.getByRole("button", { name: "調整庫存" }).click();
   await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
   await expect(productRow).toContainText("已下架");

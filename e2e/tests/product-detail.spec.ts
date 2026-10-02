@@ -93,6 +93,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await testInfo.attach("product-detail-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     const row = admin.getByRole("row").filter({ hasText: name });
     await row.getByLabel(`${name}的庫存增減量`).fill("10");
+    await row.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
     await row.getByRole("button", { name: "調整庫存" }).click();
     await page.reload();
     await page.getByLabel("數量", { exact: true }).fill("2");

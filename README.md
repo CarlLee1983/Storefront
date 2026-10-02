@@ -68,6 +68,26 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 部署順序沿用先 migration、再 App、再 Web。舊 App 搭配新 migration 仍可運作（欄位都有預設），但新 App 的結帳要求 `seenShippingTwd`，所以舊 Web 的結帳頁在新 App 上會被拒（回 `invalid_input`），Web 與 App 應壓短窗口一起部署。回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0019_shipping_fees.down.sql`；已有訂單收過運費、或有大型配送的變體／明細時守門檢查讓回復失敗（總額含運費卻會失去拆分），須先確認可以捨棄。回復前須一併回復 Web 與 App；順序是 0019 → 0018 → …。
 - 測試見 `apps/app/test/shipping-fees.test.ts`（計費、快照、金額一致、權限、輸入驗證）、`shipping-migration.test.ts`；Web 的試算與表單轉換在 `apps/web/src/checkout/shipping.test.ts`；手機與桌機操作由 `e2e/tests/shipping-fees.spec.ts`（混合結帳與後台）與 `shipping-rates.spec.ts`（調整費率不改舊單、非管理員 403；費率是全域狀態，獨立成最後執行的 project）驗證。
 
+## 庫存保留與庫存流水
+
+依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)：可售 = 在庫數 − 待付款保留 − 已付款待出貨保留（`apps/app/src/catalog/stock.ts`），保留由訂單狀態推導（待付款＋已付款訂單的明細數量，沒有另外的保留表）。
+
+| 事件 | 在庫數 | 保留 | 可售 |
+| --- | --- | --- | --- |
+| 下單 | 不變 | + 待付款保留 | − |
+| 付款成功（含遲到付款重新保留，ADR 0001） | 不變 | 待付款轉已付款，總量不變 | 不變 |
+| 逾期、取消 | 不變 | 釋放 | + |
+| 出貨（整單，`shipOrder`） | − 明細數量 | 消耗已付款保留 | 不變 |
+| 庫存調整 | ± | 不變 | ± |
+
+- 付款 batch（`payments/queries.ts` 的 `applyPaymentEvent`）不再扣庫，原本的第 3 句（扣在庫數）已移除，結果索引由尾端倒數取值所以不受影響；出貨（`orders/queries.ts` 的 `markOrderShipped`）是三句 batch：寫流水、扣在庫、轉已出貨，前兩句與第三句用同一個「訂單此刻仍是已付款」條件，並行或重複出貨只會成功一次。
+- 庫存流水（`stock_movements`，Migration `0020_stock_ledger.sql`）：在庫數的每一次變動，只增不改不刪，記來源（`adjustment` 調整、`dispatch` 交運、`migration` 遷移加回）、增減量、調整後在庫數、訂單、操作人（管理員 email）、原因與有效時間。流水與改動在庫數的那句同一個 batch、同一個條件寫入，被拒絕的調整不留紀錄。保留的變化（下單、付款、逾期、取消）可由訂單推導，不重複寫入流水。後續票（#112 分批出貨、#124 低庫存提醒）讀這張表，新增來源（退貨入倉、報廢）時加新的 `kind`；`kind` 沒有 CHECK，合法值由寫入端限定。
+- 庫存調整現在必填原因（`adjustStock` 的 `reason`，trim 後 1–200 字）；後台商品列表與變體表單都有原因欄位。唯讀 RPC `listStockMovements`（可依變體或訂單篩選，以 `nextBeforeId` 游標翻頁）與後台「庫存流水」頁（`/admin/stock-movements`，訂單明細頁有連結）供核對。
+- 舊資料遷移（Q22 保留式遷移）：舊系統在付款時就扣了在庫數，`0020` 對每張狀態為「已付款」的舊單，逐單逐變體把數量加回在庫數並寫一筆 `migration` 流水；已出貨的不加回；因為已付款本身就是保留，可售量不變。遷移只信訂單狀態、不編造物流證據。套用後執行 `wrangler d1 execute <DB> --file apps/app/scripts/verify-0020-stock.sql`（加 `--local`／`--remote`／`--env`）核對例外，每個查詢回傳的列都需要人工處理，全為空才算通過：已付款卻沒有成功付款紀錄、可售為負、流水與在庫數對不上。
+- 部署順序：**先停止寫入（結帳、付款、出貨、庫存調整）**，再 migration、再 App、再 Web。舊 App 搭配新 migration 會多出可售量（舊 App 不把已付款算進保留，加回的數量變成可售）；新 App 搭配舊資料則會在出貨時再扣一次，所以兩者之間不要放行流量。
+- 回復：先停止寫入並先回復 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0020_stock_ledger.down.sql`。它把目前每張已付款訂單的數量從在庫數扣回（回到付款扣庫語意，涵蓋遷移前的舊單與遷移後才付款的新單），移除流水與遷移紀錄。守門檢查讓回復失敗的情況：流水裡有遷移以外的紀錄（調整與交運紀錄一旦移除就無法稽核），或扣回後在庫數會小於 0；須先確認這些資料可以捨棄或人工處理。回復順序是 0020 → 0019 → …。
+- 測試見 `apps/app/test/stock-ledger.test.ts`（付款不扣庫、交運扣庫與流水、重複與並行出貨、已付款保留擋住調整、原因必填、查詢與權限）、`stock-ledger-migration.test.ts`（遷移、核對腳本、回復與守門檢查），遲到付款與逾期釋放沿用 `payment-late-success.test.ts`、`expiry.test.ts`；Web 的篩選解析在 `apps/web/src/admin/stock-form.test.ts`，手機與桌機的操作（含顧客不能進入）由 `e2e/tests/stock-ledger.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
+
 ## 付款
 
 顧客在訂單頁按「前往付款」→ App 向閘道建立付款 → 導向閘道付款頁；結果由兩條路徑確認，共用同一個冪等的「套用付款結果」（以閘道事件 ID 去重）：閘道 webhook（Web 的 `POST /api/payments/webhook`，驗簽後轉給 App）為主，顧客被導回 `/orders/:id/payment-return?paymentId=…` 時 App 再主動向閘道查詢一次。付款成功依訂單當下的狀態分流（都只由搶到事件 ID 的那次呼叫執行一次）：待付款轉已付款；已逾期則在同一個 batch 內以條件式語句「重新保留」庫存（每一筆明細的可售數量都夠才轉已付款並扣在庫數，全有全無），見 ADR 0001；重新保留不到、落在已取消的訂單、或同一張訂單的第二筆成功付款，則付款記為成功、訂單不動，並在 batch 之外向閘道退款。退款結果記在付款上：狀態 `refunded`／`refund_failed`、原因 `late_success_unreclaimable`／`cancelled_order`／`duplicate_success`、時間。退款失敗只記錄與結構化 log（`payment_refund_failed`），不自動重試，管理員之後在後台處理；閘道退款是冪等的。
@@ -188,7 +208,7 @@ Migration `0007_product_images.sql` 會新增圖片表、把商品 `listed` 預�
 依 [ADR 0005](docs/adr/0005-variants-own-price-and-stock.md)，可購買、定價與計算庫存的單位是商品變體（`product_variants`）。每個商品都有一個預設變體，由 Migration `0013_product_variants.sql` 從既有商品的售價、原價與在庫數轉成；新增商品時一併建立。商品保留名稱、說明、分類、圖片與上架狀態，不再有 `price_twd`、`compare_at_price_twd`、`on_hand`。選項維度與多變體見下一節（Migration `0014_variant_options.sql`）。
 
 - 購物車、結帳與庫存調整都以變體編號為準：結帳明細帶 `variantId`，訂單明細同時記 `variant_id` 與 `product_id`（取封面、連結），後台庫存調整送 `variantId`。沒有選項的商品，列表帶 `defaultVariantId` 供直接加入購物車；有選項的商品要進詳情頁選變體（詳情回傳各販售中變體的價格與可售量）。被取代的以商品編號結帳的路徑已移除，瀏覽器購物車格式升到第 2 版，舊版購物車會被視為空（顧客需重新加入）。
-- 沿用現行付款扣庫語意：保留 = 待付款訂單明細（以變體加總），付款成功才扣在庫數；逾期、取消與遲到付款的規則不變。
+- 此片當時沿用付款扣庫語意；#111 已改為付款保留、交運才扣庫，見下方「庫存保留與庫存流水」。
 - 遷移保留歷史：舊明細逐筆指向該商品的預設變體，單價、數量、名稱快照與訂單總額原樣不動，所以實付金額與免運結果不變；對不到預設變體的明細會讓 `variant_id NOT NULL` 失敗、整個遷移中止，不會丟掉明細或編造對應。
 - 部署順序沿用先 migration、再 App、再 Web，窗口內的影響：(1) migration 後、新 App 前，舊 App 的商品列表、結帳與付款事件 SQL 會因 `products.price_twd`／`on_hand` 不存在而失敗，這段時間顧客無法瀏覽與結帳，付款事件套用也會失敗；(2) 新 App 上線、新 Web 未上線時，舊 Web 以 `productId` 結帳、以 `{ id }` 調庫存，會被驗證擋下回 `invalid_input`（不會寫入）。建議把兩個窗口壓到最短，並在 migration 前暫停後台庫存與商品操作。
 - 窗口內付款事件的補救：付款事件套用失敗時，付款與訂單都不會被改動。依據是閘道的事件本文在建立時固定、投遞紀錄存檔，且 `apps/gateway/src/transitions.ts` 註明可由閘道主控頁重送，程式內沒有自動重試；顧客被導回 `/orders/:id/payment-return` 時 App 也會主動向閘道查詢一次。補救順序：新 Web／App 都上線後，先到閘道主控頁查看窗口期間各事件的投遞結果，對失敗的事件重送（套用以事件 ID 去重，重送安全）；若主控頁查不到該事件或重送仍失敗，再人工以該事件的內容重放 webhook，並對照訂單與付款狀態確認。人工重放的步驟與權限尚無既有文件，需事前另行確認。

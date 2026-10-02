@@ -141,6 +141,13 @@
       "when": 1790965253849,
       "tag": "0019_shipping_fees",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790968188499,
+      "tag": "0020_stock_ledger",
+      "breakpoints": true
     }
   ]
 }

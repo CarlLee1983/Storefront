@@ -18,7 +18,7 @@ async function createMug(jwt: string) {
 async function adjust(jwt: string, productId: number, delta: unknown) {
   const found = await app.getProductForAdmin(jwt, { id: productId });
   if (!found.ok) throw new Error("讀取商品失敗");
-  return app.adjustStock(jwt, { variantId: found.data.defaultVariantId, delta });
+  return app.adjustStock(jwt, { variantId: found.data.defaultVariantId, delta, reason: "測試調整" });
 }
 
 describe("在庫數與可售數量", () => {
@@ -70,15 +70,15 @@ describe("庫存調整", () => {
 
   it("調整不存在的變體回 variant_not_found，與庫存不足可以區分", async () => {
     const jwt = await mintAccessJwt();
-    expect(await app.adjustStock(jwt, { variantId: 9999, delta: 5 })).toEqual({ ok: false, reason: "variant_not_found" });
-    expect(await app.adjustStock(jwt, { variantId: 9999, delta: -5 })).toEqual({ ok: false, reason: "variant_not_found" });
+    expect(await app.adjustStock(jwt, { variantId: 9999, delta: 5, reason: "測試調整" })).toEqual({ ok: false, reason: "variant_not_found" });
+    expect(await app.adjustStock(jwt, { variantId: 9999, delta: -5, reason: "測試調整" })).toEqual({ ok: false, reason: "variant_not_found" });
   });
 
   it("沒有有效 Access JWT 被拒絕，且在庫數不變", async () => {
     const jwt = await mintAccessJwt();
     const id = await createMug(jwt);
 
-    expect(await app.adjustStock("", { variantId: 1, delta: 20 })).toEqual({ ok: false, reason: "unauthorized" });
+    expect(await app.adjustStock("", { variantId: 1, delta: 20, reason: "測試調整" })).toEqual({ ok: false, reason: "unauthorized" });
 
     expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { onHand: 0 } });
   });
@@ -104,7 +104,7 @@ describe("庫存調整", () => {
 
   it("變體編號無效被拒絕，帶 invalid_input", async () => {
     const jwt = await mintAccessJwt();
-    expect(await app.adjustStock(jwt, { variantId: 0, delta: 1 })).toMatchObject({
+    expect(await app.adjustStock(jwt, { variantId: 0, delta: 1, reason: "測試調整" })).toMatchObject({
       ok: false,
       reason: "invalid_input",
       fields: { variantId: [expect.any(String)] },

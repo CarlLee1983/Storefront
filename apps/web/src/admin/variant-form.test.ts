@@ -50,7 +50,7 @@ describe("dispatchVariantForm", () => {
   it("停賣、恢復販售與調整庫存都以變體編號為準", () => {
     expect(dispatchVariantForm(formOf({ intent: "discontinue-variant", variantId: "3" }), 7)).toEqual({ kind: "discontinue", input: { variantId: 3, discontinued: true } });
     expect(dispatchVariantForm(formOf({ intent: "resume-variant", variantId: "3" }), 7)).toEqual({ kind: "discontinue", input: { variantId: 3, discontinued: false } });
-    expect(dispatchVariantForm(formOf({ intent: "adjust-variant-stock", variantId: "3", delta: "-2" }), 7)).toEqual({ kind: "adjust-stock", input: { variantId: 3, delta: -2 } });
+    expect(dispatchVariantForm(formOf({ intent: "adjust-variant-stock", variantId: "3", delta: "-2", reason: "盤損" }), 7)).toEqual({ kind: "adjust-stock", input: { variantId: 3, delta: -2, reason: "盤損" } });
   });
 
   it.each([

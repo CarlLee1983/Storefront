@@ -97,10 +97,10 @@ describe("dispatchProductForm", () => {
     expect(dispatchProductForm(form({ intent: "feature" }))).toEqual({ kind: "invalid" });
   });
 
-  it("庫存調整的表單解析出商品變體編號與增減量", () => {
-    expect(dispatchProductForm(form({ intent: "adjust-stock", variantId: "3", delta: "-3" }))).toEqual({
+  it("庫存調整的表單解析出商品變體編號、增減量與原因", () => {
+    expect(dispatchProductForm(form({ intent: "adjust-stock", variantId: "3", delta: "-3", reason: "盤損" }))).toEqual({
       kind: "stock",
-      input: { variantId: 3, delta: -3 },
+      input: { variantId: 3, delta: -3, reason: "盤損" },
     });
   });
 
@@ -122,9 +122,9 @@ describe("dispatchProductForm", () => {
 });
 
 describe("stockAdjustFormToInput", () => {
-  it("變體編號與增減量轉成 RPC 輸入，+20 與 -3 都是數字", () => {
-    expect(stockAdjustFormToInput(form({ delta: "+20" }), 3)).toEqual({ variantId: 3, delta: 20 });
-    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ variantId: 3, delta: -3 });
+  it("變體編號、增減量與原因轉成 RPC 輸入，+20 與 -3 都是數字；沒填原因送空字串由 App 拒絕", () => {
+    expect(stockAdjustFormToInput(form({ delta: "+20", reason: "進貨" }), 3)).toEqual({ variantId: 3, delta: 20, reason: "進貨" });
+    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ variantId: 3, delta: -3, reason: "" });
   });
 
   it("增減量留空或不是數字為 NaN，不在 Web 判斷，由 App 回報欄位錯誤", () => {

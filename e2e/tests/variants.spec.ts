@@ -50,8 +50,8 @@ test.beforeAll(async ({ browser }) => {
   await post(admin.request, `/admin/products/${tableId}`, { intent: "create-variant", value1: "180 公分", priceTwd: "15000" });
   variantIds = await variantIdsOf(admin.request, tableId);
   expect(variantIds).toHaveLength(3);
-  await post(admin.request, `/admin/products/${tableId}`, { intent: "adjust-variant-stock", variantId: String(variantIds[1]), delta: "+2" });
-  await post(admin.request, `/admin/products/${tableId}`, { intent: "adjust-variant-stock", variantId: String(variantIds[2]), delta: "+1" });
+  await post(admin.request, `/admin/products/${tableId}`, { intent: "adjust-variant-stock", variantId: String(variantIds[1]), delta: "+2", reason: "E2E 補貨" });
+  await post(admin.request, `/admin/products/${tableId}`, { intent: "adjust-variant-stock", variantId: String(variantIds[2]), delta: "+1", reason: "E2E 補貨" });
 });
 
 test.afterAll(async () => {
@@ -180,6 +180,7 @@ for (const viewport of VIEWPORTS) {
 
       const black = page.locator(".variant-card").filter({ hasText: "黑" });
       await black.getByLabel("黑的庫存增減量").fill("+4");
+      await black.getByLabel("黑的庫存調整原因").fill("E2E 補貨");
       await black.getByRole("button", { name: "調整庫存" }).click();
       await expect(page.locator(".variant-card").filter({ hasText: "黑" })).toContainText("在庫 4，保留 0，可售 4");
       await page.locator(".variant-card").filter({ hasText: "黑" }).getByRole("button", { name: "停賣" }).click();

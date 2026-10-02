@@ -198,6 +198,7 @@ const values = {
                     <input type="hidden" name="intent" value="adjust-variant-stock" />
                     <input type="hidden" name="variantId" value={variant.id} />
                     <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="±增減" aria-label={`${variant.optionValues.join(" / ")}的庫存增減量`} required />
+                    <input name="reason" type="text" maxlength="200" placeholder="原因" aria-label={`${variant.optionValues.join(" / ")}的庫存調整原因`} required />
                     <button type="submit" class="btn-action">調整庫存</button>
                   </form>
                   <form method="post" class="inline">

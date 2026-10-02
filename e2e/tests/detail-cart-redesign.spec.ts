@@ -18,6 +18,7 @@ async function createListedProduct(admin: Page, name: string, priceTwd: number) 
   await assignCategory(admin, name, CATEGORY.name);
   const row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByLabel(`${name}的庫存增減量`).fill("10");
+  await row.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
   await row.getByRole("button", { name: "調整庫存" }).click();
   await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
   await row.getByRole("link", { name: "編輯" }).click();
