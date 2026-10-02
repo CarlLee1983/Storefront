@@ -9,7 +9,11 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL: BASE_URL, trace: "retain-on-failure" },
   projects: [
-    { name: "chromium", testIgnore: ["listing.spec.ts", "sale.spec.ts", "homepage*.spec.ts", "main-flow.spec.ts"], use: { ...devices["Desktop Chrome"] } },
+    // 空店面 spec 斷言「店裡沒有任何上架商品」（首頁不出現精選區與分類方塊、導覽列沒有特價）：serve.ts 每次重建狀態、不預先放商品，
+    // 所以要在任何會上架商品的 spec 之前單獨跑完；chromium 依賴它，其他 project 再經由 chromium 間接排在它之後
+    // 取捨：empty-store 失敗時，下游所有 project 都會被跳過（已接受，換取「最先、狀態乾淨」的保證）
+    { name: "empty-store", testMatch: "empty-store.spec.ts", use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", testIgnore: ["empty-store.spec.ts", "listing.spec.ts", "sale.spec.ts", "homepage*.spec.ts", "main-flow.spec.ts"], dependencies: ["empty-store"], use: { ...devices["Desktop Chrome"] } },
     // 列表 spec 會上架 31 件商品，擠掉首頁第一頁（24 件）：等其他 spec 全跑完才執行，不與它們並行
     { name: "listing", testMatch: "listing.spec.ts", dependencies: ["chromium"], use: { ...devices["Desktop Chrome"] } },
     // 首頁 spec 會標精選、上架商品，擠掉 /products 第一頁：同樣等其他 spec 跑完才執行。

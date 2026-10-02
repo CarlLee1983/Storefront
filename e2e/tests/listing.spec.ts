@@ -106,6 +106,21 @@ test("分類頁：排序、只看有貨、載入更多都在網址上，重新�
   await expect(sortLink(page, "新上架")).toHaveAttribute("aria-current", "true");
 });
 
+test("搜尋結果頁：載入更多連到 page=2，累計顯示全部結果，重新整理仍是 30 件", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/search?q=${encodeURIComponent("列表商品")}`);
+  await expect(cards(page)).toHaveCount(24);
+  await expect(page.getByText("已顯示 24 / 30 件")).toBeVisible();
+  await page.getByRole("link", { name: "載入更多" }).click();
+  await expect(page).toHaveURL(/page=2/);
+  await expect(cards(page)).toHaveCount(30);
+  await expect(page.getByText("已顯示 30 / 30 件")).toBeVisible();
+  await expect(page.getByRole("link", { name: "載入更多" })).toHaveCount(0);
+  await page.reload();
+  await expect(cards(page)).toHaveCount(30);
+  await expect(page.getByText("已顯示 30 / 30 件")).toBeVisible();
+});
+
 test("鍵盤操作：排序連結按 Enter，只看有貨的 checkbox 按 Space", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/categories/${LISTING.slug}`);

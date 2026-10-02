@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { createCategory } from "../harness/admin-categories";
 import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { featureProducts, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
@@ -74,6 +75,56 @@ test("精選卡片可以直接加入購物車，顯示 toast 並更新件數", a
   await card.getByRole("button", { name: "加入購物車" }).click();
   await expect(card.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
   await expect(page.locator("#cart-count")).toHaveText("1");
+});
+
+test("商品卡：封面是正方形，加入購物車是只有圖示的按鈕，但有完整的無障礙名稱", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const card = featuredSection(page).getByRole("listitem").filter({ hasText: ALPHA.name });
+  // 封面：寬高相差不到 1px（版面以 aspect-ratio 撐成方形，不是靠圖片原始比例）
+  const cover = (await card.getByRole("img", { name: `${ALPHA.name}的封面` }).boundingBox())!;
+  expect(Math.abs(cover.width - cover.height)).toBeLessThan(1);
+  // 按鈕：名稱帶商品名、內容是 svg 圖示、畫面上沒有可見文字
+  const add = card.getByRole("button", { name: `加入購物車：${ALPHA.name}` });
+  await expect(add.locator("svg")).toHaveCount(1);
+  expect((await add.innerText()).trim()).toBe("");
+});
+
+// 後台清單的特價欄由 sale.spec.ts 斷言（該列含「特價（原價 NT$ 450）」）；這裡只驗精選欄
+test("後台商品清單：精選欄顯示「精選」，按鈕改為取消精選", async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
+  try {
+    const admin = await context.newPage();
+    await admin.goto("/admin");
+    // 精選欄以表頭位置定位：特價欄對未特價商品也是「—」，不能用文字找
+    const headers = await admin.locator("thead th").allTextContents();
+    const featuredColumn = headers.indexOf("精選");
+    expect(featuredColumn, "後台清單要有「精選」欄").toBeGreaterThanOrEqual(0);
+    const featuredCell = (name: string) => admin.getByRole("row", { name: new RegExp(name) }).locator("td").nth(featuredColumn);
+    await expect(featuredCell(ALPHA.name)).toContainText(/^精選/);
+    await expect(featuredCell(ALPHA.name).getByRole("button", { name: `取消精選：${ALPHA.name}` })).toBeVisible();
+    // 沒標精選的商品是「—」，按鈕是標為精選
+    await expect(featuredCell(FILLER.name)).toContainText(/^—/);
+    await expect(featuredCell(FILLER.name).getByRole("button", { name: `標為精選：${FILLER.name}` })).toBeVisible();
+  } finally { await context.close(); }
+});
+
+test("沒有上架商品的分類不出現在首頁分類方塊與導覽列，其他分類照常出現", async ({ browser, page }) => {
+  const EMPTY = { slug: "e2e-empty-home", name: "E2E空", description: "沒有上架商品的分類" };
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
+  try {
+    const admin = await context.newPage();
+    await createCategory(admin, EMPTY);
+    await expect(admin.getByRole("status")).toHaveText("已建立分類。");
+  } finally { await context.close(); }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await expect(categorySection(page).getByRole("link", { name: new RegExp(HOME.name) })).toBeVisible();
+  await expect(categorySection(page).getByRole("link", { name: new RegExp(`^${EMPTY.name}`) })).toHaveCount(0);
+  const nav = page.getByRole("navigation", { name: "主要導覽" });
+  await expect(nav.getByRole("link", { name: HOME.name })).toBeVisible();
+  await expect(nav.getByRole("link", { name: EMPTY.name, exact: true })).toHaveCount(0);
 });
 
 test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；可用鍵盤切換與暫停", async ({ page }) => {
