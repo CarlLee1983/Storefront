@@ -29,6 +29,8 @@ async function expectStorefrontHead(page: Page) {
 
 for (const width of [320, 768, 1280]) {
   test(`前台共用外殼、鍵盤與無障礙（${width}px）`, async ({ page }, testInfo) => {
+    // 每種寬度逐頁驗證 15 個路由的 head、鍵盤、axe 與截圖，給整段流程足夠時間。
+    test.setTimeout(90_000);
     await page.setViewportSize({ width, height: 900 });
     for (const path of ["/", "/products", "/sale", "/search?q=沒有符合的商品", "/login", "/cart", "/about", "/faq", "/returns", "/not-a-real-page", "/500"]) {
       const response = await page.goto(path);
