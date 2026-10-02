@@ -7,6 +7,8 @@ import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
 import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
+import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
+import { formToRecord } from "../../shared/form-values";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
@@ -21,13 +23,25 @@ if (entry.kind === "redirect") {
 const orderId = parseOrderId(Astro.params.id);
 const cookie = Astro.request.headers.get("cookie") ?? "";
 
-// 取消訂單（POST）：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
+// POST 有兩種：申請取消已付款未交運的數量（intent=request-cancellation），或取消待付款訂單。
+// 取消訂單：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
 // 讓顧客看到最新狀態；進行中的付款處理不了（閘道連不上等）回本頁並帶上原因，訂單維持待付款。找不到訂單則落到下面顯示 404
+let cancellationFailure: ReturnType<typeof describeCancellationFailure> | undefined;
+let submitted: Record<string, string> = {};
 if (orderId !== null && Astro.request.method === "POST") {
-  const cancelled = await env.APP.cancelOrder(cookie, { orderId });
-  if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
-  if (cancelled.ok || !["order_not_found", "invalid_input"].includes(cancelled.reason)) {
-    return Astro.redirect(cancelOrderLocation(orderId, cancelled), 303);
+  const form = await Astro.request.formData();
+  if (form.get("intent") === "request-cancellation") {
+    submitted = formToRecord(form);
+    const result = await env.APP.requestCancellation(cookie, cancellationFormToInput(form, orderId));
+    if (result.ok) return Astro.redirect(`/orders/${orderId}?cancellation=requested`, 303);
+    if (result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+    if (result.reason !== "order_not_found") cancellationFailure = describeCancellationFailure(result);
+  } else {
+    const cancelled = await env.APP.cancelOrder(cookie, { orderId });
+    if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+    if (cancelled.ok || !["order_not_found", "invalid_input"].includes(cancelled.reason)) {
+      return Astro.redirect(cancelOrderLocation(orderId, cancelled), 303);
+    }
   }
 }
 
@@ -43,6 +57,11 @@ const statusNote = order ? customerOrderStatusNote(order.status, order.paymentDe
 const paymentError = paymentErrorMessage(Astro.url.searchParams.get("payment_error"));
 const cancelError = cancelErrorMessage(Astro.url.searchParams.get("cancel_error"));
 const paymentUnconfirmed = Astro.url.searchParams.get("payment") === "unconfirmed";
+const cancellationRequested = Astro.url.searchParams.get("cancellation") === "requested";
+// 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一案
+const requestKey = submitted.requestKey || crypto.randomUUID();
+const canRequestCancellation = (order?.status === "paid" || order?.status === "partially_shipped") && order.lines.some((line) => cancellableQuantity(line) > 0);
+const cancellationFieldErrors = cancellationFailure?.fields.items ?? [];
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -55,6 +74,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {placed && <p role="status">訂單已成立，商品已為你保留，請於付款期限內完成付款。</p>}
         {paymentError && <p class="error" role="alert">{paymentError}</p>}
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
+        {cancellationRequested && <p role="status">已送出取消申請：審核期間這些商品暫停出貨，審核結果會通知你。</p>}
         {paymentUnconfirmed && <p role="status">目前無法確認付款結果，請稍後重新整理訂單頁。</p>}
         {order.status === "paid" && <p role="status">已收到付款，訂單目前為已付款。</p>}
         <div class="order-overview">
@@ -86,6 +106,50 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           <OrderLines lines={order.lines} />
           <OrderFees totalTwd={order.totalTwd} shippingFees={order.shippingFees} lines={order.lines} />
         </section>
+        {
+          (canRequestCancellation || order.cancellations.length > 0) && (
+            <section class="order-detail-section" aria-labelledby="cancellation-title">
+              <h2 id="cancellation-title">取消申請</h2>
+              {cancellationFailure && <p class="error" role="alert">{cancellationFailure.message}{Object.values(cancellationFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+              {canRequestCancellation && (
+                <form method="post" class="cancellation-form" onsubmit="return confirm('確定要申請取消嗎？審核期間這些商品會暫停出貨；已出貨的商品請改走退貨。')">
+                  <input type="hidden" name="intent" value="request-cancellation" />
+                  <input type="hidden" name="requestKey" value={requestKey} />
+                  <fieldset>
+                    <legend>選擇要取消的數量（只能取消尚未出貨的數量；0 或留空表示不取消）</legend>
+                    {order.lines.filter((line) => cancellableQuantity(line) > 0).map((line) => (
+                      <label>
+                        <span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`}・可取消 {cancellableQuantity(line)}</span>
+                        <input type="number" inputmode="numeric" name={`cancel-${line.id}`} min="0" max={cancellableQuantity(line)} step="1" value={submitted[`cancel-${line.id}`] ?? ""} />
+                      </label>
+                    ))}
+                    {cancellationFieldErrors.map((m) => <span class="error">{m}</span>)}
+                  </fieldset>
+                  <label>
+                    申請原因（選填）
+                    <input name="reason" maxlength="200" value={submitted.reason ?? ""} />
+                  </label>
+                  <p class="cancellation-hint">核准後依原實付單價退回商品款；同一類配送商品全部取消時，一併退回該類原運費。</p>
+                  <button type="submit" class="button-secondary">申請取消</button>
+                </form>
+              )}
+              {order.cancellations.length > 0 && (
+                <ul class="cancellation-list" aria-label="取消申請紀錄">
+                  {order.cancellations.map((request) => (
+                    <li>
+                      <p><strong>申請 #{request.id}・{cancellationStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）</p>
+                      <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}</li>)}</ul>
+                      {request.reason && <p>申請原因：{request.reason}</p>}
+                      {request.decisionNote && <p>審核說明：{request.decisionNote}</p>}
+                      <p class="cancellation-note">{customerCancellationNote(request.status)}</p>
+                      {request.refund && <p>退款 NT$ {priceFormat.format(request.refund.amountTwd)}：{customerRefundStatusLabel(request.refund.status)}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        }
         {
           order.payments.length > 0 && (
             <section class="order-detail-section" aria-labelledby="payment-info-title">
@@ -254,6 +318,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     color: var(--color-error);
     border-color: var(--color-error);
   }
+  .cancellation-form { display: grid; gap: var(--space-3); max-width: 32rem; }
+  .cancellation-form fieldset { display: grid; gap: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-4); }
+  .cancellation-form label { display: grid; gap: var(--space-1); }
+  .cancellation-hint, .cancellation-note { margin: 0; font-size: var(--text-sm); color: var(--color-muted); }
+  .cancellation-list { list-style: none; padding: 0; margin: var(--space-4) 0 0; display: grid; gap: var(--space-3); }
+  .cancellation-list > li { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
+  .cancellation-list p { margin: var(--space-1) 0; }
   .back-link-wrap { margin-top: var(--space-8); }
   .button-ghost {
     display: inline-flex;

@@ -2,14 +2,14 @@
 import type { ProductImage } from "@storefront/app/product-images";
 import { DELIVERY_TYPE_LABELS, type DeliveryType } from "@storefront/app/shipping-types";
 import OrderCover from "./OrderCover.astro";
-interface Props { lines: Array<{ productName: string; variantLabel: string; quantity: number; unitPriceTwd: number; deliveryType: DeliveryType; cover: ProductImage | null }> }
+interface Props { lines: Array<{ productName: string; variantLabel: string; quantity: number; unitPriceTwd: number; deliveryType: DeliveryType; cover: ProductImage | null; cancelledQuantity?: number; pendingCancellationQuantity?: number }> }
 const { lines } = Astro.props;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 <ul class="order-lines" aria-label="訂單明細">
   {lines.map(line => <li>
     <OrderCover cover={line.cover} name={line.productName} customer />
-    <div class="description"><strong>{line.productName}</strong>{line.variantLabel && <p class="variant-label">規格：{line.variantLabel}</p>}<p>單價（下單當時）：NT$ {priceFormat.format(line.unitPriceTwd)}<br />數量：{line.quantity}<br />配送：{DELIVERY_TYPE_LABELS[line.deliveryType]}</p></div>
+    <div class="description"><strong>{line.productName}</strong>{line.variantLabel && <p class="variant-label">規格：{line.variantLabel}</p>}<p>單價（下單當時）：NT$ {priceFormat.format(line.unitPriceTwd)}<br />數量：{line.quantity}<br />配送：{DELIVERY_TYPE_LABELS[line.deliveryType]}{(line.cancelledQuantity ?? 0) > 0 && <><br />已取消：{line.cancelledQuantity}</>}{(line.pendingCancellationQuantity ?? 0) > 0 && <><br />取消審核中：{line.pendingCancellationQuantity}（暫停出貨）</>}</p></div>
     <p class="subtotal">小計：<strong>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</strong></p>
   </li>)}
 </ul>
