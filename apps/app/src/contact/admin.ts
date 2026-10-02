@@ -69,7 +69,8 @@ export async function selectMailForAdmin(db: DrizzleD1Database, now: number) {
   const shownAttention = messages.filter((message) => message.needsAttention === 1).length;
   return {
     failDeliveries: control?.failDeliveries === 1,
-    omittedAttention: total - shownAttention,
+    // 兩次查詢之間可能有信送達或新增，筆數只是提示，不得為負
+    omittedAttention: Math.max(0, total - shownAttention),
     messages: messages.map((message) => ({
       ...message,
       needsAttention: message.needsAttention === 1,
