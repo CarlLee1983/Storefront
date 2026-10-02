@@ -89,7 +89,7 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
   .product-detail { display: grid; gap: var(--space-6); align-items: start; }
   .product-information { min-width: 0; }
   .eyebrow { margin: 0 0 var(--space-2); font-size: var(--text-sm); letter-spacing: .12em; }
-  .product-information h1 { margin: 0 0 var(--space-3); font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1.1; }
+  .product-information h1 { margin: 0 0 var(--space-3); font-size: var(--text-display-product); line-height: 1.1; }
   .price { margin: 0 0 var(--space-2); font-size: var(--text-xl); font-weight: 700; }
   .price { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
   .availability { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-muted); }
@@ -98,10 +98,10 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
   .buy-form label { grid-column: 1 / -1; margin: 0; font-size: var(--text-sm); font-weight: 700; }
   .buy-button { min-height: 48px; font-weight: 700; }
   .policy { margin: 0; font-size: var(--text-sm); color: var(--color-muted); }
-  .related { margin-top: var(--space-8); }
-  .related h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); letter-spacing: -.02em; }
+  .related { margin-top: var(--section-gap); }
+  .related h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); }
   @media (min-width: 56.25rem) {
-    .product-detail { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-8); }
+    .product-detail { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--section-gap); }
     .product-information { position: sticky; top: var(--space-4); }
   }
 </style>

@@ -64,7 +64,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     {failure && <p class="error" role="alert">{failure.message}</p>}
     <ul id="checkout-issues" class="error" aria-live="polite"></ul>
     <p id="checkout-issues-actions" hidden>
-      <button type="button" id="apply-price-changes">更新購物車價格</button>
+      <button type="button" class="button-secondary" id="apply-price-changes">更新購物車價格</button>
     </p>
     <p id="checkout-notice" role="status" hidden></p>
     <p id="checkout-storage-error" class="error" role="alert" hidden></p>
@@ -142,6 +142,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
       if (issue.kind !== "price_changed") {
         const remove = document.createElement("button");
         remove.type = "button";
+        remove.className = "button-secondary";
         remove.textContent = "移除";
         remove.addEventListener("click", () => {
           issues = issues.filter((other) => other !== issue);
@@ -232,7 +233,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   #checkout-form button { width: 100%; margin-top: var(--space-4); }
   #checkout-issues:empty { display: none; }
   :global(#checkout-lines .summary-product) { display: flex; align-items: center; gap: var(--space-3); font-weight: 700; }
-  :global(#checkout-lines .cart-cover) { display: grid; flex-shrink: 0; place-items: center; width: 64px; height: 64px; background: var(--color-bg); border-radius: var(--radius-sm); overflow: hidden; }
+  :global(#checkout-lines .cart-cover) { display: grid; flex-shrink: 0; place-items: center; width: var(--product-thumb-size); height: var(--product-thumb-size); background: var(--color-bg); border-radius: var(--radius-sm); overflow: hidden; }
   :global(#checkout-lines .cart-cover img) { width: 100%; height: 100%; object-fit: cover; }
   :global(#checkout-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-muted); text-align: center; }
   thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

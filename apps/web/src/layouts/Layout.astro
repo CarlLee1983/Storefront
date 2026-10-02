@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import "../styles/storefront.css";
 import { env } from "cloudflare:workers";
 import AccountLinks from "../components/AccountLinks.astro";
 import CategoryLinks from "../components/CategoryLinks.astro";
@@ -53,7 +54,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
     <link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-icon.png" />
 
   </head>
-  <body>
+  <body class="storefront-shell">
     <a class="skip-link" href="#main-content">跳到主要內容</a>
     <header class="site-header">
       <a class="brand" href="/">Still Life</a>
