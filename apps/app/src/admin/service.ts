@@ -21,12 +21,13 @@ import { selectOrdersForAdmin } from "../orders/admin-queries";
 import { orderIdInput } from "../orders/input";
 import { selectOrderForAdmin } from "../orders/queries";
 import { dispatchShipment } from "../shipments/dispatch";
+import { recordShipmentEvent } from "../shipments/events";
 import { selectOrderPaymentSummaries } from "../payments/queries";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
+import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
   const db = drizzle(d1);
@@ -286,6 +287,24 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           console.log(JSON.stringify({ event: "shipment_dispatched", orderId: request.orderId, shipmentId: result.data.shipmentId, actor: actor.email, replayed: result.data.replayed }));
           // 信件本體已在交運 batch 內寫好；投遞出錯不影響交運，重送同一批時會補上首次投遞
           await deliverNoticeSafely(db, `shipment:${result.data.shipmentId}`, clock.now());
+        }
+        return result;
+      });
+    },
+
+    /**
+     * 記錄一筆物流回報（模擬物流）：送達、配送失敗、再次配送；進度與實際送達時間由全部回報推導（見 `recordShipmentEvent`）。
+     * 同一事件鍵重送回 `replayed: true` 並補回遺失的通知；批次不存在回 `shipment_not_found`，
+     * 發生時間早於交運或晚於現在回 `event_time_invalid`，同鍵不同內容回 `event_key_conflict`。
+     */
+    recordShipmentEvent(jwt: unknown, input: unknown) {
+      return authorized(jwt, recordShipmentEventInput, input, async (actor, request) => {
+        const result = await recordShipmentEvent(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (result.ok) {
+          console.log(JSON.stringify({ event: "shipment_event_recorded", shipmentId: request.shipmentId, eventKey: request.eventKey, kind: request.kind, actor: actor.email, replayed: result.data.replayed }));
+          // 信件本體已在同一個 batch 內寫好；投遞出錯不影響記錄，同一回報重送時會補上首次投遞
+          await deliverNoticeSafely(db, `shipment_delivered:${request.shipmentId}`, clock.now());
+          await deliverNoticeSafely(db, `shipment_delivery_failed:${request.shipmentId}:${request.eventKey}`, clock.now());
         }
         return result;
       });

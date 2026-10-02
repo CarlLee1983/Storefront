@@ -48,3 +48,28 @@ export function describeShipFailure(result: { reason: string; fields?: Record<st
   };
   return { message: messages[result.reason] ?? "交運失敗，請稍後再試", fields: result.fields ?? {} };
 }
+
+/**
+ * 物流回報表單 → RPC 輸入。發生時間欄位 `occurredAt` 是 `datetime-local`（台北時間）；補寄通知的重送帶原始時間 `occurredAtMs`（epoch 毫秒），
+ * 讓重送內容與原回報完全相同。沒填或格式不對為 NaN（交給 App 回報欄位錯誤）。
+ */
+export function shipmentEventFormToInput(form: FormData) {
+  const exact = toText(form.get("occurredAtMs")).trim();
+  return {
+    shipmentId: toNumber(form.get("shipmentId")),
+    eventKey: toText(form.get("eventKey")),
+    kind: toText(form.get("kind")),
+    occurredAt: exact !== "" ? Number(exact) : (taipeiLocalToEpoch(form.get("occurredAt")) ?? Number.NaN),
+  };
+}
+
+/** 記錄物流回報失敗結果 → 頁面上顯示的訊息；`unauthorized` 由頁面另外處理（403）。 */
+export function describeShipmentEventFailure(result: { reason: string; fields?: Record<string, string[]> }) {
+  const messages: Record<string, string> = {
+    invalid_input: "輸入有誤，請修正後再送出",
+    shipment_not_found: "找不到這個出貨批次",
+    event_time_invalid: "回報發生時間必須在交運時間之後、現在之前",
+    event_key_conflict: "這個回報識別碼已用於內容不同的回報，請重新整理頁面後再填",
+  };
+  return { message: messages[result.reason] ?? "記錄物流回報失敗，請稍後再試", fields: result.fields ?? {} };
+}

@@ -93,7 +93,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)，管理員按明細數量交運多個**出貨批次**（Migration `0021_shipments.sql`；`apps/app/src/shipments/`）。
 
-- 資料：`shipments`（訂單、冪等鍵 `dispatch_key`、物流單號、議定時段 `appointment_start`／`appointment_end`、交運時間、操作人，只增不改）與 `shipment_items`（批次明細：訂單明細、數量）。批次沒有自己的進度欄位，#113（送達與再次配送）、#116（部分取消）、#118（依各批送達日退貨）以批次為單位延伸；配送類型取自明細快照（`order_lines.delivery_type`），不在批次上重複。`orders.tracking_number`、`shipped_at` 已移除，一律讀批次。庫存流水新增 `shipment_id`（每批交運的流水指向該批；0021 之前的舊流水為空）。
+- 資料：`shipments`（訂單、冪等鍵 `dispatch_key`、物流單號、議定時段 `appointment_start`／`appointment_end`、交運時間、操作人，只增不改）與 `shipment_items`（批次明細：訂單明細、數量）。配送進度與送達時間由 0022 加在批次上（見下一節），#116（部分取消）、#118（依各批送達日退貨）同樣以批次為單位延伸；配送類型取自明細快照（`order_lines.delivery_type`），不在批次上重複。`orders.tracking_number`、`shipped_at` 已移除，一律讀批次。庫存流水新增 `shipment_id`（每批交運的流水指向該批；0021 之前的舊流水為空）。
 - 訂單狀態新增「部分出貨」（`partially_shipped`）：至少交運過一批、仍有明細未出完；每筆明細都出完才轉「已出貨」。轉換表見 `orders/transitions.ts`。未交運的數量仍是已付款保留（`catalog/stock.ts`），所以交運只減在庫與保留各一次，可售數量不變；並行的庫存調整不能把可售壓到負數。
 - 交運（`shipOrder`，輸入 `orderId`、`dispatchKey`、`items: [{ orderLineId, quantity }]`、選填 `trackingNumber`、`appointment: { start, end }`）是單一 batch：建立批次的條件是訂單此刻為已付款或部分出貨、同一冪等鍵還沒有批次、且每筆明細「已交運＋本批」不超過明細數量；其後的批次明細、扣在庫、流水、狀態轉換、出貨通知都只在批次存在且還沒扣過庫時執行。並行的兩次交運，先落地者贏，後者回 `shipment_quantity_exceeded`（或訂單已出完時 `order_not_shippable`）；同一冪等鍵重送回原批次（`replayed: true`；內容與原批次不同回 `dispatch_key_conflict`，比對 `shipments.request_hash`），不重複扣庫、不寫第二筆流水、不寄第二封信。取消申請（#116）要與交運競爭同一數量，就用同一個條件（明細數量減已交運數量）在自己的 batch 裡落地，以落地順序為準。
 - 大型配送：批次含大型配送明細時必填議定時段（`appointment_required`），只含一般宅配時不可填（`appointment_not_applicable`）；時段只是記錄（UTC epoch 毫秒，網頁表單以台北時間輸入），不做司機容量排程。分批不追加運費，`orders.total_twd` 與兩類運費快照不變。
@@ -102,6 +102,18 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 畫面：管理員訂單頁「交運一批」表單（每筆未交運明細一個數量欄，預設為全部未交運數量；物流單號；大型配送議定時段）與「出貨批次」清單；顧客訂單頁與我的訂單列出各批的商品數量、物流單號與議定時段。
 - 部署順序：先停止寫入（交運），再 migration、再 App、再 Web；舊 App 不認得 `partially_shipped` 與批次。回復：先停止寫入並先回復 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0021_shipments.down.sql`（會把整單批次搬回舊欄位；有部分出貨的訂單或遷移之後才建立的批次時守門檢查讓回復失敗，須先確認這些資料可以捨棄）。回復順序是 0021 → 0020 → …。
 - 測試見 `apps/app/test/admin-ship.test.ts`（整批與分批交運、超量、冪等重送、並行、預約、通知、可見範圍與權限）、`shipments-migration.test.ts`（補建舊批次、重建 orders、回復與守門檢查）；Web 的表單解析在 `apps/web/src/admin/order-form.test.ts`，手機與桌機的操作由 `e2e/tests/shipments.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
+
+## 追蹤送達與失敗後再次配送
+
+每批各自追蹤配送進度（Migration `0022_shipment_delivery.sql`；`apps/app/src/shipments/events.ts`）。物流是模擬服務：管理員在訂單頁的批次清單「記錄物流回報」（RPC `recordShipmentEvent`，輸入 `shipmentId`、物流給的事件識別 `eventKey`、種類 `delivered`／`delivery_failed`／`redelivery`、發生時間 `occurredAt`）。
+
+- 資料：`shipment_events`（只增不改的對帳紀錄，同一批同一 `event_key` 只有一筆；發生時間 `occurred_at` 與系統記錄時間 `recorded_at` 分開存）；`shipments.delivery_status`（`in_transit`／`delivery_failed`／`delivered`，預設 `in_transit`）與 `shipments.delivered_at`（實際送達時間，逐批記錄，#118 依各批送達日讀它）。進度不接受直接寫入，每次記錄回報都由該批全部事件重新推導，不看到達順序：有送達回報就是已送達（終點），送達時間取發生最早的一筆；否則依發生時間最新的回報，配送失敗 → `delivery_failed`，再次配送或沒有回報 → `in_transit`。所以延遲、重送、亂序都不會偽造送達或打回已確定的進度；已送達後才到的失敗或再次配送回報只留紀錄。
+- 再次配送是同一批原貨再交付：不建新批次、不新增出貨數量、不扣庫、不退款（暫時失敗後送達無退款，設計文件 Q25），也因此不碰 `request_hash` 不變式。物流退回與確認遺失屬 #117／#119，退回入倉檢查屬 #120，不在這裡。
+- 驗證：發生時間須不早於該批交運時間（有的話）、不晚於現在，否則 `event_time_invalid`；批次不存在 `shipment_not_found`；同一事件鍵帶不同內容 `event_key_conflict`。同鍵同內容重送回 `replayed: true`。舊批次（0021 補建）沒有可靠送達日，維持運送中、`delivered_at` 為空，不編造。
+- 通知（沿用 #109 outbox，與回報同一個 batch 寫入）：送達通知 `shipment_delivered`（一批一封，`event_key = shipment_delivered:<批次編號>`）、配送異常通知 `shipment_delivery_failed`（一次失敗回報一封，`event_key = shipment_delivery_failed:<批次編號>:<回報事件鍵>`，該批已送達後才到的失敗回報不寄）；再次配送不寄信。投遞失敗不影響記錄，出現在 `/admin/mail` 待處理，可重送。
+- 查證與補齊：管理員訂單頁每批的「物流回報」列出事件與其通知是否存在（`noticeMessageId`）；通知遺失時按「補齊通知」以同一事件重送，補回信件且不產生第二封。顧客訂單頁與我的訂單顯示各批配送進度與實際送達時間。
+- 回復：先回復 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0022_shipment_delivery.down.sql`（已有任何物流回報或已送達批次時守門檢查讓回復失敗，須先確認可以捨棄）。回復順序是 0022 → 0021 → …。
+- 測試見 `apps/app/test/shipment-delivery.test.ts`（送達、失敗後再次配送、亂序／重送／通知遺失、時間與衝突、權限）、`shipment-delivery-migration.test.ts`；Web 表單解析在 `order-form.test.ts`，手機與桌機操作由 `e2e/tests/shipment-delivery.spec.ts` 驗證。
 
 ## 付款
 

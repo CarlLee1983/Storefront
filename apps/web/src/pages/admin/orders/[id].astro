@@ -1,7 +1,7 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
+import { describeShipFailure, describeShipmentEventFailure, shipFormToInput, shipmentEventFormToInput } from "../../../admin/order-form";
 import { DELIVERY_TYPE_LABELS } from "@storefront/app/shipping-types";
 import OrderFees from "../../../orders/OrderFees.astro";
 import OrderStatus from "../../../orders/OrderStatus.astro";
@@ -17,17 +17,26 @@ export const prerender = false;
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const orderId = parseOrderId(Astro.params.id);
 let failure: ReturnType<typeof describeShipFailure> | undefined;
+let eventFailure: ReturnType<typeof describeShipmentEventFailure> | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
 
-// 交運一批（POST）：成功後 303 回到本頁；訂單已不能交運（例如另一位管理員剛出完）會顯示原因與最新狀態
+// POST 有兩種：記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  submitted = formToRecord(form);
-  const result = await env.APP.shipOrder(jwt, shipFormToInput(form, orderId));
-  if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=shipped`, 303);
-  if (result.reason === "unauthorized") unauthorized = true;
-  else failure = describeShipFailure(result);
+  if (form.get("intent") === "shipment-event") {
+    const result = await env.APP.recordShipmentEvent(jwt, shipmentEventFormToInput(form));
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=event`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else eventFailure = describeShipmentEventFailure(result);
+  } else {
+    // 交運一批：訂單已不能交運（例如另一位管理員剛出完）會顯示原因與最新狀態
+    submitted = formToRecord(form);
+    const result = await env.APP.shipOrder(jwt, shipFormToInput(form, orderId));
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=shipped`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeShipFailure(result);
+  }
 }
 
 const found = orderId === null || unauthorized ? null : await env.APP.getOrderForAdmin(jwt, { orderId });
@@ -37,6 +46,7 @@ const order = found?.ok ? found.data : undefined;
 const view: "forbidden" | "not_found" | "ok" = Astro.response.status === 403 ? "forbidden" : order ? "ok" : "not_found";
 if (view === "not_found") Astro.response.status = 404;
 const shipped = Astro.url.searchParams.get("saved") === "shipped";
+const eventSaved = Astro.url.searchParams.get("saved") === "event";
 const priceFormat = new Intl.NumberFormat("zh-TW");
 // 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一批
 const dispatchKey = submitted.dispatchKey || crypto.randomUUID();
@@ -53,6 +63,8 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
     ) : (
       <>
         {shipped && <p role="status">已記錄這一批出貨。</p>}
+        {eventSaved && <p role="status">已記錄物流回報。</p>}
+        {eventFailure && <p class="error" role="alert">{eventFailure.message}{Object.values(eventFailure.fields).flat().map((m) => ` ${m}`)}</p>}
         <div class="admin-card-section">
           <h2>訂單狀態與基本資訊</h2>
           <div class="admin-form-grid">
@@ -105,7 +117,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           {!canShip && failure && <p class="error" role="alert">{failure.message}</p>}
         </div>
         <h2>出貨批次</h2>
-        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} />}
+        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>配送類型</th><th>小計</th></tr>

@@ -333,6 +333,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   shipOrder(jwt: string, input: unknown) {
     return this.#admin().shipOrder(jwt, input);
   }
+
+  recordShipmentEvent(jwt: string, input: unknown) {
+    return this.#admin().recordShipmentEvent(jwt, input);
+  }
 }
 
 export default AppEntrypoint;

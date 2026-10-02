@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeShipFailure, parseStatusFilter, shipFormToInput } from "./order-form";
+import { describeShipFailure, describeShipmentEventFailure, parseStatusFilter, shipFormToInput, shipmentEventFormToInput } from "./order-form";
 
 describe("parseStatusFilter", () => {
   it.each(["pending_payment", "paid", "partially_shipped", "shipped", "expired", "cancelled"])("%s 是有效的篩選", (status) => {
@@ -76,5 +76,43 @@ describe("describeShipFailure", () => {
       fields: { trackingNumber: ["物流單號不可超過 100 個字"] },
     });
     expect(describeShipFailure({ reason: "boom" })).toEqual({ message: "交運失敗，請稍後再試", fields: {} });
+  });
+});
+
+describe("shipmentEventFormToInput", () => {
+  it("帶入批次編號、回報識別碼與種類；發生時間以台北時間解讀", () => {
+    const form = new FormData();
+    form.set("shipmentId", "5");
+    form.set("eventKey", "evt-1");
+    form.set("kind", "delivered");
+    form.set("occurredAt", "2026-10-10T09:30");
+
+    expect(shipmentEventFormToInput(form)).toEqual({ shipmentId: 5, eventKey: "evt-1", kind: "delivered", occurredAt: Date.UTC(2026, 9, 10, 1, 30) });
+  });
+
+  it("補寄通知的重送帶原始發生時間（epoch 毫秒），優先於日期時間欄位", () => {
+    const form = new FormData();
+    form.set("shipmentId", "5");
+    form.set("eventKey", "evt-1");
+    form.set("kind", "delivery_failed");
+    form.set("occurredAtMs", "1791000000000");
+
+    expect(shipmentEventFormToInput(form).occurredAt).toBe(1_791_000_000_000);
+  });
+
+  it("沒填或格式不對的發生時間送 NaN，由 App 回報欄位錯誤", () => {
+    expect(shipmentEventFormToInput(new FormData()).occurredAt).toBeNaN();
+    const bad = new FormData();
+    bad.set("occurredAt", "yesterday");
+    expect(shipmentEventFormToInput(bad).occurredAt).toBeNaN();
+  });
+});
+
+describe("describeShipmentEventFailure", () => {
+  it("找不到批次、時間不合理、鍵衝突各有專屬訊息", () => {
+    expect(describeShipmentEventFailure({ reason: "shipment_not_found" }).message).toContain("找不到");
+    expect(describeShipmentEventFailure({ reason: "event_time_invalid" }).message).toContain("交運");
+    expect(describeShipmentEventFailure({ reason: "event_key_conflict" }).message).toContain("重新整理");
+    expect(describeShipmentEventFailure({ reason: "boom" })).toEqual({ message: "記錄物流回報失敗，請稍後再試", fields: {} });
   });
 });

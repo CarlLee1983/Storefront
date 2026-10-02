@@ -54,6 +54,10 @@ export function insertPaymentResultNotice(gatewayPaymentId: string): SQL {
   `;
 }
 
+/** 批次的商品與數量一段文字（以 `shipments` 為外層列）。 */
+const shipmentItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || item.quantity, '、')
+  FROM shipment_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.shipment_id = shipments.id)`;
+
 /**
  * 出貨通知：一個出貨批次一封，事件鍵 `shipment:<批次編號>`，同一批的重送（同一冪等鍵）只會有一封。
  * 信件描述這一批的商品數量、物流單號與議定時段（台灣時間）；批次不存在（被擋下）時不寫。
@@ -63,8 +67,7 @@ export function insertShipmentNotice(orderId: number, dispatchKey: string): SQL 
     INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
     SELECT orders.customer_id, 'shipment_dispatched', '訂單 #' || orders.id || ' 有一批商品已出貨',
       '訂單 #' || orders.id || ' 有一批商品已交運：' ||
-      (SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || item.quantity, '、')
-         FROM shipment_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.shipment_id = shipments.id) || '。' ||
+      ${shipmentItemsText} || '。' ||
       CASE WHEN shipments.tracking_number IS NOT NULL THEN '物流單號：' || shipments.tracking_number || '。' ELSE '' END ||
       CASE WHEN shipments.appointment_start IS NOT NULL
         THEN '議定配送時段：' || strftime('%Y-%m-%d %H:%M', shipments.appointment_start / 1000, 'unixepoch', '+8 hours') || ' 至 ' || strftime('%Y-%m-%d %H:%M', shipments.appointment_end / 1000, 'unixepoch', '+8 hours') || '（台灣時間）。'
@@ -73,6 +76,42 @@ export function insertShipmentNotice(orderId: number, dispatchKey: string): SQL 
       'shipment:' || shipments.id, ${effectiveNow}
     FROM shipments JOIN orders ON orders.id = shipments.order_id
     WHERE shipments.order_id = ${orderId} AND shipments.dispatch_key = ${dispatchKey} AND shipments.request_hash IS NOT NULL
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/**
+ * 送達通知：一個出貨批次一封，事件鍵 `shipment_delivered:<批次編號>`；只在該批目前已送達時寫，
+ * 多筆送達回報、重送都只會有一封（信遺失時同一事件重送會補回）。信件描述這一批的商品與實際送達時間（台灣時間）。
+ */
+export function insertDeliveredNotice(shipmentId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'shipment_delivered', '訂單 #' || orders.id || ' 有一批商品已送達',
+      '訂單 #' || orders.id || ' 有一批商品已送達：' || ${shipmentItemsText} || '。' ||
+      '送達時間：' || strftime('%Y-%m-%d %H:%M', shipments.delivered_at / 1000, 'unixepoch', '+8 hours') || '（台灣時間）。' ||
+      '各批出貨進度請至訂單頁查看。',
+      'shipment_delivered:' || shipments.id, ${effectiveNow}
+    FROM shipments JOIN orders ON orders.id = shipments.order_id
+    WHERE shipments.id = ${shipmentId} AND shipments.delivery_status = 'delivered'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/**
+ * 配送異常通知：一次配送失敗回報一封，事件鍵 `shipment_delivery_failed:<批次編號>:<回報事件鍵>`。
+ * 回報存在且是配送失敗、而且該批尚未送達才寫（已送達後才到的失敗回報只留紀錄，不通知顧客）。
+ * 信件說明物流仍持有原貨、會再次配送，顧客不需要重新下單。
+ */
+export function insertDeliveryFailedNotice(shipmentId: number, eventKey: string): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'shipment_delivery_failed', '訂單 #' || orders.id || ' 有一批商品配送未成功',
+      '訂單 #' || orders.id || ' 有一批商品這次配送未成功：' || ${shipmentItemsText} || '。' ||
+      '物流仍持有這批商品，會再次安排配送，你不需要重新下單；各批出貨進度請至訂單頁查看。',
+      'shipment_delivery_failed:' || shipments.id || ':' || event.event_key, ${effectiveNow}
+    FROM shipment_events event JOIN shipments ON shipments.id = event.shipment_id JOIN orders ON orders.id = shipments.order_id
+    WHERE event.shipment_id = ${shipmentId} AND event.event_key = ${eventKey} AND event.kind = 'delivery_failed' AND shipments.delivery_status <> 'delivered'
     ON CONFLICT (event_key) DO NOTHING
   `;
 }

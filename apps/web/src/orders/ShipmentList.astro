@@ -1,18 +1,23 @@
 ---
 import { DELIVERY_TYPE_LABELS, type DeliveryType } from "@storefront/app/shipping-types";
-import { appointmentSummary, customerShipmentSummary, shipmentSummary } from "./labels";
+import { appointmentSummary, customerShipmentSummary, deliveryStatusLabel, formatDateTime, shipmentEventKindLabel, shipmentSummary } from "./labels";
 interface Props {
   shipments: Array<{
     id: number;
     trackingNumber: string | null;
     shippedAt: number | null;
     appointment: { start: number; end: number } | null;
+    deliveryStatus: string;
+    deliveredAt: number | null;
+    events: Array<{ id: number; eventKey: string; kind: string; occurredAt: number; noticeMessageId: number | null }>;
     items: Array<{ productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }>;
   }>;
   /** 顧客頁用較口語的物流單號說明；後台顯示「（未附）」。 */
   customer?: boolean;
+  /** 後台：列出物流回報與通知是否存在，並提供記錄回報（含補寄通知）的表單；表單 POST 回目前頁面。 */
+  admin?: boolean;
 }
-const { shipments, customer = false } = Astro.props;
+const { shipments, customer = false, admin = false } = Astro.props;
 ---
 {shipments.length > 0 && <ol class="shipment-list" aria-label="出貨批次">
   {shipments.map((shipment, index) => <li>
@@ -22,11 +27,52 @@ const { shipments, customer = false } = Astro.props;
     </ul>
     <p>{customer ? customerShipmentSummary(shipment.shippedAt, shipment.trackingNumber) : shipmentSummary(shipment.shippedAt, shipment.trackingNumber)}</p>
     {shipment.appointment && <p>{appointmentSummary(shipment.appointment)}</p>}
+    <p class="shipment-progress"><strong>配送進度：</strong>{deliveryStatusLabel(shipment.deliveryStatus)}{shipment.deliveredAt !== null && `（實際送達：${formatDateTime(shipment.deliveredAt)}）`}</p>
+    {admin && <details class="shipment-events" open={shipment.deliveryStatus === "delivery_failed"}>
+      <summary>物流回報（{shipment.events.length}）</summary>
+      {shipment.events.length > 0 && <ul>
+        {shipment.events.map((event) => <li>
+          <span>{shipmentEventKindLabel(event.kind)}・發生於 {formatDateTime(event.occurredAt)}・識別碼 {event.eventKey}</span>
+          {event.kind === "redelivery"
+            ? <span>（不寄信）</span>
+            : event.noticeMessageId === null
+              ? <strong class="error"> 通知缺漏
+                <form method="post" class="shipment-replay">
+                  <input type="hidden" name="intent" value="shipment-event" />
+                  <input type="hidden" name="shipmentId" value={shipment.id} />
+                  <input type="hidden" name="eventKey" value={event.eventKey} />
+                  <input type="hidden" name="kind" value={event.kind} />
+                  <input type="hidden" name="occurredAtMs" value={event.occurredAt} />
+                  <button type="submit">補齊通知</button>
+                </form></strong>
+              : <span> 通知已建立（<a href="/admin/mail">信件管理</a>可查投遞與重送）</span>}
+        </li>)}
+      </ul>}
+      <form method="post" class="shipment-event-form">
+        <input type="hidden" name="intent" value="shipment-event" />
+        <input type="hidden" name="shipmentId" value={shipment.id} />
+        <input type="hidden" name="eventKey" value={crypto.randomUUID()} />
+        <label>回報種類
+          <select name="kind" required>
+            <option value="delivered">送達</option>
+            <option value="delivery_failed">配送失敗</option>
+            <option value="redelivery">再次配送</option>
+          </select>
+        </label>
+        <label>回報發生時間（台北時間）<input type="datetime-local" name="occurredAt" required /></label>
+        <button type="submit" class="button-primary">記錄物流回報</button>
+      </form>
+    </details>}
   </li>)}
 </ol>}
 <style>
   .shipment-list { list-style: none; padding: 0; margin-block: var(--space-4); display: grid; gap: var(--space-3); }
   .shipment-list > li { padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-xs); overflow-wrap: anywhere; }
   .shipment-list p { margin: var(--space-1) 0; }
+  .shipment-events { margin-top: var(--space-2); }
+  .shipment-events ul { padding-left: var(--space-5); margin: var(--space-2) 0; }
+  .shipment-events li { overflow-wrap: anywhere; }
+  .shipment-event-form { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+  .shipment-replay { display: inline; }
   .shipment-items { padding-left: var(--space-5); margin: var(--space-1) 0; }
 </style>

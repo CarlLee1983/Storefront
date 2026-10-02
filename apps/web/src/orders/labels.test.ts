@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appointmentSummary, formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
+import { appointmentSummary, deliveryStatusLabel, formatDateTime, shipmentEventKindLabel, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
 import { customerOrderStatusLabel, customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary } from "./labels";
 
 describe("顧客訂單與付款文案", () => {
@@ -125,5 +125,17 @@ describe("shipmentSummary", () => {
 
   it("沒有出貨時間（不應發生）：只顯示物流單號，不壞掉", () => {
     expect(shipmentSummary(null, null)).toBe("物流單號：（未附）");
+  });
+});
+
+describe("批次配送進度文案", () => {
+  it("已知進度與回報種類有專屬名稱，未知及 prototype 代碼不顯示原始值", () => {
+    expect(deliveryStatusLabel("delivered")).toBe("已送達");
+    expect(deliveryStatusLabel("delivery_failed")).toContain("再次配送");
+    expect(shipmentEventKindLabel("redelivery")).toBe("再次配送");
+    for (const code of ["future", "__proto__", "constructor"]) {
+      expect(deliveryStatusLabel(code)).toBe("進度未知");
+      expect(shipmentEventKindLabel(code)).toBe("回報");
+    }
   });
 });

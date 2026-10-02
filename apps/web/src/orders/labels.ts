@@ -120,6 +120,27 @@ export function shipmentSummary(shippedAt: number | null, trackingNumber: string
   return `${time}物流單號：${trackingNumber ?? "（未附）"}`;
 }
 
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  in_transit: "運送中",
+  delivery_failed: "配送未成功，等待再次配送",
+  delivered: "已送達",
+};
+
+/** 批次配送進度的顯示名稱；不認得的狀態不顯示原始代碼。 */
+export function deliveryStatusLabel(status: string): string {
+  return Object.hasOwn(DELIVERY_STATUS_LABELS, status) ? DELIVERY_STATUS_LABELS[status]! : "進度未知";
+}
+
+const SHIPMENT_EVENT_KIND_LABELS: Record<string, string> = {
+  delivered: "送達",
+  delivery_failed: "配送失敗",
+  redelivery: "再次配送",
+};
+
+export function shipmentEventKindLabel(kind: string): string {
+  return Object.hasOwn(SHIPMENT_EVENT_KIND_LABELS, kind) ? SHIPMENT_EVENT_KIND_LABELS[kind]! : "回報";
+}
+
 /** 大型配送議定的時段一行文字（台北時間）。 */
 export function appointmentSummary(appointment: { start: number; end: number }): string {
   return `議定配送時段：${formatDateTime(appointment.start)} 至 ${formatDateTime(appointment.end)}（台北時間）`;

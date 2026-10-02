@@ -2,6 +2,7 @@ import { z } from "zod";
 import { categoryId } from "../categories/input";
 import { MAX_LINE_QUANTITY, MAX_ORDER_LINES, orderIdInput } from "../orders/input";
 import { ORDER_STATUSES } from "../orders/schema";
+import { SHIPMENT_EVENT_KINDS } from "../shipments/schema";
 import { wholeNumber } from "../shared/input";
 import { DELIVERY_TYPES } from "../shipping/types";
 
@@ -164,6 +165,20 @@ const appointment = z
   .transform((value) => value ?? null);
 
 export const shipOrderInput = z.object({ orderId: orderIdInput.shape.orderId, dispatchKey, items: dispatchItems, trackingNumber, appointment });
+
+/** 物流給的事件識別，限制同一次提交的冪等鍵一樣的字元與長度。 */
+const shipmentEventKey = z
+  .string({ error: "回報識別碼必須是文字" })
+  .regex(/^[A-Za-z0-9_-]+$/, "回報識別碼只能包含英數字、底線與連字號")
+  .max(MAX_DISPATCH_KEY_LENGTH, `回報識別碼不可超過 ${MAX_DISPATCH_KEY_LENGTH} 個字`);
+
+/** 記錄一筆物流回報；發生時間須在交運之後、現在之前，由寫入端的條件保證。 */
+export const recordShipmentEventInput = z.object({
+  shipmentId: wholeNumber("批次編號").positive("批次編號無效"),
+  eventKey: shipmentEventKey,
+  kind: z.enum(SHIPMENT_EVENT_KINDS, { error: "回報種類無效" }),
+  occurredAt: wholeNumber("回報發生時間").positive("回報發生時間無效"),
+});
 
 export const listOrdersInput = z.object({ status: z.enum(ORDER_STATUSES, { error: "訂單狀態無效" }).optional() });
 
