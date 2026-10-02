@@ -2,8 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
-import { orderPlacedNotice } from "../contact/notices";
-import { sendNoticeSafely } from "../contact/notify";
+import { deliverNoticeSafely } from "../contact/notify";
 import { selectVerifiedEmail } from "../contact/queries";
 import { selectPaymentSummaries } from "../payments/queries";
 import type { InvalidatePaymentsRefusal } from "../payments/shared";
@@ -56,8 +55,8 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
             return fail("idempotency_key_reused");
           }
           if (created) console.log(JSON.stringify({ event: "order_placed", orderId: order.id, lineCount: order.lines.length }));
-          // 冪等重送也會呼叫：事件鍵是訂單編號，已有信就不重複，上一次遺失的通知會在這裡補上
-          await sendNoticeSafely(db, orderPlacedNotice(customerId, order), clock.now());
+          // 冪等重送也會呼叫：信件本體在下單 batch 內已寫好，這裡只投遞：已有投遞就不重複，上一次投遞階段出錯缺的首次投遞會在這裡補上
+          await deliverNoticeSafely(db, `order_placed:${order.id}`, clock.now());
           return ok({
             orderId: order.id,
             status: order.status,

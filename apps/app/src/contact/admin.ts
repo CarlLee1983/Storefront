@@ -9,24 +9,34 @@ import { contactVerifications, mailControls, mailDeliveries, mailMessages } from
 
 /** 管理端清單只看最新這麼多封信。 */
 const ADMIN_MAIL_LIMIT = 200;
+/** 另外列出的待辦信上限（最新的優先）；更舊的只顯示筆數，不讓清單無限長。 */
+const ADMIN_ATTENTION_LIMIT = 500;
+
+/**
+ * 待辦的條件（以資料表別名 `m` 引用信件）：還沒有任何一次送達、而且還能處理的信
+ * （已被取代或過期的驗證信重送不了，不算待辦）。
+ */
+const attentionOf = (now: number) => sql`(
+  NOT EXISTS (SELECT 1 FROM mail_deliveries d WHERE d.message_id = m.id AND d.status = 'delivered')
+  AND (m.verification_id IS NULL OR EXISTS (
+    SELECT 1 FROM contact_verifications v
+    WHERE v.id = m.verification_id AND v.verified_at IS NULL AND v.superseded_at IS NULL AND v.expires_at > ${now}
+  ))
+)`;
 
 /**
  * 管理員看的投遞結果：每封信的種類、顧客、每次投遞的實際收件地址、結果與處理人。
  * 刻意不選信件內文與驗證憑證：驗證連結不公開，管理員只能看結果與操作演練控制。
- * `needsAttention` 是待辦：還沒有任何一次送達、而且還能處理的信（已被取代或過期的驗證信重送不了，不算待辦）。
- * 超過最新 200 封的舊信只要還是待辦就仍會列出，不會因為被新信擠出清單而沒人處理。
+ * `needsAttention` 是待辦（見 `attentionOf`）。超過最新 200 封的舊信只要還是待辦就仍會列出（最多再 500 封，
+ * 更舊的待辦以 `omittedAttention` 回報筆數），不會因為被新信擠出清單而沒人處理。
  */
 export async function selectMailForAdmin(db: DrizzleD1Database, now: number) {
-  const needsAttention = sql<number>`(
-    NOT EXISTS (SELECT 1 FROM mail_deliveries d WHERE d.message_id = ${mailMessages.id} AND d.status = 'delivered')
-    AND (${mailMessages.verificationId} IS NULL OR EXISTS (
-      SELECT 1 FROM contact_verifications v
-      WHERE v.id = ${mailMessages.verificationId} AND v.verified_at IS NULL AND v.superseded_at IS NULL AND v.expires_at > ${now}
-    ))
-  )`;
+  const attention = attentionOf(now);
+  const needsAttention = sql<number>`(SELECT ${attention} FROM mail_messages m WHERE m.id = ${mailMessages.id})`;
   const withinLatest = sql`${mailMessages.id} >= COALESCE((SELECT min(id) FROM (SELECT id FROM mail_messages ORDER BY id DESC LIMIT ${ADMIN_MAIL_LIMIT})), 0)`;
+  const withinAttentionLimit = sql`${needsAttention} = 1 AND ${mailMessages.id} >= COALESCE((SELECT min(id) FROM (SELECT m.id FROM mail_messages m WHERE ${attention} ORDER BY m.id DESC LIMIT ${ADMIN_ATTENTION_LIMIT})), 0)`;
   const [control] = await db.select({ failDeliveries: mailControls.failDeliveries }).from(mailControls).where(eq(mailControls.id, 1));
-  const visible = or(withinLatest, sql`${needsAttention} = 1`);
+  const visible = or(withinLatest, withinAttentionLimit);
   const messages = await db
     .select({
       id: mailMessages.id,
@@ -55,8 +65,11 @@ export async function selectMailForAdmin(db: DrizzleD1Database, now: number) {
     .innerJoin(mailMessages, eq(mailMessages.id, mailDeliveries.messageId))
     .where(visible)
     .orderBy(mailDeliveries.id);
+  const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)` }).from(sql`mail_messages m`).where(attention);
+  const shownAttention = messages.filter((message) => message.needsAttention === 1).length;
   return {
     failDeliveries: control?.failDeliveries === 1,
+    omittedAttention: total - shownAttention,
     messages: messages.map((message) => ({
       ...message,
       needsAttention: message.needsAttention === 1,

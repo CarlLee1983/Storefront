@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { insertOrderPlacedNotice } from "../contact/notices";
 import { currentCover } from "../images/cover-query";
 import type { ProductImage } from "../product-images";
 import { user } from "../auth/schema";
@@ -38,6 +39,8 @@ export interface CheckoutRequest extends CheckoutInput {
  *
  * 冪等鍵重送但內容不同：第 1 句 DO NOTHING、第 2 句因「已有明細」不寫，整批不動既有訂單；
  * 指紋 `request_hash` 在第 1 句隨訂單一起寫入、之後不變，呼叫端讀回訂單時比對，不是先查再寫。
+ *
+ * 第 4 句把下單通知的信件寫進模擬信箱（`contact/notices.ts`），與訂單同成同敗；投遞在 batch 之外，失敗不影響訂單。
  *
  * 成敗看第 2 句的 `meta.changes`（> 0 = 這次呼叫成立了訂單）；= 0 時可能是冪等重送，也可能是被拒，
  * 由呼叫端再讀一次區分。時間用高水位的有效時間（Holdfast ADR 0011，
@@ -83,6 +86,8 @@ export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutReq
       WHERE ${ownOrder}
         AND NOT EXISTS (SELECT 1 FROM order_lines existing WHERE existing.order_id = orders.id)
     `,
+    // 4. 下單通知的信件本體與訂單同一個 batch（outbox）：訂單成立信就存在；重送時事件鍵已有信就不動
+    insertOrderPlacedNotice(ownOrder),
   ]);
   return { created: insertedLines!.meta.changes > 0 };
 }

@@ -6,6 +6,7 @@ import { clock } from "../shared/schema";
 import { orders, type OrderStatus } from "../orders/schema";
 import { everyLineReclaimableSql, lateSuccessStatusSql, payableStatusSql } from "./payable";
 import { paymentNeedsAttentionSql } from "./attention";
+import { insertPaymentResultNotice } from "../contact/notices";
 import { payments, type PaymentStatus, type RefundReason } from "./schema";
 import type { PaymentEvent } from "./shared";
 
@@ -107,23 +108,6 @@ export async function selectPaymentByGatewayId(db: DrizzleD1Database, gatewayPay
   return row;
 }
 
-/** 付款結果通知需要的事實：付款的顧客、金額、目前狀態，以及訂單是不是由這筆付款轉為已付款。 */
-export async function selectPaymentNoticeFacts(db: DrizzleD1Database, gatewayPaymentId: string) {
-  const [row] = await db
-    .select({
-      id: payments.id,
-      customerId: orders.customerId,
-      orderId: payments.orderId,
-      amountTwd: payments.amountTwd,
-      status: payments.status,
-      settledOrder: sql<number>`${orders.paidByPaymentId} = ${payments.id}`,
-    })
-    .from(payments)
-    .innerJoin(orders, eq(orders.id, payments.orderId))
-    .where(eq(payments.gatewayPaymentId, gatewayPaymentId));
-  return row && { ...row, settledOrder: row.settledOrder === 1 };
-}
-
 /** 付款目前的狀態與所屬訂單的狀態，兩者都是讀取當下的值。 */
 export async function selectPaymentAndOrderStatus(
   db: DrizzleD1Database,
@@ -203,11 +187,13 @@ export async function applyPaymentEvent(
     UPDATE payments SET status = ${outcome}
     WHERE gateway_payment_id = ${gatewayPaymentId} AND status = 'pending' AND ${won}
   `);
+  // 通知的信件本體與付款結果同一個 batch（outbox）：付款有了結果信就存在，事件重送時事件鍵已有信就不動
+  statements.push(insertPaymentResultNotice(gatewayPaymentId));
   // 5. 讀回 batch 當下（前面各句之後、同一個交易內）的訂單狀態：退款原因依它決定，不在 batch 之後另讀（之後訂單可能已被別的呼叫轉走）
   statements.push(sql`SELECT status FROM orders WHERE id = ${orderId}`);
 
   const results = await batchAtEffectiveNow(d1, now, statements);
-  const paymentSettled = results[results.length - 2]!.meta.changes > 0;
+  const paymentSettled = results[results.length - 3]!.meta.changes > 0;
   const orderSettled = outcome === "succeeded" && results[1]!.meta.changes > 0;
   const orderStatus = (results[results.length - 1]!.results[0] as { status: OrderStatus }).status;
   return { paymentSettled, orderSettled, orderStatus };

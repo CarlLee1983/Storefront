@@ -53,9 +53,10 @@ const pendingCount = mail?.ok ? mail.data.messages.filter((message) => message.n
             <input type="hidden" name="enabled" value={mail.data.failDeliveries ? "0" : "1"} />
             <button type="submit">{mail.data.failDeliveries ? "關閉投遞失敗" : "開啟投遞失敗"}</button>
           </form>
-          <p>管理端只顯示投遞結果與實際收件地址；信件內文與驗證連結不公開。顯示最新 200 封信，尚未送達且還能處理的信不受此限。</p>
+          <p>管理端只顯示投遞結果與實際收件地址；信件內文與驗證連結不公開。顯示最新 200 封信，尚未送達且還能處理的信不受此限（最多再列 500 封）。</p>
         </div>
         {pendingCount > 0 && <p><strong>待處理 {pendingCount} 封：</strong>下列標示「待處理」的信尚未送達顧客，請重送；重送會寄到顧客目前已驗證的聯絡 email，並記下處理人。</p>}
+        {mail.data.omittedAttention > 0 && <p class="error" role="alert">另有 {mail.data.omittedAttention} 封更舊的待處理信件未列出，請先處理上方的待辦。</p>}
         {mail.data.messages.length === 0 && <p>還沒有信件。</p>}
         {mail.data.messages.length > 0 && (
           <div class="table-scroll" tabindex="0" role="region" aria-label="信件投遞紀錄"><table>
