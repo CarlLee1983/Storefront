@@ -120,6 +120,13 @@
       "when": 1790958534436,
       "tag": "0016_contact_mailbox",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1790960907424,
+      "tag": "0017_address_book",
+      "breakpoints": true
     }
   ]
 }

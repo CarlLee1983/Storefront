@@ -34,7 +34,7 @@ const requiredText = (label: string, max: number) =>
     .max(max, `${label}不可超過 ${max} 個字`);
 
 /** 收件資訊（Shipping Info）；欄位錯誤都歸在 `shippingInfo` 底下，訊息自帶欄位名稱。 */
-const shippingInfo = z.object({
+export const shippingInfo = z.object({
   name: requiredText("收件人姓名", MAX_NAME_LENGTH),
   phone: requiredText("收件人電話", MAX_PHONE_LENGTH),
   address: requiredText("收件地址", MAX_ADDRESS_LENGTH),

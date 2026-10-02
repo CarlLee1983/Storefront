@@ -44,7 +44,14 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 演練控制：管理員可開啟「投遞失敗」，之後每次投遞（含重送）都失敗，直到關閉；狀態存在 `mail_controls`（沒有這一列等於正常）。新增通知種類只需在 `apps/app/src/contact/mail.ts` 的 `MAIL_KINDS` 加值並寫入 `mail_messages`／`mail_deliveries`，資料表不需改動。
 - 部署順序沿用先 migration、再 App、再 Web。0016 只新增資料表，舊 App 與舊 Web 不受影響；但新 App 搭配舊 Web 時，舊結帳頁遇到 `contact_email_unverified` 只會顯示通用的結帳失敗訊息，應壓短窗口。上線後尚未驗證聯絡 email 的既有顧客（含已有訂單者）下次結帳前都須先驗證。
 - 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0016_contact_mailbox.down.sql`；已有驗證請求、信件或投遞紀錄時守門檢查讓回復失敗（顧客已驗證的聯絡 email 會隨之消失），須先確認這些資料可以捨棄。回復前須一併回復會呼叫這些 RPC 的 Web 與 App，以及 E2E 的會員種子資料。測試見 `apps/app/test/contact-email.test.ts`、`admin-mail.test.ts`、`checkout-contact.test.ts`、`contact-mailbox-migration.test.ts`；手機與桌機的操作（含顧客隔離與管理員控制）由 `e2e/tests/contact-mailbox.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。E2E 與測試用的會員需自行安排一筆已驗證的聯絡 email 才能結帳（`e2e/harness/serve.ts` 的種子會員已含；`apps/app/test/customers.ts` 的 `signInCustomer` 預設寫入）。
-- 尚未涵蓋（後續票）：地址簿，以及下單、付款等交易通知（信箱與投遞紀錄已可沿用）。
+- 尚未涵蓋（後續票）：下單、付款等交易通知（信箱與投遞紀錄已可沿用）。
+
+## 地址簿
+
+顧客在 `/account/addresses` 保存、修改、刪除自己的收件資訊（姓名、電話、地址，欄位規則同結帳；每人上限 10 筆），結帳頁（`/checkout`）的「使用地址簿」下拉選單把選中的內容帶入收件欄位，送出前仍可修改。訂單的收件資訊是送出當下表單內容的快照（`orders.shipping_*`），不引用地址簿，之後修改或刪除地址都不影響既有訂單。地址簿 RPC（`listMyAddresses`、`addAddress`、`updateAddress`、`deleteAddress`）一律由 cookie 換顧客身分並以該顧客為條件，別人的地址編號與不存在的編號同樣回 `address_not_found`；未登入回 `unauthorized`。資料在 Migration `0017_address_book.sql`（`customer_addresses`），只新增資料表，部署順序沿用先 migration、再 App、再 Web，舊 App 與舊 Web 不受影響。
+
+- 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0017_address_book.down.sql`；表內已有地址時守門檢查讓回復失敗（顧客保存的地址會消失，訂單上的快照不受影響），須先確認可以捨棄。回復前須一併回復呼叫這些 RPC 的 Web 與 App。
+- 測試見 `apps/app/test/address-book.test.ts`、`address-book-migration.test.ts`；手機與桌機的操作（含顧客隔離、結帳選用與舊單不變）由 `e2e/tests/address-book.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
 
 ## 付款
 

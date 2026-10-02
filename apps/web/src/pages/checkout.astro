@@ -24,6 +24,10 @@ if (Astro.request.method === "GET") {
   if (!contact.data.verifiedEmail) return Astro.redirect(CHECKOUT_CONTACT_PATH, 303);
 }
 
+// 地址簿只用來帶入收件資訊；訂單保存的是送出當下表單上的內容（快照），不引用地址簿
+const addressBook = await env.APP.listMyAddresses(Astro.request.headers.get("cookie") ?? "");
+const savedAddresses = addressBook.ok ? addressBook.data : [];
+
 let failure: CheckoutFailure | undefined;
 let placedOrderId: number | undefined;
 let resetKey = false;
@@ -81,6 +85,22 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
 
     <form id="checkout-form" method="post">
       <h2>收件資訊</h2>
+      <p class="saved-addresses">
+        {savedAddresses.length > 0 ? (
+          <label>
+            使用地址簿
+            <select id="saved-address">
+              <option value="">手動填寫</option>
+              {savedAddresses.map((item) => (
+                <option value={String(item.id)} data-name={item.name} data-phone={item.phone} data-address={item.address}>{item.name}／{item.address}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span>地址簿還是空的。</span>
+        )}
+        <a href="/account/addresses">管理地址簿</a>
+      </p>
       {failure?.fields.shippingInfo && <div id="shipping-errors" class="error" role="alert">{failure.fields.shippingInfo.map((m) => <p>{m}</p>)}</div>}
       {failure?.fields.idempotencyKey?.map((m) => <p class="error">{m}</p>)}
       <label>
@@ -115,6 +135,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   import { applyPriceChanges, describeIssue, removeLines, type CheckoutIssue } from "../checkout/failure";
   import { clearIdempotencyKey, getOrCreateIdempotencyKey, sessionStorageOf } from "../checkout/idempotency";
   import { rememberPlacedOrder } from "../checkout/placed";
+  import { bindSavedAddressPicker } from "../checkout/saved-address";
   import { cartToCheckoutLines, checkoutFingerprint } from "../checkout/request";
 
   const priceFormat = new Intl.NumberFormat("zh-TW");
@@ -132,6 +153,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   }
 
   function init() {
+  bindSavedAddressPicker(document);
   const form = $<HTMLFormElement>("#checkout-form");
   let issues: CheckoutIssue[] = pageData.issues ?? [];
   // 舊的冪等鍵帶著不同內容被拒：丟掉它，下一次送出用新鍵
@@ -255,6 +277,9 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   .checkout-summary, #checkout-form { min-width: 0; padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-subtle); }
   .checkout-summary { background: var(--color-panel); }
   .checkout-summary h2, #checkout-form h2 { margin-top: 0; font-size: var(--text-base); font-weight: 700; }
+  .saved-addresses { display: grid; gap: var(--space-2); }
+  .saved-addresses a { display: inline-flex; align-items: center; min-height: 44px; }
+  #checkout-form select { width: 100%; min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
   #checkout-form input { min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
   #checkout-form button { width: 100%; margin-top: var(--space-4); }
   #checkout-issues:empty { display: none; }

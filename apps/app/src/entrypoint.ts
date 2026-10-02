@@ -3,6 +3,7 @@ import { createAuth, type Auth } from "./auth/auth";
 import { AuthConfigError, parseAuthConfig } from "./auth/config";
 import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readCustomerSession } from "./auth/session";
+import { createAddressService } from "./addresses/service";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { createContactService } from "./contact/service";
@@ -48,6 +49,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   /** 顧客的聯絡 email 與模擬信箱：與訂單同樣以 cookie 換顧客身分。 */
   #contact() {
     return createContactService(this.env.DB, systemClock, async (cookie) => {
+      const { customer } = await readCustomerSession(this.#auth(), cookie);
+      return customer?.customerId ?? null;
+    });
+  }
+
+  /** 顧客的地址簿：與訂單同樣以 cookie 換顧客身分。 */
+  #addresses() {
+    return createAddressService(this.env.DB, systemClock, async (cookie) => {
       const { customer } = await readCustomerSession(this.#auth(), cookie);
       return customer?.customerId ?? null;
     });
@@ -168,6 +177,22 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   getMyMail(cookie: string, input: unknown) {
     return this.#contact().getMyMail(cookie, input);
+  }
+
+  listMyAddresses(cookie: string) {
+    return this.#addresses().listMyAddresses(cookie);
+  }
+
+  addAddress(cookie: string, input: unknown) {
+    return this.#addresses().addAddress(cookie, input);
+  }
+
+  updateAddress(cookie: string, input: unknown) {
+    return this.#addresses().updateAddress(cookie, input);
+  }
+
+  deleteAddress(cookie: string, input: unknown) {
+    return this.#addresses().deleteAddress(cookie, input);
   }
 
   startPayment(cookie: string, input: unknown) {

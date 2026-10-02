@@ -7,6 +7,7 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM mail_messages"),
     env.DB.prepare("DELETE FROM mail_controls"),
     env.DB.prepare("DELETE FROM contact_verifications"),
+    env.DB.prepare("DELETE FROM customer_addresses"),
     env.DB.prepare("DELETE FROM payment_events"),
     env.DB.prepare("DELETE FROM payments"),
     env.DB.prepare("DELETE FROM order_lines"),

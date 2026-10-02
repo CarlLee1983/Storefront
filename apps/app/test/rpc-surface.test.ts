@@ -5,6 +5,7 @@ import { AppEntrypoint } from "../src/entrypoint";
 // 新增 RPC 方法時必須顯式更新這份白名單（顧客 RPC 的第一個參數是 cookie，一律由 App 驗 session）：不得出現刪除商品（商品只能下架）、覆寫在庫數（只能增減），
 // 或任何測試用的登入方法（production 沒有測試登入路徑；Holdfast ADR 0013）。
 const RPC_METHODS = [
+  "addAddress",
   "addProductImage",
   "adjustStock",
   "applyPaymentResult",
@@ -14,6 +15,7 @@ const RPC_METHODS = [
   "createCategory",
   "createProduct",
   "createVariant",
+  "deleteAddress",
   "deleteCategory",
   "deleteProductImage",
   "fetch",
@@ -31,6 +33,7 @@ const RPC_METHODS = [
   "listCategories",
   "listCategoriesForAdmin",
   "listMailForAdmin",
+  "listMyAddresses",
   "listMyMail",
   "listMyOrders",
   "listOrdersForAdmin",
@@ -49,6 +52,7 @@ const RPC_METHODS = [
   "shipOrder",
   "startPayment",
   "unlistProduct",
+  "updateAddress",
   "updateCategory",
   "updateProduct",
   "updateVariant",
