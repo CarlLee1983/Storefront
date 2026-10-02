@@ -16,7 +16,7 @@ const featured = featuredResult.ok ? featuredResult.data : [];
 
 <Layout title="靜物｜為日常挑選的家具與器物" hideTitle image="/home/hero-1-1600.webp">
   <h1 class="visually-hidden">靜物・家居選物</h1>
-  <HomeHero />
+  <HomeHero categories={categories} />
   {categories.length > 0 && (
     <section class="home-section" aria-labelledby="categories-title">
       <div class="section-head"><h2 id="categories-title">依空間選物</h2></div>
