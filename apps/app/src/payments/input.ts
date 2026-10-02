@@ -17,3 +17,7 @@ export const applyPaymentResultInput = z.object({
 export const reconcilePaymentInput = z.object({
   paymentId: z.number({ error: "付款編號必須是數字" }).int("付款編號必須是整數").positive("付款編號無效"),
 });
+
+export const retryRefundInput = z.object({
+  refundId: z.number({ error: "退款編號必須是數字" }).int("退款編號必須是整數").positive("退款編號無效"),
+});

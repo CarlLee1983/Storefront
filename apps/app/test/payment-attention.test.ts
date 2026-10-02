@@ -5,6 +5,7 @@ import { signInCustomer } from "./customers";
 import { forceOrderStatus, forcePaymentStatus, resetDb, seedPayment } from "./db";
 import { installFakeGateway } from "./fake-gateway";
 import { shipRemaining } from "./shipment-helpers";
+import { DEFAULT_SHIPPING_TWD } from "./checkout-helpers";
 import { orderOf, placeMugOrder, startPaymentFor, stockOf } from "./payment-helpers";
 
 const app = exports.default;
@@ -14,6 +15,13 @@ async function adminPayments(orderId: number) {
   const found = await app.getOrderForAdmin(await mintAccessJwt(), { orderId });
   if (!found.ok) throw new Error("讀取訂單失敗");
   return found.data.payments;
+}
+
+/** 管理端看到的這張訂單的退款（含嘗試紀錄，走 RPC）。 */
+async function adminRefunds(orderId: number) {
+  const found = await app.getOrderForAdmin(await mintAccessJwt(), { orderId });
+  if (!found.ok) throw new Error("讀取訂單失敗");
+  return found.data.refunds;
 }
 
 /** 管理端清單上這張訂單是否標了需要處理。 */
@@ -33,7 +41,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
     await forceOrderStatus(orderId, "cancelled");
     await seedPayment(orderId, "succeeded");
 
-    expect(await adminPayments(orderId)).toMatchObject([{ status: "succeeded", needsAttention: true, refundReason: null, refundAt: null }]);
+    expect(await adminPayments(orderId)).toMatchObject([{ status: "succeeded", needsAttention: true }]);
     expect(await listedNeedsAttention(orderId)).toBe(true);
   });
 
@@ -60,32 +68,32 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
     expect(await adminPayments(orderId)).toMatchObject([{ needsAttention: false }]);
   });
 
-  it("已退款的付款：旗標為 false，且管理端看得到退款狀態、原因與時間", async () => {
+  it("已退款的付款：旗標為 false，且管理端看得到這筆退款的狀態、原因、金額拆分與時間", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId } = await placeMugOrder(alice);
+    const { orderId, totalTwd } = await placeMugOrder(alice);
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPaymentFor(alice, orderId, gateway);
     await forceOrderStatus(orderId, "cancelled");
     await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
 
-    expect(await adminPayments(orderId)).toMatchObject([
-      { status: "refunded", refundReason: "cancelled_order", refundAt: expect.any(Number), needsAttention: false },
+    expect(await adminPayments(orderId)).toMatchObject([{ status: "succeeded", needsAttention: false }]);
+    expect(await adminRefunds(orderId)).toMatchObject([
+      { status: "succeeded", reason: "cancelled_order", amountTwd: totalTwd, goodsTwd: totalTwd - DEFAULT_SHIPPING_TWD, shippingTwd: DEFAULT_SHIPPING_TWD, settledAt: expect.any(Number) },
     ]);
     expect(await listedNeedsAttention(orderId)).toBe(false);
   });
 
-  it("退款失敗（refund_failed）：款項還沒退回，旗標為 true（明細與清單都標記），退款原因與時間仍照實顯示", async () => {
+  it("退款明確失敗：款項還沒退回，付款維持成功，旗標為 true（明細與清單都標記），退款紀錄照實顯示失敗與原因", async () => {
     const alice = await signInCustomer("alice");
     const { orderId } = await placeMugOrder(alice);
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPaymentFor(alice, orderId, gateway);
     await forceOrderStatus(orderId, "cancelled");
-    gateway.failNext("refund", 502);
+    gateway.failNextRefundExplicitly();
     await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
 
-    expect(await adminPayments(orderId)).toMatchObject([
-      { status: "refund_failed", refundReason: "cancelled_order", refundAt: expect.any(Number), needsAttention: true },
-    ]);
+    expect(await adminPayments(orderId)).toMatchObject([{ status: "succeeded", needsAttention: true }]);
+    expect(await adminRefunds(orderId)).toMatchObject([{ status: "failed", reason: "cancelled_order", settledAt: null }]);
     expect(await listedNeedsAttention(orderId)).toBe(true);
   });
 
@@ -147,8 +155,9 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
     expect(gateway.refunded).toEqual([second]);
     expect(await adminPayments(orderId)).toMatchObject([
       { status: "succeeded", needsAttention: false },
-      { status: "refunded", refundReason: "duplicate_success", needsAttention: false },
+      { status: "succeeded", needsAttention: false },
     ]);
+    expect(await adminRefunds(orderId)).toMatchObject([{ reason: "duplicate_success", status: "succeeded" }]);
     expect((await orderOf(alice, orderId)).status).toBe("shipped");
   });
 });

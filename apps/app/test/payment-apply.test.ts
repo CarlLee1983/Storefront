@@ -145,14 +145,14 @@ describe("applyPaymentResult：冪等與並行", () => {
 
     await Promise.all([
       app.applyPaymentResult(gateway.settle(first, "succeeded")),
-      app.applyPaymentResult({ eventId: "evt_second", gatewayPaymentId: second, outcome: "succeeded" }),
+      app.applyPaymentResult(gateway.settle(second, "succeeded")),
     ]);
 
     expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
-    expect(order.payments.map((payment) => payment.status).sort()).toEqual(["refunded", "succeeded"]);
-    expect(order.payments.filter((payment) => payment.refundReason === "duplicate_success")).toHaveLength(1);
+    expect(order.payments.map((payment) => payment.status)).toEqual(["succeeded", "succeeded"]);
+    expect(order.refunds).toMatchObject([{ reason: "duplicate_success", status: "succeeded" }]);
     expect(gateway.refunded).toHaveLength(1);
   });
 });

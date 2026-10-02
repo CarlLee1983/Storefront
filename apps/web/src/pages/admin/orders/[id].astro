@@ -9,7 +9,7 @@ import ShipmentList from "../../../orders/ShipmentList.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { formToRecord } from "../../../shared/form-values";
-import { formatDateTime, parseOrderId, paymentStatusLabel, refundReasonLabel } from "../../../orders/labels";
+import { formatDateTime, parseOrderId, paymentStatusLabel, refundAttemptLabel, refundReasonLabel, refundStatusLabel } from "../../../orders/labels";
 
 export const prerender = false;
 
@@ -147,7 +147,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           order.payments.length > 0 && (
             <div class="table-scroll admin-order-payments" tabindex="0" role="region" aria-label="付款嘗試資料表"><table>
               <thead>
-                <tr><th>發起時間</th><th>金額</th><th>狀態</th><th>退款原因</th><th>退款時間</th></tr>
+                <tr><th>發起時間</th><th>金額</th><th>狀態</th></tr>
               </thead>
               <tbody>
                 {order.payments.map((payment) => (
@@ -156,10 +156,42 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                     <td data-label="金額">NT$ {priceFormat.format(payment.amountTwd)}</td>
                     <td data-label="狀態">
                       {paymentStatusLabel(payment.status)}
-                      {payment.needsAttention && <strong class="error">（需要處理：付款成功但訂單不是由這筆支付，也沒有退款紀錄）</strong>}
+                      {payment.needsAttention && <strong class="error">（需要處理：付款成功但訂單不是由這筆支付也沒有退款紀錄，或有退款尚未成功）</strong>}
                     </td>
-                    <td data-label="退款原因">{refundReasonLabel(payment.refundReason) ?? "—"}</td>
-                    <td data-label="退款時間">{payment.refundAt === null ? "—" : formatDateTime(payment.refundAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )
+        }
+        <h2>退款</h2>
+        {order.refunds.length === 0 && <p>沒有退款。</p>}
+        {
+          order.refunds.length > 0 && (
+            <div class="table-scroll admin-order-refunds" tabindex="0" role="region" aria-label="退款資料表"><table>
+              <thead>
+                <tr><th>退款</th><th>原因</th><th>金額</th><th>狀態</th><th>嘗試紀錄</th></tr>
+              </thead>
+              <tbody>
+                {order.refunds.map((refund) => (
+                  <tr>
+                    <td data-label="退款">#{refund.id}<br />{formatDateTime(refund.createdAt)}</td>
+                    <td data-label="原因">{refundReasonLabel(refund.reason)}</td>
+                    <td data-label="金額">NT$ {priceFormat.format(refund.amountTwd)}<br /><small>商品款 NT$ {priceFormat.format(refund.goodsTwd)}、運費 NT$ {priceFormat.format(refund.shippingTwd)}</small></td>
+                    <td data-label="狀態">
+                      {refundStatusLabel(refund.status)}
+                      {refund.settledAt !== null && <><br /><small>{formatDateTime(refund.settledAt)}</small></>}
+                      {refund.status !== "succeeded" && <><br /><a href="/admin/refunds">到退款待辦處理</a></>}
+                    </td>
+                    <td data-label="嘗試紀錄">
+                      {refund.attempts.length === 0 ? "尚未送出" : (
+                        <ul class="attempts">
+                          {refund.attempts.map((attempt) => (
+                            <li>{formatDateTime(attempt.at)} {attempt.actor === "system" ? "系統" : attempt.actor}：{refundAttemptLabel(attempt.action, attempt.outcome)}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

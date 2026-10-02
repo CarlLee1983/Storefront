@@ -41,7 +41,7 @@ describe("startPayment：發起付款", () => {
       },
     ]);
     expect((await orderOf(alice, orderId)).payments).toEqual([
-      { id: expect.any(Number), amountTwd: totalTwd, status: "pending", createdAt: now, refundReason: null, refundAt: null, needsAttention: false },
+      { id: expect.any(Number), amountTwd: totalTwd, status: "pending", createdAt: now, needsAttention: false },
     ]);
   });
 

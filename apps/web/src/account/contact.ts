@@ -31,6 +31,7 @@ const MAIL_KIND_LABELS: Record<string, string> = {
   payment_succeeded: "付款成功通知",
   payment_failed: "付款失敗通知",
   payment_unsettled: "付款未能生效通知",
+  refund_succeeded: "退款通知",
   shipment_dispatched: "出貨通知",
   shipment_delivered: "送達通知",
   shipment_delivery_failed: "配送異常通知",

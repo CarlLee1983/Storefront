@@ -9,7 +9,7 @@ import { TEST_GATEWAY_API_KEY, TEST_GATEWAY_BASE_URL } from "./constants";
 import { setNow } from "./clock";
 import { signInCustomer } from "./customers";
 import { checkoutInput } from "./checkout-helpers";
-import { forceOrderStatus, forcePaymentStatus, resetDb, seedPayment } from "./db";
+import { forceOrderStatus, resetDb, seedPayment } from "./db";
 import { installFakeGateway } from "./fake-gateway";
 import { orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
 import { app, PAYMENT_WINDOW_MS, placeOrderAt, PRICE, runCron, stocked, stockOf } from "./release-helpers";
@@ -62,7 +62,8 @@ describe("遲到的付款成功：重新保留", () => {
     expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
-    expect(order.payments).toMatchObject([{ status: "succeeded", refundReason: null }]);
+    expect(order.payments).toMatchObject([{ status: "succeeded" }]);
+    expect(order.refunds).toEqual([]);
     expect(gateway.refunded).toEqual([]);
   });
 
@@ -74,11 +75,11 @@ describe("遲到的付款成功：重新保留", () => {
 
     const result = await app.applyPaymentResult(event);
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "expired" } });
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
     expect(await stockOf(variantId)).toEqual({ onHand: 3, available: 1 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("expired");
-    expect(order.payments).toMatchObject([{ status: "refunded", refundReason: "late_success_unreclaimable" }]);
+    expect(order.refunds).toMatchObject([{ status: "succeeded", reason: "late_success_unreclaimable" }]);
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });
 
@@ -102,7 +103,7 @@ describe("遲到的付款成功：重新保留", () => {
 
     const result = await app.applyPaymentResult(event);
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "expired" } });
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
     expect(await stockOf(mug)).toEqual({ onHand: 10, available: 10 });
     expect(await stockOf(plate)).toEqual({ onHand: 2, available: 1 });
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
@@ -117,9 +118,9 @@ describe("遲到的付款成功：重新保留", () => {
 
     const result = await app.applyPaymentResult(event);
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "expired" } });
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
     expect(await stockOf(variantId)).toEqual({ onHand: 1, available: 0 });
-    expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "refunded", refundReason: "late_success_unreclaimable" }]);
+    expect((await orderOf(alice, orderId)).refunds).toMatchObject([{ status: "succeeded", reason: "late_success_unreclaimable" }]);
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });
 });
@@ -129,27 +130,37 @@ describe("退款的結果與觸發", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it.each([
-    ["閘道回 502", 502],
+    ["閘道回 502（非明確失敗碼）", 502],
     ["連不上閘道", 0],
-  ])("退款失敗（%s）：付款記 refund_failed 與原因，訂單不動，並記一行結構化 log", async (_label, status) => {
-    const { alice, orderId, variantId, gateway, event, gatewayPaymentId } = await lateSuccessSetup({ onHand: 3, quantity: 2 });
+  ])("退款結果不明（%s）：退款記 unknown 並留下嘗試紀錄，付款維持成功、訂單不動", async (_label, status) => {
+    const { alice, orderId, variantId, gateway, event } = await lateSuccessSetup({ onHand: 3, quantity: 2 });
     const bob = await signInCustomer("bob");
     await placeOrderAt(bob, variantId, 2, T0 + PAYMENT_WINDOW_MS + 6_000);
     gateway.failNext("refund", status);
-    const errors = vi.spyOn(console, "error");
 
     const result = await app.applyPaymentResult(event);
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refund_failed", orderStatus: "expired" } });
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("expired");
-    expect(order.payments).toMatchObject([{ status: "refund_failed", refundReason: "late_success_unreclaimable" }]);
-    expect(loggedEvents(errors, "payment_refund_failed")).toEqual([
-      { event: "payment_refund_failed", orderId, gatewayPaymentId, reason: "late_success_unreclaimable" },
-    ]);
+    expect(order.refunds).toMatchObject([{ status: "unknown", reason: "late_success_unreclaimable", settledAt: null }]);
+    expect(gateway.refunded).toEqual([]);
   });
 
-  it("付款設定不全（沒有閘道）：退不了款，付款記 refund_failed 並記 log，不丟例外", async () => {
+  it("閘道明確拒絕退款：退款記 failed（保留額度），付款維持成功、訂單不動，管理端標示需要處理", async () => {
+    const { alice, orderId, variantId, gateway, event } = await lateSuccessSetup({ onHand: 3, quantity: 2 });
+    const bob = await signInCustomer("bob");
+    await placeOrderAt(bob, variantId, 2, T0 + PAYMENT_WINDOW_MS + 6_000);
+    gateway.failNextRefundExplicitly();
+
+    const result = await app.applyPaymentResult(event);
+
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
+    expect((await orderOf(alice, orderId)).refunds).toMatchObject([{ status: "failed", reason: "late_success_unreclaimable" }]);
+    expect(gateway.refunded).toEqual([]);
+  });
+
+  it("付款設定不全（沒有閘道）：退不了款，退款留在 pending（沒有送出任何請求）並記 log，不丟例外", async () => {
     const { alice, orderId, variantId, event } = await lateSuccessSetup({ onHand: 3, quantity: 2 });
     const bob = await signInCustomer("bob");
     await placeOrderAt(bob, variantId, 2, T0 + PAYMENT_WINDOW_MS + 6_000);
@@ -158,9 +169,9 @@ describe("退款的結果與觸發", () => {
 
     const result = await service.applyPaymentResult(event);
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refund_failed", orderStatus: "expired" } });
-    expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "refund_failed", refundReason: "late_success_unreclaimable" }]);
-    expect(loggedEvents(errors, "payment_refund_failed")).toMatchObject([{ code: "payment_unavailable" }]);
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
+    expect((await orderOf(alice, orderId)).refunds).toMatchObject([{ status: "pending", reason: "late_success_unreclaimable" }]);
+    expect(loggedEvents(errors, "payment_refund_not_started")).toMatchObject([{ reason: "payment_unavailable" }]);
   });
 
   it("已取消的訂單收到付款成功：訂單維持已取消、在庫數不動，付款退款（cancelled_order）", async () => {
@@ -173,11 +184,11 @@ describe("退款的結果與觸發", () => {
 
     const result = await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "cancelled" } });
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "cancelled" } });
     expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 10 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("cancelled");
-    expect(order.payments).toMatchObject([{ status: "refunded", refundReason: "cancelled_order" }]);
+    expect(order.refunds).toMatchObject([{ status: "succeeded", reason: "cancelled_order" }]);
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });
 
@@ -193,14 +204,12 @@ describe("退款的結果與觸發", () => {
     await app.applyPaymentResult(gateway.settle(first, "succeeded"));
     const result = await app.applyPaymentResult(gateway.settle(second, "succeeded"));
 
-    expect(result).toEqual({ ok: true, data: { paymentStatus: "refunded", orderStatus: "paid" } });
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "paid" } });
     expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
-    expect(order.payments).toMatchObject([
-      { status: "succeeded", refundReason: null },
-      { status: "refunded", refundReason: "duplicate_success" },
-    ]);
+    expect(order.payments).toMatchObject([{ status: "succeeded" }, { status: "succeeded" }]);
+    expect(order.refunds).toMatchObject([{ paymentId: order.payments[1]!.id, status: "succeeded", reason: "duplicate_success" }]);
     expect(gateway.refunded).toEqual([second]);
   });
 
@@ -227,24 +236,7 @@ describe("退款的結果與觸發", () => {
 
     await service.applyPaymentResult(event);
 
-    expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "refunded", refundReason: "late_success_unreclaimable" }]);
-  });
-
-  it("退款結果沒能記下（付款已不是 succeeded）：記 payment_refund_unrecorded，不記 payment_refunded", async () => {
-    const { orderId, variantId, event, gatewayPaymentId, gateway } = await lateSuccessSetup({ onHand: 3, quantity: 2 });
-    const bob = await signInCustomer("bob");
-    await placeOrderAt(bob, variantId, 2, T0 + PAYMENT_WINDOW_MS + 6_000);
-    // 閘道退款進行中，付款被別的動作改成別的狀態（例如後台處理），條件式記錄就寫不進去
-    gateway.onRefund = () => forcePaymentStatus(gatewayPaymentId, "failed");
-    const logs = vi.spyOn(console, "log");
-    const errors = vi.spyOn(console, "error");
-
-    await app.applyPaymentResult(event);
-
-    expect(loggedEvents(errors, "payment_refund_unrecorded")).toEqual([
-      { event: "payment_refund_unrecorded", orderId, gatewayPaymentId, reason: "late_success_unreclaimable" },
-    ]);
-    expect(loggedEvents(logs, "payment_refunded")).toEqual([]);
+    expect((await orderOf(alice, orderId)).refunds).toMatchObject([{ status: "succeeded", reason: "late_success_unreclaimable" }]);
   });
 
   it("同一事件重送（含同時送達）：只退款一次，回同一結果", async () => {
@@ -258,8 +250,8 @@ describe("退款的結果與觸發", () => {
 
     expect(again).toEqual(first);
     for (const result of concurrent) expect(result).toEqual(first);
-    expect(gateway.refunded).toHaveLength(1);
-    expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "refunded" }]);
+    expect(gateway.refundRequests).toHaveLength(1);
+    expect((await orderOf(alice, orderId)).refunds).toMatchObject([{ status: "succeeded" }]);
   });
 });
 
@@ -291,7 +283,7 @@ describe("遲到的付款成功與結帳搶最後一件：兩種先後各自的�
     expect(checkout).toMatchObject({ ok: true });
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("expired");
-    expect(order.payments).toMatchObject([{ status: "refunded", refundReason: "late_success_unreclaimable" }]);
+    expect(order.refunds).toMatchObject([{ status: "succeeded", reason: "late_success_unreclaimable" }]);
     expect(await stockOf(variantId)).toEqual({ onHand: 1, available: 0 });
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });

@@ -48,7 +48,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 待辦與處理紀錄：`/admin/mail` 把「還沒有任何一次送達、且還能處理」的信標為「待處理」（被取代或過期的驗證信不算），超過最新 200 封的舊待辦仍會列出（最多再列 500 封，更舊的只顯示「另有 N 封」）；管理員重送會在新的投遞上記下處理人（`mail_deliveries.handled_by`，系統首次投遞為空）。
 - 0018 只新增兩個可為空的欄位與一個唯一索引，部署順序同樣先 migration、再 App、再 Web；新 App 的下單與付款 batch 會寫 `event_key`，0018 缺欄位時下單與付款會整批失敗，所以 migration 必須先套用。回復：先停止寫入，再執行 `apps/app/rollback/0018_transaction_notifications.down.sql`（已有交易通知或處理紀錄時守門檢查讓回復失敗，須先確認這些資料可以捨棄）；回復順序是 0018 → 0017 → 0016，且回復前須一併回復會呼叫這些 RPC 的 Web 與 App。測試見 `apps/app/test/order-notifications.test.ts`、`transaction-migration.test.ts`；手機與桌機的操作併在 `e2e/tests/contact-mailbox.spec.ts`（投遞失敗演練是全域狀態，會開關它的情境必須留在同一檔序列執行）。
 - 出貨通知（#112）：每個出貨批次寫一封 `shipment_dispatched`（商品數量、物流單號、議定時段），見下方「分批出貨與大型配送預約」。
-- 尚未涵蓋（後續票）：取消審核、配送異常、退貨審核、退款結果、發票完成等通知。
+- 退款成功通知（#115）：每筆成功的退款寄一封 `refund_succeeded`（事件鍵 `refund:<退款編號>`），與退款轉為成功同一個 batch 寫入；重試與重複回呼不重複。
+- 尚未涵蓋（後續票）：取消審核、配送異常、退貨審核、發票完成等通知。
 
 ## 地址簿
 
@@ -117,9 +118,9 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 ## 付款
 
-顧客在訂單頁按「前往付款」→ App 向閘道建立付款 → 導向閘道付款頁；結果由兩條路徑確認，共用同一個冪等的「套用付款結果」（以閘道事件 ID 去重）：閘道 webhook（Web 的 `POST /api/payments/webhook`，驗簽後轉給 App）為主，顧客被導回 `/orders/:id/payment-return?paymentId=…` 時 App 再主動向閘道查詢一次。付款成功依訂單當下的狀態分流（都只由搶到事件 ID 的那次呼叫執行一次）：待付款轉已付款；已逾期則在同一個 batch 內以條件式語句「重新保留」庫存（每一筆明細的可售數量都夠才轉為已付款（轉為已付款保留，不動在庫數），全有全無），見 ADR 0001；重新保留不到、落在已取消的訂單、或同一張訂單的第二筆成功付款，則付款記為成功、訂單不動，並在 batch 之外向閘道退款。退款結果記在付款上：狀態 `refunded`／`refund_failed`、原因 `late_success_unreclaimable`／`cancelled_order`／`duplicate_success`、時間。退款失敗只記錄與結構化 log（`payment_refund_failed`），不自動重試，管理員之後在後台處理；閘道退款是冪等的。
+顧客在訂單頁按「前往付款」→ App 向閘道建立付款 → 導向閘道付款頁；結果由兩條路徑確認，共用同一個冪等的「套用付款結果」（以閘道事件 ID 去重）：閘道 webhook（Web 的 `POST /api/payments/webhook`，驗簽後轉給 App）為主，顧客被導回 `/orders/:id/payment-return?paymentId=…` 時 App 再主動向閘道查詢一次。付款成功依訂單當下的狀態分流（都只由搶到事件 ID 的那次呼叫執行一次）：待付款轉已付款；已逾期則在同一個 batch 內以條件式語句「重新保留」庫存（每一筆明細的可售數量都夠才轉為已付款（轉為已付款保留，不動在庫數），全有全無），見 ADR 0001；重新保留不到、落在已取消的訂單、或同一張訂單的第二筆成功付款，則付款記為成功、訂單不動，並登記一筆整筆退款（見下方「退款」）。付款狀態不再有 `refunded`／`refund_failed`：退款不改付款狀態。
 
-付款的失效時間取「發起後 10 分鐘」與「付款期限前 2 分鐘」較早者，付款期限前 2 分鐘內不能再發起付款（`payment_window_closed`，ADR 0001 第一道防線）；閘道回的失效時間不早於付款期限視為回應不合法。訂單以 `orders.paid_by_payment_id` 記錄由哪一筆付款支付；後台訂單清單與明細對「付款成功卻沒有退款紀錄、訂單不是由它支付」或 `refund_failed` 的付款標示「需要處理」。
+付款的失效時間取「發起後 10 分鐘」與「付款期限前 2 分鐘」較早者，付款期限前 2 分鐘內不能再發起付款（`payment_window_closed`，ADR 0001 第一道防線）；閘道回的失效時間不早於付款期限視為回應不合法。訂單以 `orders.paid_by_payment_id` 記錄由哪一筆付款支付；後台訂單清單與明細對「付款成功卻沒有退款紀錄、訂單不是由它支付」或「有退款尚未成功」的付款標示「需要處理」。
 
 顧客取消待付款訂單時，先讓進行中的付款全部失效（向閘道取消；回 409 就查詢並套用閘道結果，其實已成功則訂單轉已付款、取消被拒），閘道連不上則不取消訂單。
 
@@ -128,11 +129,11 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 顧客付款後關窗、webhook 也沒送到時，不能只靠顧客返回頁面（設計文件 A9；Migration `0023_payment_reconcile.sql`；`apps/app/src/payments/reconcile.ts`、`service.ts` 的 `reconcileOne`）。補查對本地仍是 `pending` 的付款向閘道查詢，終局結果（成功／失敗，帶事件 ID）一律交給同一個 `applyEvent`（與 webhook、導回查詢同一條路徑與事件 ID 去重），不另寫第二條套用路徑，所以重複補查、補查與 webhook 先後順序改變都不會重複入帳或重複保留；遲到的成功仍依 ADR 0001 重新保留或退款，付款結果通知與付款同一個 batch 寫入。
 
 - 觸發：每分鐘 Cron（`scheduled`）在逾期處理之前先補查本地 pending 的付款：建立超過 5 分鐘（`RECONCILE_GRACE_MS`），或已過閘道失效時間（付款期限前 2 分鐘內才發起的付款失效時間離建立不到 5 分鐘，仍要在訂單逾期前查到結果）。一次最多 20 筆（`RECONCILE_BATCH_SIZE`），依 `payments.reconciled_at`（每次補查開始前就記，不論結果）最久沒查的在前、其中失效時間較早的先查，所以一直查不出結果的付款不會擠掉其他付款。每次呼叫閘道最久等 5 秒（`GATEWAY_TIMEOUT_MS`，逾時視為 `unreachable`），整個補查最多花 20 秒（`RECONCILE_BUDGET_MS`），超過就不再開始新的一筆；補查出錯只記 log，不擋逾期與圖片清理。管理員也可在 `/admin/payments`（導覽「付款補查」）對任一筆 pending 付款按「補查」（RPC `reconcilePayment`，輸入 `paymentId`；清單 RPC `listPaymentsToReconcile`）。付款設定不全時回 `payment_unavailable`，Cron 只記一行 log。
-- Cron 的子請求量（估算，未對照 Cloudflare 官方上限逐項確認）：一次 Cron 最多補查 20 筆，每筆 1 次閘道 fetch；其中成功且需退款的另加 1 次退款 fetch，所以閘道 fetch 最多約 40 次；D1 與其他呼叫不計入這裡的估算。Free 方案每次呼叫的子請求上限是 50，仍在範圍內，但若之後調高批量要重新估算。
-- 查證：閘道回的付款 ID、金額與商家參照必須與本站記錄一致；連不上（含逾時）、回錯、格式不符、付款 ID／金額／參照不符、成功或失敗卻沒有事件 ID、本地等待時閘道已退款，都不套用也不偽造成功。閘道說已失效 → 本地付款轉 `expired`；說仍在等待 → 不動、不算問題。
+- Cron 的子請求量（估算，未對照 Cloudflare 官方上限逐項確認）：一次 Cron 最多補查 20 筆，每筆 1 次閘道 fetch；其中成功且需退款的另加 1 次退款 fetch（退款首次送出；之後的查證與重試只由管理員觸發），所以閘道 fetch 最多約 40 次；D1 與其他呼叫不計入這裡的估算。Free 方案每次呼叫的子請求上限是 50，仍在範圍內，但若之後調高批量要重新估算。
+- 查證：閘道回的付款 ID、金額與商家參照必須與本站記錄一致；連不上（含逾時）、回錯、格式不符、付款 ID／金額／參照不符、成功或失敗卻沒有事件 ID，都不套用也不偽造成功。閘道說已失效 → 本地付款轉 `expired`；說仍在等待 → 不動、不算問題。
 - 待辦：沒能確認結果時，每筆付款一列寫進 `payment_reconcile_issues`（原因 `gateway_unavailable`／`gateway_mismatch`／`result_unclear`、失敗次數、第一次與最近一次時間、最近一次的觸發者 `cron` 或管理員 email）並記 `payment_reconcile_issue` log。待辦是否開著只看 `resolved_at` 是否為空（後台清單與回復守門同一定義）：付款離開 pending 時，套用的路徑（`applyPaymentEvent` 的 batch、`expirePayment`）一併記為已解決，閘道說仍在等待則由補查解決；已解決的列保留供追溯，再出問題時重新計次。`/admin/payments` 把有待辦的付款排最前面，顯示原因、次數、時間與建議處理。
 - 已知限制：`gateway_mismatch`（閘道回的資料與本站記錄對不上）與 `result_unclear` 是資料面的矛盾，後台只能重新補查，沒有「接受閘道結果」或「作廢」的操作；需要工程人員到閘道主控頁核對後處理。
-- 與 #115：異常退款的安全重試另建自己的退款待辦表，不延伸 `payment_reconcile_issues`；退款失敗（`refund_failed`）與「需要處理」旗標的行為不動（見上）。
+- 與 #115：異常退款的逐筆紀錄與安全重試另建自己的退款表，不延伸 `payment_reconcile_issues`（見下方「退款」）。
 - 回復：先回復 App 與 Web，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0023_payment_reconcile.down.sql`（移除待辦表與 `payments.reconciled_at`；還有開著的待辦時守門檢查讓回復失敗，須先處理或確認可以捨棄）。
 - 測試見 `apps/app/test/payment-reconcile.test.ts`（管理員補查、冪等與先後順序、遲到付款、待辦、權限、Cron）、`payment-reconcile-migration.test.ts`；Web 提示文字在 `apps/web/src/admin/payment-reconcile.test.ts`，手機與桌機操作（含閘道延遲回呼加關窗、補查後顧客進度與通知一致、顧客不能進補查頁）由 `e2e/tests/payment-reconcile.spec.ts` 驗證。
 
@@ -142,6 +143,21 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - Web：secret `GATEWAY_WEBHOOK_SECRET`（= 閘道的 `GATEWAY_WEBHOOK_SECRET`），於 `apps/web` 執行 `bunx wrangler secret put GATEWAY_WEBHOOK_SECRET --env <preview|production>`。缺少時 webhook 端點回 503，導回查詢仍可讓顧客看到最新狀態。
 
 本機開發見 `apps/app/.dev.vars.example` 與 `apps/web/.dev.vars.example`。
+
+### 退款（逐筆記錄與安全重試）
+
+依 ADR 0007 與設計文件 A8（Migration `0024_refunds.sql`；`apps/app/src/payments/refunds.ts`、`refund.ts`、`service.ts` 的 `runRefund`）。退款不再是付款上的一個狀態：每筆退款是 `refunds` 的一列（訂單、付款、原因、金額，拆成 `goods_twd` 商品款與 `shipping_twd` 原運費、進度、登記與成功時間），每次向閘道送出或查證在 `refund_attempts` 留一列（時間、操作者 `system` 或管理員 email、動作、結果、錯誤碼，只增不改）。本票只涵蓋既有的三種付款異常（遲到無法重新保留、落在已取消訂單、第二筆成功付款），仍是退應退全額，**沒有任意金額的手動退款**；部分取消、退貨與發票折讓（#116、#121、#122）直接讀 `refunds`：同一筆付款可有多筆退款，額度檢查用 `selectRefundableTwd`。
+
+- 進度（`REFUND_STATUSES`）：`pending` 已登記尚未送出（含等同單前一筆）、`processing` 送出或查證中、`unknown` 結果不明（逾時、連不上、5xx、回應異常或金額對不上）、`failed` 閘道明確拒絕（退款失敗或 4xx）、`succeeded`。除 `succeeded` 外都佔用付款的可退額度；失敗那筆保留額度並列待辦，不會把同一筆可退金額重新承諾給別人。
+- 冪等：閘道的冪等鍵是本地退款編號（`rf_<id>`），同一筆的重送、重試與重複事件都指到同一筆，閘道不會多退。一筆付款最多一筆付款層級的整筆退款（部分唯一索引 `refunds_payment_reason_uidx`），付款成功事件重送（含同時送達）只登記並退款一次；付款結果已套用但退款登記前程序中斷時，同一事件重送會補登記。
+- 同單互斥：開始執行前先以單句條件 UPDATE 搶執行權（`claimRefund`），同張訂單一次最多一筆在 `processing`，且同單有 `unknown` 的退款時其他筆不能開始（RPC 回 `refund_blocked`）；明確失敗不阻擋後筆。卡在 `processing` 超過 60 秒（`REFUND_CLAIM_LEASE_MS`，程序中斷）視為租約過期，不再阻擋，下一次操作先查證再接手。
+- 結果不明先查再決定：`unknown`（或租約過期）的退款，重試時先 `GET .../refunds/:refundId` 向閘道查證——已成功就記成功、不重送；說失敗或從未收過，才用同一個退款 ID 送出；查證本身失敗仍是不明。**不會**盲目重送。
+- 觸發與重試：付款成功卻沒讓訂單成立時，由搶到事件的那次呼叫登記並以 `system` 立即執行（閘道設定不全時退款留在 `pending`，記 `payment_refund_not_started` log）。失敗、不明與等待中的退款不會自動重試（沒有 Cron），也不會在前筆結案後自動接續，由管理員在 `/admin/refunds`（導覽「退款待辦」；RPC `listRefundsToHandle`、`retryRefund`）按「重試」／「查證並重試」；操作者與每次結果留在嘗試紀錄，後台訂單明細的「退款」表也看得到。
+- 通知與顧客可見：退款成功時 `refund_succeeded` 通知信與狀態同一個 batch 寫入（沿用 #109 outbox，重試不重複）。顧客在訂單頁「退款進度」逐筆看到金額、原因與進度，只分「退款處理中」與「已退回原付款方式」，不揭露內部的不明與失敗，也看不到嘗試紀錄與操作者；`getMyOrder`／`listMyOrders` 永遠限定本人。管理員的 RPC 與頁面沿用 Cloudflare Access 驗證。
+- 舊資料：0024 把舊的 `payments.status = refunded／refund_failed` 與 `refund_reason`、`refund_at` 搬成 `refunds`（`refunded` → `succeeded`、`refund_failed` → `failed`；金額取付款實收，運費取訂單的運費快照，其餘為商品款），付款狀態一律回到 `succeeded`，並移除舊欄位與狀態值；沒有相容層。
+- 閘道（模擬服務）：新增 `refunds` 表與部分退款 API（見「模擬金流閘道」）；舊的 `POST /v1/payments/:id/refund` 與 `payment.refunded` 事件已移除，付款狀態不再有 `refunded`／`refund_failed`（0002 把舊資料轉成一筆全額成功的退款）。
+- 部署順序：先 migration（閘道 0002、App 0024），再閘道、App，最後 Web；新 App 呼叫閘道的新退款 API，舊閘道不認得，所以閘道必須先部署。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0024_refunds.down.sql`；0024 之後有任何退款嘗試紀錄、尚未成功也未明確失敗的退款、同一筆付款多筆退款或部分退款時，守門檢查讓回復失敗（舊模型表達不了），須先處理或確認可以捨棄。閘道 0002 沒有回復腳本（模擬服務，資料可重建）。
+- 測試：`apps/app/test/refunds.test.ts`（拆分與綁定的收款、明確失敗保留額度且後筆前進、重試沿用同一筆、不明先查並阻擋後筆、租約、並行與重複事件、權限與可見範圍）、`refunds-migration.test.ts`（資料搬遷、CHECK、回復）、`gateway-client.test.ts`（閘道契約）；閘道的部分退款契約在 `apps/gateway/test/refund.test.ts`；Web 文案在 `apps/web/src/orders/labels.test.ts`、`admin/refund.test.ts`；手機與桌機操作（待辦重試、查證、顧客進度與通知、顧客不能進待辦頁）由 `e2e/tests/refunds.spec.ts` 驗證。
 
 ## 模擬金流閘道
 
@@ -155,13 +171,14 @@ API（JSON，`Authorization: Bearer <GATEWAY_API_KEY>`；回應 `{ ok: true, dat
 | 路徑 | 說明 |
 | --- | --- |
 | `POST /v1/payments` | `{ merchantReference, amountTwd, returnUrl, webhookUrl, expiresAt? }` → 201 `{ paymentId, paymentUrl, expiresAt }`。10 分鐘後失效（`src/config.ts` 的 `PAYMENT_TTL_MS`）；可選的 `expiresAt`（epoch 毫秒，必須晚於現在，否則 400）讓付款最晚在那個時間失效，實際失效時間是兩者較早者 |
-| `GET /v1/payments/:id` | `{ paymentId, status, amountTwd, merchantReference, expiresAt, eventId }`；`status` 為 `pending / succeeded / failed / expired / refunded / refund_failed`。`eventId` 是最近一個事件（成功／失敗／退款）的 ID，與 webhook 的 `eventId` 相同，供導回查詢與 webhook 共用冪等鍵；沒有事件（pending、取消而失效）為 `null` |
+| `GET /v1/payments/:id` | `{ paymentId, status, amountTwd, merchantReference, expiresAt, eventId, refundedTwd }`；`status` 為 `pending / succeeded / failed / expired`（退款不改付款狀態）。`eventId` 是最近一個事件（成功／失敗）的 ID，與 webhook 的 `eventId` 相同，供導回查詢與 webhook 共用冪等鍵；沒有事件（pending、取消而失效）為 `null`。`refundedTwd` 是已成功退回的累計金額 |
 | `POST /v1/payments/:id/cancel` | 讓進行中的付款失效：取消後狀態就是 `expired`（沒有獨立的 cancelled 狀態，也不產生事件）；已 `expired` 冪等成功，已有結果者 409 `payment_not_cancellable` |
-| `POST /v1/payments/:id/refund` | 只有 `succeeded`（或可重試的 `refund_failed`）可退；成功送 `payment.refunded`；已 `refunded` 再退冪等回 200 `refunded`（不再送事件）。失敗回 502 `refund_failed`；其他狀態 409 `payment_not_refundable` |
+| `POST /v1/payments/:id/refunds` | `{ refundId, amountTwd }` → 200 `{ refundId, paymentId, status: "succeeded", amountTwd }`。部分退款，以呼叫端給的 `refundId`（1–100 個英數、`_`、`-`）為冪等鍵：同一個 ID 已成功再送回同一筆結果、不重複退；明確失敗過的可用同一個 ID 重試。只有 `succeeded` 的付款可退（409 `payment_not_refundable`）；累計成功退款加這一筆超過付款金額回 409 `refund_exceeds_payment`；同一個 ID 帶不同金額或用在別筆付款回 409 `refund_conflict`；模擬的失敗回 502 `refund_failed`（款項不動）。不送 webhook |
+| `GET /v1/payments/:id/refunds/:refundId` | 查證一筆退款：`{ refundId, paymentId, status: "succeeded" \| "failed", amountTwd }`；閘道從未收過這個 ID 回 404 `refund_not_found`。呼叫端逾時、結果不明時先用它查，再決定要不要用同一個 ID 重送 |
 
-付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款回 502 `refund_failed`（狀態 `refund_failed`），旗標隨即消耗，重試即成功。
+付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款嘗試回 502 `refund_failed`（那筆退款記為 `failed`，款項不動），旗標隨即消耗，以同一個 `refundId` 重試即成功；主控頁列出每筆付款的各筆退款。
 
-Webhook：`POST <webhookUrl>`，本文 `{ eventId, type, paymentId, merchantReference, amountTwd, occurredAt }`（`type` 為 `payment.succeeded / payment.failed / payment.refunded`；`occurredAt` 是事件建立時間的 epoch 毫秒，重送不變）。Header `Gateway-Signature: t=<unix 秒>,v1=<hex(HMAC-SHA256(GATEWAY_WEBHOOK_SECRET, "<t>.<原始 body>"))>`，`t` 是每次投遞當下的時間。接收端用 `@storefront/gateway/webhook-signature` 的 `verifyWebhookSignature` 驗證（預設容忍 5 分鐘），並以 `eventId` 去重。
+Webhook：`POST <webhookUrl>`，本文 `{ eventId, type, paymentId, merchantReference, amountTwd, occurredAt }`（`type` 為 `payment.succeeded / payment.failed`；退款不送 webhook；`occurredAt` 是事件建立時間的 epoch 毫秒，重送不變）。Header `Gateway-Signature: t=<unix 秒>,v1=<hex(HMAC-SHA256(GATEWAY_WEBHOOK_SECRET, "<t>.<原始 body>"))>`，`t` 是每次投遞當下的時間。接收端用 `@storefront/gateway/webhook-signature` 的 `verifyWebhookSignature` 驗證（預設容忍 5 分鐘），並以 `eventId` 去重。
 
 ## E2E
 

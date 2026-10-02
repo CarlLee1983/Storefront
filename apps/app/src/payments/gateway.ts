@@ -3,16 +3,22 @@ import { PAYMENT_STATUSES, type PaymentStatus } from "./shared";
 
 /**
  * 金流閘道介面（Payment Gateway）：App 的業務邏輯只依賴這一個介面，不知道背後是模擬閘道還是 Stripe。
- * 換閘道只需要實作這個介面；四個能力缺一不可（見 issue #10 的補充）：
- * 建立付款、查詢付款、退款（冪等）、取消付款（讓進行中的付款失效，取消後狀態是 `expired`）。
+ * 換閘道只需要實作這個介面；能力缺一不可（見 issue #10 的補充）：
+ * 建立付款、查詢付款、部分退款（以退款 ID 為冪等鍵）、查證退款、取消付款（讓進行中的付款失效，取消後狀態是 `expired`）。
  * Webhook 的簽章驗證在 Web Worker，不在這裡。
  */
 export interface PaymentGateway {
   createPayment(input: CreatePaymentInput): Promise<CreatedPayment>;
   /** 查詢付款狀態；`eventId` 是最近一個付款結果事件的 ID，與 webhook 的 eventId 相同，讓兩條路徑共用冪等鍵。 */
   getPayment(gatewayPaymentId: string): Promise<GatewayPayment>;
-  /** 退款是冪等的：已經退款的付款再退一次仍然成功。 */
-  refund(gatewayPaymentId: string): Promise<{ paymentId: string; status: "refunded" }>;
+  /**
+   * 部分退款，以 `refundId` 為冪等鍵：同一個 ID 重送不會多退，已成功的原樣回成功，明確失敗過的可用同一個 ID 重試。
+   * 閘道明確拒絕（失敗、超過可退金額…）丟 `GatewayError`；逾時與連不上也丟 `GatewayError`（`unreachable`），
+   * 呼叫端無法從例外分辨款項是否已退回，必須先 `getRefund` 查證。
+   */
+  refund(input: RefundInput): Promise<GatewayRefund>;
+  /** 查證一筆退款的結果；閘道從未收過這個 `refundId` 回 null。 */
+  getRefund(gatewayPaymentId: string, refundId: string): Promise<GatewayRefund | null>;
   /** 讓進行中的付款失效；已失效視為成功。 */
   cancel(gatewayPaymentId: string): Promise<{ paymentId: string; status: "expired" }>;
 }
@@ -50,6 +56,20 @@ export interface GatewayPayment {
   eventId: string | null;
 }
 
+export interface RefundInput {
+  gatewayPaymentId: string;
+  /** 退款的冪等鍵；本站放本地退款紀錄的編號（見 `refundGatewayId`）。 */
+  refundId: string;
+  amountTwd: number;
+}
+
+export interface GatewayRefund {
+  refundId: string;
+  paymentId: string;
+  status: "succeeded" | "failed";
+  amountTwd: number;
+}
+
 /** 與閘道溝通失敗：連不上、回了錯誤、或回應格式不符。`status` 是 HTTP 狀態，沒有回應時為 null。 */
 export class GatewayError extends Error {
   override name = "GatewayError";
@@ -73,7 +93,7 @@ const paymentSchema = z.object({
   expiresAt: z.number(),
   eventId: z.string().nullable(),
 });
-const refundedSchema = z.object({ paymentId: z.string(), status: z.literal("refunded") });
+const refundSchema = z.object({ refundId: z.string(), paymentId: z.string(), status: z.enum(["succeeded", "failed"]), amountTwd: z.number() });
 const cancelledSchema = z.object({ paymentId: z.string(), status: z.literal("expired") });
 const successSchema = z.object({ ok: z.literal(true), data: z.unknown() });
 const errorSchema = z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) });
@@ -139,7 +159,15 @@ export function createHttpGateway(
       return created;
     },
     getPayment: (id) => call(paymentPath(id), "GET", paymentSchema),
-    refund: (id) => call(`${paymentPath(id)}/refund`, "POST", refundedSchema),
+    refund: ({ gatewayPaymentId, refundId, amountTwd }) => call(`${paymentPath(gatewayPaymentId)}/refunds`, "POST", refundSchema, { refundId, amountTwd }),
+    async getRefund(id, refundId) {
+      try {
+        return await call(`${paymentPath(id)}/refunds/${encodeURIComponent(refundId)}`, "GET", refundSchema);
+      } catch (error) {
+        if (error instanceof GatewayError && error.status === 404 && error.code === "refund_not_found") return null;
+        throw error;
+      }
+    },
     cancel: (id) => call(`${paymentPath(id)}/cancel`, "POST", cancelledSchema),
   };
 }

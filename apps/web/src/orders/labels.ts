@@ -51,8 +51,6 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   succeeded: "付款成功",
   failed: "付款失敗",
   expired: "已失效",
-  refunded: "已退款",
-  refund_failed: "退款失敗",
 };
 
 export function paymentStatusLabel(status: string): string {
@@ -60,7 +58,7 @@ export function paymentStatusLabel(status: string): string {
 }
 
 const CUSTOMER_PAYMENT_LABELS: Record<string, string> = {
-  pending: "等待付款", succeeded: "付款成功", failed: "付款未完成", expired: "付款已失效", refunded: "已退款", refund_failed: "退款尚未完成",
+  pending: "等待付款", succeeded: "付款成功", failed: "付款未完成", expired: "付款已失效",
 };
 
 const CUSTOMER_PAYMENT_NOTES: Record<string, string> = {
@@ -68,8 +66,6 @@ const CUSTOMER_PAYMENT_NOTES: Record<string, string> = {
   succeeded: "這筆付款已成功；請以訂單狀態確認後續處理。",
   failed: "這筆付款未完成，若訂單仍可付款，可再試一次。",
   expired: "這筆付款已失效，請查看訂單是否仍可付款。",
-  refunded: "這筆款項已退回原付款方式。",
-  refund_failed: "退款尚未完成，我們會查明處理；如需協助，請聯絡 hello@gravito.dev。",
 };
 
 export function customerPaymentStatusLabel(status: string): string {
@@ -88,6 +84,47 @@ const CUSTOMER_REFUND_REASONS: Record<string, string> = {
 
 export function customerRefundReasonLabel(reason: string | null): string | null {
   return reason === null ? null : Object.hasOwn(CUSTOMER_REFUND_REASONS, reason) ? CUSTOMER_REFUND_REASONS[reason]! : "退款原因待確認";
+}
+
+/** 退款進度（`RefundStatus`）給管理員看的名稱：如實區分尚未送出、結果不明與明確失敗。不認得的原樣顯示。 */
+const REFUND_STATUS_LABELS: Record<string, string> = {
+  pending: "尚未送出",
+  processing: "處理中",
+  unknown: "結果不明（須先查證）",
+  failed: "明確失敗（可重試）",
+  succeeded: "已退回",
+};
+
+export function refundStatusLabel(status: string): string {
+  return Object.hasOwn(REFUND_STATUS_LABELS, status) ? REFUND_STATUS_LABELS[status]! : status;
+}
+
+/** 顧客看的退款進度：只分「已退回」與「處理中」，不揭露內部的不明與失敗；不認得的代碼不顯示原始值。 */
+export function customerRefundStatusLabel(status: string): string {
+  if (status === "succeeded") return "已退回原付款方式";
+  return Object.hasOwn(REFUND_STATUS_LABELS, status) ? "退款處理中" : "退款狀態待確認";
+}
+
+export function customerRefundStatusNote(status: string): string {
+  if (status === "succeeded") return "這筆款項已退回，實際入帳時間依你的付款機構而定。";
+  return Object.hasOwn(REFUND_STATUS_LABELS, status)
+    ? "我們正在處理這筆退款，完成後會通知你；如需協助，請聯絡 hello@gravito.dev。"
+    : "目前無法確認這筆退款的狀態，請稍後重新整理；仍有疑問請聯絡 hello@gravito.dev。";
+}
+
+const REFUND_ACTION_LABELS: Record<string, string> = { send: "送出退款", verify: "向閘道查證" };
+const REFUND_OUTCOME_LABELS: Record<string, string> = {
+  succeeded: "成功",
+  failed: "明確失敗",
+  unknown: "結果不明",
+  not_found: "閘道從未收過這筆退款",
+};
+
+/** 一次退款嘗試的一行說明（管理員的嘗試紀錄用）。 */
+export function refundAttemptLabel(action: string, outcome: string): string {
+  const actionLabel = Object.hasOwn(REFUND_ACTION_LABELS, action) ? REFUND_ACTION_LABELS[action]! : action;
+  const outcomeLabel = Object.hasOwn(REFUND_OUTCOME_LABELS, outcome) ? REFUND_OUTCOME_LABELS[outcome]! : outcome;
+  return `${actionLabel}：${outcomeLabel}`;
 }
 
 /** 退款觸發原因（`RefundReason`）的顯示說明；沒有退款回 null，不認得的原樣顯示。 */

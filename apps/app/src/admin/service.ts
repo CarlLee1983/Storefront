@@ -24,8 +24,9 @@ import { dispatchShipment } from "../shipments/dispatch";
 import { recordShipmentEvent } from "../shipments/events";
 import { selectOrderPaymentSummaries } from "../payments/queries";
 import type { createPaymentService } from "../payments/service";
-import { reconcilePaymentInput } from "../payments/input";
+import { reconcilePaymentInput, retryRefundInput } from "../payments/input";
 import { selectReconcileListing } from "../payments/reconcile";
+import { selectOrderRefunds, selectRefundTodos } from "../payments/refunds";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
@@ -35,12 +36,16 @@ import { adjustStockInput, createProductInput, createVariantInput, listOrdersInp
 /** 補查一筆付款（見 `createPaymentService().reconcilePayment`）；由 entrypoint 接上，管理服務自己不碰金流閘道。 */
 export type ReconcilePayment = ReturnType<typeof createPaymentService>["reconcilePayment"];
 
+/** 重試一筆退款（見 `createPaymentService().retryRefund`）；同樣由 entrypoint 接上。 */
+export type RetryRefund = ReturnType<typeof createPaymentService>["retryRefund"];
+
 export interface AdminDependencies {
   images?: ProductImageBucket;
   reconcilePayment: ReconcilePayment;
+  retryRefund: RetryRefund;
 }
 
-export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, { images, reconcilePayment }: AdminDependencies) {
+export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, { images, reconcilePayment, retryRefund }: AdminDependencies) {
   const db = drizzle(d1);
   const verifier = createAccessVerifier(access, clock);
 
@@ -350,12 +355,24 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, reconcilePaymentInput, input, (actor, { paymentId }) => reconcilePayment(paymentId, actor.email));
     },
 
+    /** 退款待辦：所有尚未成功的退款（結果不明、明確失敗、等待與處理中），含每次嘗試的紀錄與操作者。 */
+    async listRefundsToHandle(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectRefundTodos(db, clock.now()));
+    },
+
+    /** 重試一筆退款：明確失敗的直接重送，結果不明的先向閘道查證再決定；操作者記在嘗試紀錄上。 */
+    retryRefund(jwt: unknown, input: unknown) {
+      return authorized(jwt, retryRefundInput, input, (actor, { refundId }) => retryRefund(refundId, actor.email));
+    },
+
     /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */
     getOrderForAdmin(jwt: unknown, input: unknown) {
       return authorized(jwt, orderIdInput, input, async (_actor, { orderId }) => {
         const order = await selectOrderForAdmin(db, orderId);
         if (!order) return fail("order_not_found");
-        return ok({ ...order, payments: await selectOrderPaymentSummaries(db, clock.now(), orderId) });
+        return ok({ ...order, payments: await selectOrderPaymentSummaries(db, clock.now(), orderId), refunds: await selectOrderRefunds(db, orderId) });
       });
     },
   };

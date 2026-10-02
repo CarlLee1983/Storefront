@@ -93,10 +93,11 @@ describe("管理員訂單明細", () => {
         createdAt: expect.any(Number),
         lines: [{ id: expect.any(Number), productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", shippedQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
         payments: [
-          { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, refundReason: null, refundAt: null, needsAttention: false },
+          { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, needsAttention: false },
           // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄
-          { id: expect.any(Number), amountTwd: 1, status: "succeeded", createdAt: 0, refundReason: null, refundAt: null, needsAttention: true },
+          { id: expect.any(Number), amountTwd: 1, status: "succeeded", createdAt: 0, needsAttention: true },
         ],
+        refunds: [],
         shipments: [],
       },
     });

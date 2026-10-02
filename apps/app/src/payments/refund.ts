@@ -1,5 +1,18 @@
 import type { OrderStatus } from "../orders/schema";
+import type { GatewayError } from "./gateway";
 import type { RefundReason } from "./shared";
+
+/** 本地退款紀錄在閘道的退款 ID（冪等鍵）：重試、查證與重複回呼都靠它指到同一筆。 */
+export const refundGatewayId = (refundId: number): string => `rf_${refundId}`;
+
+/**
+ * 閘道丟出的錯誤該算「明確失敗」還是「結果不明」（ADR 0007、Q19）：
+ * 閘道有回應並明確拒絕（退款失敗，或 4xx 的請求被拒）→ 確定這次沒退成，可重試且不阻擋同單後筆；
+ * 連不上、逾時、5xx、回應格式不符 → 款項可能已退回也可能沒有，必須先查證，期間阻擋後筆。
+ */
+export function isExplicitRefundFailure(error: GatewayError): boolean {
+  return error.code === "refund_failed" || (error.status !== null && error.status >= 400 && error.status < 500);
+}
 
 /**
  * 付款成功、但沒有讓訂單轉為已付款時，該不該退款、為什麼（CONTEXT.md「退款」的三種情況）。

@@ -22,7 +22,7 @@ export function insertOrderPlacedNotice(ownOrder: SQL): SQL {
 }
 
 /**
- * 付款結果通知：一筆付款一封，付款已有結果（成功、失敗，或之後轉為退款）才寫。
+ * 付款結果通知：一筆付款一封，付款已有結果（成功、失敗）才寫。
  * 種類看這筆付款是不是讓訂單轉為已付款的那一筆：失敗 → `payment_failed`；是 → `payment_succeeded`；
  * 成功卻沒有讓訂單成立（遲到、已取消、重複付款）→ `payment_unsettled`。
  */
@@ -48,9 +48,25 @@ export function insertPaymentResultNotice(gatewayPaymentId: string): SQL {
              ELSE 'payment_unsettled' END AS kind
       FROM payments JOIN orders ON orders.id = payments.order_id
       WHERE payments.gateway_payment_id = ${gatewayPaymentId}
-        AND payments.status IN ('succeeded', 'failed', 'refunded', 'refund_failed')
+        AND payments.status IN ('succeeded', 'failed')
     ) t
     WHERE true
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/**
+ * 退款成功通知：一筆退款一封，事件鍵 `refund:<退款編號>`；只在該筆退款已成功時才寫，與退款轉為成功同一個 batch（見 `payments/refunds.ts` 的 `recordRefundAttempt`）。
+ * 重試與重複回呼都只會有一封；退款失敗或結果不明時不寄（顧客在訂單頁看得到進度）。
+ */
+export function insertRefundNotice(refundId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'refund_succeeded', '訂單 #' || orders.id || ' 已退款 NT$' || refunds.amount_twd,
+      '訂單 #' || orders.id || ' 有一筆 NT$' || refunds.amount_twd || ' 的款項已退回原付款方式，實際入帳時間依你的付款機構而定。各筆退款的進度請至訂單頁查看。',
+      'refund:' || refunds.id, ${effectiveNow}
+    FROM refunds JOIN orders ON orders.id = refunds.order_id
+    WHERE refunds.id = ${refundId} AND refunds.status = 'succeeded'
     ON CONFLICT (event_key) DO NOTHING
   `;
 }

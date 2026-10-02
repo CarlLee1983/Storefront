@@ -7,7 +7,7 @@ import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
 import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
-import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, formatDateTime, parseOrderId } from "../../orders/labels";
+import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
@@ -102,7 +102,32 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                       <td data-label="付款狀態"><span class="payment-state">
                         {customerPaymentStatusLabel(payment.status)}
                         <small>（{customerPaymentStatusNote(payment.status)}）</small>
-                        {customerRefundReasonLabel(payment.refundReason) && <small>（{customerRefundReasonLabel(payment.refundReason)}）</small>}
+                      </span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )
+        }
+        {
+          order.refunds.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="refund-info-title">
+              <h2 id="refund-info-title">退款進度</h2>
+              <table class="payment-history">
+                <thead>
+                  <tr><th>登記時間</th><th>金額</th><th>原因</th><th>進度</th></tr>
+                </thead>
+                <tbody>
+                  {order.refunds.map((refund) => (
+                    <tr>
+                      <td data-label="登記時間">{formatDateTime(refund.createdAt)}</td>
+                      <td data-label="金額">NT$ {priceFormat.format(refund.amountTwd)}</td>
+                      <td data-label="原因">{customerRefundReasonLabel(refund.reason)}</td>
+                      <td data-label="進度"><span class="payment-state">
+                        {customerRefundStatusLabel(refund.status)}
+                        <small>（{customerRefundStatusNote(refund.status)}）</small>
+                        {refund.settledAt !== null && <small>退回時間：{formatDateTime(refund.settledAt)}</small>}
                       </span></td>
                     </tr>
                   ))}

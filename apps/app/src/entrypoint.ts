@@ -29,7 +29,11 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       teamDomain: this.env.ACCESS_TEAM_DOMAIN,
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
-    }, { images: this.env.PRODUCT_IMAGES, reconcilePayment: (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor) });
+    }, {
+      images: this.env.PRODUCT_IMAGES,
+      reconcilePayment: (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor),
+      retryRefund: (refundId, actor) => this.#payments().retryRefund(refundId, actor),
+    });
   }
 
   /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */
@@ -332,6 +336,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   reconcilePayment(jwt: string, input: unknown) {
     return this.#admin().reconcilePayment(jwt, input);
+  }
+
+  listRefundsToHandle(jwt: string) {
+    return this.#admin().listRefundsToHandle(jwt);
+  }
+
+  retryRefund(jwt: string, input: unknown) {
+    return this.#admin().retryRefund(jwt, input);
   }
 
   listMailForAdmin(jwt: string) {

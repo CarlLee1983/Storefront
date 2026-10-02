@@ -5,6 +5,7 @@ import { fail, ok, type Unauthorized } from "../shared/result";
 import { deliverNoticeSafely } from "../contact/notify";
 import { selectVerifiedEmail } from "../contact/queries";
 import { selectPaymentSummaries } from "../payments/queries";
+import { selectRefundSummaries } from "../payments/refunds";
 import type { InvalidatePaymentsRefusal } from "../payments/shared";
 import { selectShippingFees } from "../shipping/queries";
 import { diagnoseLines } from "./diagnosis";
@@ -88,8 +89,9 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       if (!customerId) return unauthorized;
       const orders = await selectOrders(db, customerId);
       const payments = await selectPaymentSummaries(db, customerId, clock.now());
-      // 付款嘗試由 payments 模組提供，在這裡與訂單組合（orders 的查詢不依賴 payments）
-      return ok(orders.map((order) => ({ ...order, payments: payments.get(order.id) ?? [] })));
+      const refunds = await selectRefundSummaries(db, customerId);
+      // 付款嘗試與退款由 payments 模組提供，在這裡與訂單組合（orders 的查詢不依賴 payments）
+      return ok(orders.map((order) => ({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [] })));
     },
 
     async getMyOrder(cookie: unknown, input: unknown) {
@@ -101,7 +103,8 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const [order] = await selectOrders(db, customerId, { orderId: parsed.data.orderId });
       if (!order) return fail("order_not_found");
       const payments = await selectPaymentSummaries(db, customerId, clock.now(), order.id);
-      return ok({ ...order, payments: payments.get(order.id) ?? [] });
+      const refunds = await selectRefundSummaries(db, customerId, order.id);
+      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [] });
     },
 
     /**

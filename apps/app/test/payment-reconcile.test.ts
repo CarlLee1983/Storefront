@@ -144,9 +144,9 @@ describe("管理員補查：不依賴顧客返回頁面", () => {
 
     const result = await reconcile(paymentId);
 
-    expect(result).toEqual({ ok: true, data: { outcome: "settled", paymentStatus: "refunded", orderStatus: "expired" } });
+    expect(result).toEqual({ ok: true, data: { outcome: "settled", paymentStatus: "succeeded", orderStatus: "expired" } });
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
-    expect((await orderOf(alice, order.orderId)).payments).toMatchObject([{ status: "refunded", refundReason: "late_success_unreclaimable" }]);
+    expect((await orderOf(alice, order.orderId)).refunds).toMatchObject([{ status: "succeeded", reason: "late_success_unreclaimable" }]);
   });
 });
 

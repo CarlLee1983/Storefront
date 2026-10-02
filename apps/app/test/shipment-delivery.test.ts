@@ -93,7 +93,7 @@ describe("暫時配送失敗與再次配送", () => {
     expect(await stockOf(variantId)).toEqual(before.stock);
     expect(after.shipments).toHaveLength(before.order.shipments.length);
     expect(after.lines[0]!.shippedQuantity).toBe(before.order.lines[0]!.shippedQuantity);
-    expect(after.payments.map((payment) => payment.refundReason)).toEqual(before.order.payments.map((payment) => payment.refundReason));
+    expect(after.refunds).toEqual(before.order.refunds);
     expect(after.status).toBe(before.order.status);
   });
 

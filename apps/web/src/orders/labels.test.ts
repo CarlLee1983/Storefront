@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appointmentSummary, deliveryStatusLabel, formatDateTime, shipmentEventKindLabel, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
+import { refundAttemptLabel, refundStatusLabel, customerRefundStatusLabel, customerRefundStatusNote, appointmentSummary, deliveryStatusLabel, formatDateTime, shipmentEventKindLabel, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
 import { customerOrderStatusLabel, customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary } from "./labels";
 
 describe("顧客訂單與付款文案", () => {
@@ -8,8 +8,6 @@ describe("顧客訂單與付款文案", () => {
     expect(customerOrderStatusNote("expired", 0)).toContain("狀態可能更新");
     expect(customerShipmentSummary(null, null)).toBe("尚未提供物流單號。");
     expect(customerShipmentSummary(null, "TW123")).toBe("物流單號：TW123");
-    expect(customerPaymentStatusLabel("refund_failed")).toBe("退款尚未完成");
-    expect(customerPaymentStatusNote("refund_failed")).not.toContain("已退回原付款方式");
     expect(customerRefundReasonLabel("duplicate_success")).toBe("同一張訂單有另一筆成功付款");
   });
 
@@ -20,7 +18,29 @@ describe("顧客訂單與付款文案", () => {
       expect(customerPaymentStatusLabel(code)).toBe("付款狀態待確認");
       expect(customerPaymentStatusNote(code)).toContain("無法確認這筆付款");
       expect(customerRefundReasonLabel(code)).toBe("退款原因待確認");
+      expect(customerRefundStatusLabel(code)).toBe("退款狀態待確認");
+      expect(customerRefundStatusNote(code)).toContain("無法確認這筆退款");
+      expect(refundStatusLabel(code)).toBe(code);
     }
+  });
+
+  it("顧客只看到「處理中」與「已退回」，不揭露內部的結果不明與明確失敗", () => {
+    expect(customerRefundStatusLabel("succeeded")).toBe("已退回原付款方式");
+    for (const status of ["pending", "processing", "unknown", "failed"]) {
+      expect(customerRefundStatusLabel(status)).toBe("退款處理中");
+      expect(customerRefundStatusNote(status)).not.toMatch(/不明|失敗/);
+    }
+  });
+});
+
+describe("管理員的退款進度與嘗試紀錄", () => {
+  it("如實區分尚未送出、處理中、結果不明、明確失敗與已退回", () => {
+    expect(["pending", "processing", "unknown", "failed", "succeeded"].map(refundStatusLabel)).toEqual([
+      "尚未送出", "處理中", "結果不明（須先查證）", "明確失敗（可重試）", "已退回",
+    ]);
+    expect(refundAttemptLabel("verify", "not_found")).toBe("向閘道查證：閘道從未收過這筆退款");
+    expect(refundAttemptLabel("send", "unknown")).toBe("送出退款：結果不明");
+    expect(refundAttemptLabel("x", "y")).toBe("x：y");
   });
 });
 
@@ -58,8 +78,6 @@ describe("paymentStatusLabel", () => {
     ["succeeded", "付款成功"],
     ["failed", "付款失敗"],
     ["expired", "已失效"],
-    ["refunded", "已退款"],
-    ["refund_failed", "退款失敗"],
   ])("%s → %s", (status, label) => {
     expect(paymentStatusLabel(status)).toBe(label);
   });

@@ -7,7 +7,7 @@ import { orders, type OrderStatus } from "../orders/schema";
 import { everyLineReclaimableSql, lateSuccessStatusSql, payableStatusSql } from "./payable";
 import { paymentNeedsAttentionSql } from "./attention";
 import { insertPaymentResultNotice } from "../contact/notices";
-import { paymentReconcileIssues, payments, type PaymentStatus, type RefundReason } from "./schema";
+import { paymentReconcileIssues, payments, type PaymentStatus } from "./schema";
 import type { PaymentEvent } from "./shared";
 
 export interface OrderForPayment {
@@ -132,7 +132,7 @@ export async function selectPaymentAndOrderStatus(
  *
  * 0. （batchAtEffectiveNow）先推進高水位，`applied_at` 與其他欄位一樣用有效時間。
  * 1. 記錄事件（`event_id` 唯一，`ON CONFLICT DO NOTHING`）：這是冪等的關卡。這次呼叫搶到事件才會有 `claim` 對得上的那一列，
- *    後面每一句都要求 `won`，所以同一個事件重送或同時送達，只有第一次的寫入生效；退款也只由搶到事件的那次觸發。
+ *    後面每一句都要求 `won`，所以同一個事件重送或同時送達，只有第一次的寫入生效；退款登記也只由搶到事件的那次觸發。
  * 2. （成功時）訂單轉為已付款，依訂單當下狀態分流，條件都寫在這一句裡（不是先讀後寫）：
  *    - 待付款 → 已付款：付款已成功，待付款保留就地轉為已付款保留；不動在庫數（交運才扣，ADR 0006），保留總量與可售數量不變。
  *    - 已逾期 → 已付款（遲到的付款成功，ADR 0001）：「重新保留」。只有訂單的每一筆明細都滿足可售數量
@@ -193,36 +193,13 @@ export async function applyPaymentEvent(
   return { paymentSettled, orderSettled, orderStatus };
 }
 
-/**
- * 記下退款的結果，僅限仍是 succeeded 的付款（條件式 UPDATE，狀態只往前走）：成功轉為 refunded、閘道退款失敗轉為 refund_failed，
- * 連同觸發原因與時間（高水位的有效時間，`now` 只用來推進高水位）。回傳這次呼叫是否真的記下了。
- */
-export async function recordRefundResult(
-  d1: D1Database,
-  gatewayPaymentId: string,
-  result: { status: "refunded" | "refund_failed"; reason: RefundReason },
-  now: number,
-): Promise<boolean> {
-  const [updated] = await batchAtEffectiveNow(d1, now, [
-    sql`
-      UPDATE payments SET status = ${result.status}, refund_reason = ${result.reason}, refund_at = ${effectiveNow}
-      WHERE gateway_payment_id = ${gatewayPaymentId} AND status = 'succeeded'
-    `,
-  ]);
-  return updated!.meta.changes > 0;
-}
-
 export interface PaymentSummary {
   id: number;
   amountTwd: number;
   status: PaymentStatus;
   /** 發起時間，UTC epoch 毫秒。 */
   createdAt: number;
-  /** 退款的觸發原因；沒有觸發過退款為 null（退款的結果在 `status`）。 */
-  refundReason: RefundReason | null;
-  /** 退款結果記下的時間（成功或失敗），UTC epoch 毫秒；沒有觸發過退款為 null。 */
-  refundAt: number | null;
-  /** 需要處理（見 `attention.ts`）：付款成功卻沒有退款紀錄、而訂單不是由這筆支付，或退款失敗；管理端要顯示「需要處理」。 */
+  /** 需要處理（見 `attention.ts`）：付款成功卻沒有退款紀錄、而訂單不是由這筆支付，或有尚未成功的退款；管理端要顯示「需要處理」。 */
   needsAttention: boolean;
 }
 
@@ -253,8 +230,6 @@ async function selectSummaries(db: DrizzleD1Database, now: number, where: SQL | 
       status: payments.status,
       createdAt: payments.createdAt,
       expiresAt: payments.expiresAt,
-      refundReason: payments.refundReason,
-      refundAt: payments.refundAt,
       needsAttention: sql<number>`CASE WHEN ${paymentNeedsAttentionSql()} THEN 1 ELSE 0 END`,
     })
     .from(payments)

@@ -64,6 +64,7 @@ describe("結帳成功", () => {
           { id: expect.any(Number), productId: pen.productId, variantId: pen.variantId, productName: "原子筆", variantLabel: "", quantity: 3, unitPriceTwd: 45, deliveryType: "standard", shippedQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
         ],
         payments: [],
+        refunds: [],
         shipments: [],
       },
     });

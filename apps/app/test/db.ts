@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import migration0020 from "../migrations/0020_stock_ledger.sql?raw";
 
-/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、出貨批次的物流回報事件、明細與批次、投遞紀錄、信件、驗證請求、付款補查待辦與付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
+/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、出貨批次的物流回報事件、明細與批次、投遞紀錄、信件、驗證請求、退款嘗試與退款、付款補查待辦與付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
 export async function resetDb(): Promise<void> {
   // 庫存流水有禁止刪改的 trigger（0020）：測試清理時暫時拿掉，清完用遷移裡同一份定義還原
   const triggers = migration0020.split("--> statement-breakpoint").filter((statement) => statement.includes("CREATE TRIGGER"));
@@ -18,6 +18,8 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM mail_controls"),
     env.DB.prepare("DELETE FROM contact_verifications"),
     env.DB.prepare("DELETE FROM customer_addresses"),
+    env.DB.prepare("DELETE FROM refund_attempts"),
+    env.DB.prepare("DELETE FROM refunds"),
     env.DB.prepare("DELETE FROM payment_reconcile_issues"),
     env.DB.prepare("DELETE FROM payment_events"),
     env.DB.prepare("DELETE FROM payments"),
@@ -48,10 +50,10 @@ export async function forceOrderStatus(orderId: number, status: string): Promise
 }
 
 /** 直接寫入一筆付款（測試安排前置狀態用），回傳它的閘道付款 ID。 */
-export async function seedPayment(orderId: number, status: string, gatewayPaymentId = `seed_${orderId}_${status}`): Promise<string> {
+export async function seedPayment(orderId: number, status: string, gatewayPaymentId = `seed_${orderId}_${status}`, amountTwd = 1): Promise<string> {
   await env.DB
-    .prepare("INSERT INTO payments (order_id, gateway_payment_id, amount_twd, status, created_at, expires_at) VALUES (?, ?, 1, ?, 0, 9007199254740991)")
-    .bind(orderId, gatewayPaymentId, status)
+    .prepare("INSERT INTO payments (order_id, gateway_payment_id, amount_twd, status, created_at, expires_at) VALUES (?, ?, ?, ?, 0, 9007199254740991)")
+    .bind(orderId, gatewayPaymentId, amountTwd, status)
     .run();
   return gatewayPaymentId;
 }

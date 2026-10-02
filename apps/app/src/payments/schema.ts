@@ -1,9 +1,23 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { orders } from "../orders/schema";
-import { PAYMENT_STATUSES, RECONCILE_ISSUE_REASONS, type PaymentOutcome, type PaymentStatus, type ReconcileIssueReason, type RefundReason } from "./shared";
+import {
+  PAYMENT_STATUSES,
+  RECONCILE_ISSUE_REASONS,
+  REFUND_ATTEMPT_ACTIONS,
+  REFUND_ATTEMPT_OUTCOMES,
+  REFUND_REASONS,
+  REFUND_STATUSES,
+  type PaymentOutcome,
+  type PaymentStatus,
+  type ReconcileIssueReason,
+  type RefundAttemptAction,
+  type RefundAttemptOutcome,
+  type RefundReason,
+  type RefundStatus,
+} from "./shared";
 
-export type { PaymentOutcome, PaymentStatus, ReconcileIssueReason, RefundReason };
+export type { PaymentOutcome, PaymentStatus, ReconcileIssueReason, RefundAttemptAction, RefundAttemptOutcome, RefundReason, RefundStatus };
 
 /** 付款（Payment）：針對某張訂單向金流閘道發起的一次收款嘗試；一張訂單可以有多筆。 */
 export const payments = sqliteTable(
@@ -22,10 +36,6 @@ export const payments = sqliteTable(
     createdAt: integer("created_at").notNull(),
     /** 閘道回報的失效時間，UTC epoch 毫秒；本地仍是 pending 但已過這個時間的付款，對外顯示為已失效。 */
     expiresAt: integer("expires_at").notNull(),
-    /** 退款的觸發原因；沒有觸發過退款為 null。退款的結果在 `status`（refunded / refund_failed）。 */
-    refundReason: text("refund_reason").$type<RefundReason>(),
-    /** 退款結果記下的時間（成功或失敗都記），UTC epoch 毫秒（高水位時鐘的有效時間）；沒有觸發過退款為 null。 */
-    refundAt: integer("refund_at"),
     /** 最近一次補查（向閘道查證）的時間，不論結果，UTC epoch 毫秒；從沒補查過為 null。Cron 依它輪替，查不出結果的付款不會擋住其他付款。 */
     reconciledAt: integer("reconciled_at"),
   },
@@ -77,5 +87,77 @@ export const paymentReconcileIssues = sqliteTable(
       "payment_reconcile_issues_reason_check",
       sql`${table.reason} IN (${sql.raw(RECONCILE_ISSUE_REASONS.map((reason) => `'${reason}'`).join(", "))})`,
     ),
+  ],
+);
+
+const sqlList = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
+
+/**
+ * 退款（Refund）：把一筆成功收款的部分或全部款項退回的獨立款項處理，每筆各自記金額與進度（ADR 0007）；重試沿用同一列。
+ * 本地退款紀錄的編號就是閘道的冪等鍵（`refundGatewayId`），所以同一筆重送不會多退。
+ * 退款綁定一筆付款（`payment_id`，且該付款屬於 `order_id`）：金額上限是那筆付款的實收，不跨收款。
+ * `goods_twd`、`shipping_twd` 是金額的拆分（商品款、原運費），讓後續的部分取消與發票折讓可以核對；兩者相加等於 `amount_twd`。
+ * 狀態與額度規則見 `REFUND_STATUSES`；除 succeeded 外都佔用額度。
+ */
+export const refunds = sqliteTable(
+  "refunds",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id),
+    paymentId: integer("payment_id")
+      .notNull()
+      .references(() => payments.id),
+    reason: text("reason").$type<RefundReason>().notNull(),
+    /** 退款金額，新台幣整數元，大於 0。 */
+    amountTwd: integer("amount_twd").notNull(),
+    goodsTwd: integer("goods_twd").notNull(),
+    shippingTwd: integer("shipping_twd").notNull(),
+    status: text("status").$type<RefundStatus>().notNull().default("pending"),
+    /** 登記時間，UTC epoch 毫秒（高水位時鐘的有效時間）。 */
+    createdAt: integer("created_at").notNull(),
+    /** 最近一次進入 processing 的時間；程序中斷而卡在 processing 的退款以它判斷租約是否過期。 */
+    claimedAt: integer("claimed_at"),
+    /** 款項確認退回的時間；尚未成功為 null。 */
+    settledAt: integer("settled_at"),
+  },
+  (table) => [
+    index("refunds_order_idx").on(table.orderId),
+    index("refunds_payment_idx").on(table.paymentId),
+    // 付款層級的原因（遲到、已取消、重複）一筆付款最多退一次：事件重送與補寫都不會登記第二筆
+    uniqueIndex("refunds_payment_reason_uidx")
+      .on(table.paymentId)
+      .where(sql`${table.reason} IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success')`),
+    check("refunds_status_check", sql`${table.status} IN (${sqlList(REFUND_STATUSES)})`),
+    check("refunds_reason_check", sql`${table.reason} IN (${sqlList(REFUND_REASONS)})`),
+    check("refunds_amount_check", sql`${table.amountTwd} > 0 AND ${table.goodsTwd} >= 0 AND ${table.shippingTwd} >= 0 AND ${table.goodsTwd} + ${table.shippingTwd} = ${table.amountTwd}`),
+  ],
+);
+
+/**
+ * 退款嘗試紀錄（只增不改）：每次向閘道送出或查證留一列，含操作者（`system` 或管理員 email）、動作與結果，
+ * 讓退款的各次業務事實與管理員的操作可追溯。
+ */
+export const refundAttempts = sqliteTable(
+  "refund_attempts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    refundId: integer("refund_id")
+      .notNull()
+      .references(() => refunds.id),
+    /** 嘗試的時間，UTC epoch 毫秒。 */
+    at: integer("at").notNull(),
+    /** 觸發者：`system`（付款事件觸發的首次退款）或管理員 email。 */
+    actor: text("actor").notNull(),
+    action: text("action").$type<RefundAttemptAction>().notNull(),
+    outcome: text("outcome").$type<RefundAttemptOutcome>().notNull(),
+    /** 失敗或不明時閘道／連線的錯誤碼（例如 `refund_failed`、`unreachable`）；其他為 null。 */
+    code: text("code"),
+  },
+  (table) => [
+    index("refund_attempts_refund_idx").on(table.refundId),
+    check("refund_attempts_action_check", sql`${table.action} IN (${sqlList(REFUND_ATTEMPT_ACTIONS)})`),
+    check("refund_attempts_outcome_check", sql`${table.outcome} IN (${sqlList(REFUND_ATTEMPT_OUTCOMES)})`),
   ],
 );
