@@ -4,7 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { parseStatusFilter } from "../../../admin/order-form";
 import OrderStatus from "../../../orders/OrderStatus.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
-import Layout from "../../../layouts/Layout.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { formatDateTime, ORDER_STATUS_CODES, orderStatusLabel } from "../../../orders/labels";
 
 export const prerender = false;
@@ -17,13 +17,13 @@ if (!orders.ok) Astro.response.status = 403;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
-<Layout title="訂單管理" admin>
+<AdminLayout title="訂單管理">
   {
     !orders.ok ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
-        <form method="get">
+        <form method="get" class="admin-filter">
           <label>
             訂單狀態
             <select name="status">
@@ -62,9 +62,4 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       </>
     )
   }
-</Layout>
-
-<style>
-  .order-products { list-style: none; padding: 0; margin: 0; }
-  .order-products li, .order-product { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
-</style>
+</AdminLayout>

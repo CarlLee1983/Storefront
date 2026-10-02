@@ -4,7 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { parseCategoryId } from "../../../admin/category-form";
 import { describeFailure, logFailure } from "../../../admin/failure";
 import { toText } from "../../../shared/form-values";
-import Layout from "../../../layouts/Layout.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
 
 export const prerender = false;
 
@@ -57,7 +57,7 @@ const SAVED_MESSAGES: Record<string, string> = {
 const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
 ---
 
-<Layout title="分類管理" admin>
+<AdminLayout title="分類管理">
   {
     Astro.response.status === 403 ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
@@ -83,13 +83,15 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
                     <td>{c.productCount}</td>
                     <td>{c.listedProductCount}</td>
                     <td>
-                      <a href={`/admin/categories/${c.id}`} aria-label={`修改${c.name}（含圖片）`}>修改與圖片</a>
-                      <form method="post" class="inline" data-confirm={`確定刪除分類「${c.name}」？`}>
-                        <input type="hidden" name="id" value={c.id} />
-                        <input type="hidden" name="name" value={c.name} />
-                        <input type="hidden" name="intent" value="delete" />
-                        <button type="submit" aria-label={`刪除${c.name}`}>刪除</button>
-                      </form>
+                      <div class="admin-actions">
+                        <a href={`/admin/categories/${c.id}`} aria-label={`修改${c.name}（含圖片）`}>修改與圖片</a>
+                        <form method="post" class="inline" data-confirm={`確定刪除分類「${c.name}」？`}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <input type="hidden" name="name" value={c.name} />
+                          <input type="hidden" name="intent" value="delete" />
+                          <button type="submit" aria-label={`刪除${c.name}`}>刪除</button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -100,7 +102,7 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
       </>
     )
   }
-</Layout>
+</AdminLayout>
 
 <script>
   // 刪除前確認；沒有 JavaScript 時直接送出，由 App 擋下有商品的分類

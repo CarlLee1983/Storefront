@@ -4,7 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeFailure, type Failure } from "../../../admin/failure";
 import { parseProductId, productUpdateFormToInput } from "../../../admin/product-form";
 import { formToRecord } from "../../../shared/form-values";
-import Layout from "../../../layouts/Layout.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
 
 export const prerender = false;
 
@@ -39,7 +39,7 @@ const values = {
 };
 ---
 
-<Layout title="編輯商品" admin>
+<AdminLayout title="編輯商品">
   {
     Astro.response.status === 403 ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
@@ -78,8 +78,10 @@ const values = {
           </select>
           {failure?.fields.categoryId?.map((m) => <span class="error">{m}</span>)}
           <p>商品必須有分類才能上架。</p>
-          <button type="submit">儲存</button>
-          <a href="/admin">取消</a>
+          <div class="admin-actions">
+            <button type="submit">儲存</button>
+            <a href="/admin">取消</a>
+          </div>
         </form>
         <section aria-labelledby="image-heading">
           <h2 id="image-heading">商品圖片</h2>
@@ -105,15 +107,8 @@ const values = {
       </>
     )
   }
-</Layout>
+</AdminLayout>
 
-<style>
-  #product-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; padding: 0; list-style: none; }
-  #product-images :global(li) { padding: 0.75rem; border: 1px solid var(--color-border, #888); border-radius: 0.5rem; min-width: 0; }
-  #product-images :global(img) { display: block; width: 100%; height: 9rem; object-fit: contain; margin-bottom: 0.5rem; }
-  #product-images :global(.image-actions) { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
-  #product-images :global(.drag-over) { outline: 3px solid currentColor; }
-</style>
 <script>
   import { errorMessage, readResult, uploadImage } from "../../../images/client";
   import type { ProductImage } from "@storefront/app/product-images";
