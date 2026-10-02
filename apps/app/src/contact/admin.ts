@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { user } from "../auth/schema";
 import type { Clock } from "../shared/clock";
@@ -11,11 +11,22 @@ import { contactVerifications, mailControls, mailDeliveries, mailMessages } from
 const ADMIN_MAIL_LIMIT = 200;
 
 /**
- * 管理員看的投遞結果：每封信的種類、顧客、每次投遞的實際收件地址與結果。
+ * 管理員看的投遞結果：每封信的種類、顧客、每次投遞的實際收件地址、結果與處理人。
  * 刻意不選信件內文與驗證憑證：驗證連結不公開，管理員只能看結果與操作演練控制。
+ * `needsAttention` 是待辦：還沒有任何一次送達、而且還能處理的信（已被取代或過期的驗證信重送不了，不算待辦）。
+ * 超過最新 200 封的舊信只要還是待辦就仍會列出，不會因為被新信擠出清單而沒人處理。
  */
-export async function selectMailForAdmin(db: DrizzleD1Database) {
+export async function selectMailForAdmin(db: DrizzleD1Database, now: number) {
+  const needsAttention = sql<number>`(
+    NOT EXISTS (SELECT 1 FROM mail_deliveries d WHERE d.message_id = ${mailMessages.id} AND d.status = 'delivered')
+    AND (${mailMessages.verificationId} IS NULL OR EXISTS (
+      SELECT 1 FROM contact_verifications v
+      WHERE v.id = ${mailMessages.verificationId} AND v.verified_at IS NULL AND v.superseded_at IS NULL AND v.expires_at > ${now}
+    ))
+  )`;
+  const withinLatest = sql`${mailMessages.id} >= COALESCE((SELECT min(id) FROM (SELECT id FROM mail_messages ORDER BY id DESC LIMIT ${ADMIN_MAIL_LIMIT})), 0)`;
   const [control] = await db.select({ failDeliveries: mailControls.failDeliveries }).from(mailControls).where(eq(mailControls.id, 1));
+  const visible = or(withinLatest, sql`${needsAttention} = 1`);
   const messages = await db
     .select({
       id: mailMessages.id,
@@ -24,26 +35,31 @@ export async function selectMailForAdmin(db: DrizzleD1Database) {
       customerId: mailMessages.customerId,
       customerName: user.name,
       createdAt: mailMessages.createdAt,
+      needsAttention,
     })
     .from(mailMessages)
     .innerJoin(user, eq(user.id, mailMessages.customerId))
-    .orderBy(desc(mailMessages.id))
-    .limit(ADMIN_MAIL_LIMIT);
-  const deliveries = messages.length === 0 ? [] : await db
+    .where(visible)
+    .orderBy(desc(mailMessages.id));
+  // 以同一個條件接投遞，不把信件編號逐一帶進 IN（D1 單句的參數有上限）
+  const deliveries = await db
     .select({
       id: mailDeliveries.id,
       messageId: mailDeliveries.messageId,
       recipientAddress: mailDeliveries.recipientAddress,
       status: mailDeliveries.status,
       attemptedAt: mailDeliveries.attemptedAt,
+      handledBy: mailDeliveries.handledBy,
     })
     .from(mailDeliveries)
-    .where(inArray(mailDeliveries.messageId, messages.map((message) => message.id)))
+    .innerJoin(mailMessages, eq(mailMessages.id, mailDeliveries.messageId))
+    .where(visible)
     .orderBy(mailDeliveries.id);
   return {
     failDeliveries: control?.failDeliveries === 1,
     messages: messages.map((message) => ({
       ...message,
+      needsAttention: message.needsAttention === 1,
       deliveries: deliveries
         .filter((delivery) => delivery.messageId === message.id)
         .map(({ messageId: _messageId, ...delivery }) => delivery),
@@ -85,7 +101,7 @@ export async function resendMessage(db: DrizzleD1Database, clock: Clock, actor: 
     if (!recipient) return fail("no_verified_contact");
   }
 
-  const [delivery] = await insertDelivery(db, messageId, recipient, now);
+  const [delivery] = await insertDelivery(db, messageId, recipient, now, actor);
   const delivered = delivery!.status === "delivered";
   console.log(JSON.stringify({ event: "mail_resent", actor, messageId, delivered }));
   return ok({ delivered });

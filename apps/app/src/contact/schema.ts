@@ -45,9 +45,14 @@ export const mailMessages = sqliteTable(
     body: text("body").notNull(),
     /** 驗證信指向它要驗證的請求；顧客讀信時才依這個請求目前的狀態附上驗證連結。其他種類的信為 null。 */
     verificationId: integer("verification_id").references(() => contactVerifications.id),
+    /** 交易通知對應的業務事件（例如 `order_placed:12`）；同一個業務變化只產生一封信，技術重試撞到唯一索引就不重複建立。驗證信為 null。 */
+    eventKey: text("event_key"),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => [index("mail_messages_customer_idx").on(table.customerId, table.id)],
+  (table) => [
+    index("mail_messages_customer_idx").on(table.customerId, table.id),
+    uniqueIndex("mail_messages_event_key_uidx").on(table.eventKey),
+  ],
 );
 
 /** 投遞結果：送達才會出現在顧客的信箱；失敗留在管理端，可重送。 */
@@ -67,6 +72,8 @@ export const mailDeliveries = sqliteTable(
     recipientAddress: text("recipient_address").notNull(),
     status: text("status").$type<MailDeliveryStatus>().notNull(),
     attemptedAt: integer("attempted_at").notNull(),
+    /** 管理員手動重送的操作者；系統在業務事件當下的首次投遞為 null（處理紀錄）。 */
+    handledBy: text("handled_by"),
   },
   (table) => [
     index("mail_deliveries_message_idx").on(table.messageId),

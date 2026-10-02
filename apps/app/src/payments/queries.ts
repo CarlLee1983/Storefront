@@ -107,6 +107,23 @@ export async function selectPaymentByGatewayId(db: DrizzleD1Database, gatewayPay
   return row;
 }
 
+/** 付款結果通知需要的事實：付款的顧客、金額、目前狀態，以及訂單是不是由這筆付款轉為已付款。 */
+export async function selectPaymentNoticeFacts(db: DrizzleD1Database, gatewayPaymentId: string) {
+  const [row] = await db
+    .select({
+      id: payments.id,
+      customerId: orders.customerId,
+      orderId: payments.orderId,
+      amountTwd: payments.amountTwd,
+      status: payments.status,
+      settledOrder: sql<number>`${orders.paidByPaymentId} = ${payments.id}`,
+    })
+    .from(payments)
+    .innerJoin(orders, eq(orders.id, payments.orderId))
+    .where(eq(payments.gatewayPaymentId, gatewayPaymentId));
+  return row && { ...row, settledOrder: row.settledOrder === 1 };
+}
+
 /** 付款目前的狀態與所屬訂單的狀態，兩者都是讀取當下的值。 */
 export async function selectPaymentAndOrderStatus(
   db: DrizzleD1Database,

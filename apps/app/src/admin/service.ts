@@ -271,7 +271,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     async listMailForAdmin(jwt: unknown) {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
-      return ok(await selectMailForAdmin(db));
+      return ok(await selectMailForAdmin(db, clock.now()));
     },
 
     /** 重送一封信（同一封信的新投遞）；驗證已失效的驗證信回 `message_not_resendable`，沒有已驗證地址的通知回 `no_verified_contact`。 */

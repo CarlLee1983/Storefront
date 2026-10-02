@@ -32,6 +32,7 @@ if (Astro.request.method === "POST") {
 const mail = unauthorized ? null : await env.APP.listMailForAdmin(jwt);
 if (unauthorized || (mail && !mail.ok)) Astro.response.status = 403;
 const saved = Astro.url.searchParams.get("saved");
+const pendingCount = mail?.ok ? mail.data.messages.filter((message) => message.needsAttention).length : 0;
 ---
 
 <AdminLayout title="信件投遞">
@@ -52,8 +53,9 @@ const saved = Astro.url.searchParams.get("saved");
             <input type="hidden" name="enabled" value={mail.data.failDeliveries ? "0" : "1"} />
             <button type="submit">{mail.data.failDeliveries ? "關閉投遞失敗" : "開啟投遞失敗"}</button>
           </form>
-          <p>管理端只顯示投遞結果與實際收件地址；信件內文與驗證連結不公開。只顯示最新 200 封信。</p>
+          <p>管理端只顯示投遞結果與實際收件地址；信件內文與驗證連結不公開。顯示最新 200 封信，尚未送達且還能處理的信不受此限。</p>
         </div>
+        {pendingCount > 0 && <p><strong>待處理 {pendingCount} 封：</strong>下列標示「待處理」的信尚未送達顧客，請重送；重送會寄到顧客目前已驗證的聯絡 email，並記下處理人。</p>}
         {mail.data.messages.length === 0 && <p>還沒有信件。</p>}
         {mail.data.messages.length > 0 && (
           <div class="table-scroll" tabindex="0" role="region" aria-label="信件投遞紀錄"><table>
@@ -63,10 +65,10 @@ const saved = Astro.url.searchParams.get("saved");
             <tbody>
               {mail.data.messages.map((message) => (
                 <tr>
-                  <td data-label="信件">#{message.id}<br />{formatDateTime(message.createdAt)}</td>
+                  <td data-label="信件">#{message.id}{message.needsAttention && <strong class="pending"> 待處理</strong>}<br />{formatDateTime(message.createdAt)}</td>
                   <td data-label="顧客">{message.customerName}</td>
                   <td data-label="種類">{mailKindLabel(message.kind)}</td>
-                  <td data-label="投遞紀錄"><ol class="deliveries">{message.deliveries.map((delivery) => <li><span class="address">{delivery.recipientAddress}</span>：{deliveryStatusLabel(delivery.status)}（{formatDateTime(delivery.attemptedAt)}）</li>)}</ol></td>
+                  <td data-label="投遞紀錄"><ol class="deliveries">{message.deliveries.map((delivery) => <li><span class="address">{delivery.recipientAddress}</span>：{deliveryStatusLabel(delivery.status)}（{formatDateTime(delivery.attemptedAt)}{delivery.handledBy && <>，由 {delivery.handledBy} 重送</>}）</li>)}{message.deliveries.length === 0 && <li>尚無投遞（顧客沒有已驗證的聯絡 email）</li>}</ol></td>
                   <td data-label="操作">
                     <form method="post">
                       <input type="hidden" name="intent" value="resend" />
@@ -87,4 +89,5 @@ const saved = Astro.url.searchParams.get("saved");
 <style>
   .deliveries { margin: 0; padding-left: var(--space-4); }
   .address { overflow-wrap: anywhere; }
+  .pending { color: var(--color-error); }
 </style>

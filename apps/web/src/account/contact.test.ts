@@ -24,6 +24,10 @@ describe("聯絡 email 文案與表單", () => {
 
   it("信件種類、驗證狀態、投遞結果與編號解析", () => {
     expect(mailKindLabel("contact_verification")).toBe("聯絡 email 驗證");
+    expect(mailKindLabel("order_placed")).toBe("下單通知");
+    expect(mailKindLabel("payment_succeeded")).toBe("付款成功通知");
+    expect(mailKindLabel("payment_failed")).toBe("付款失敗通知");
+    expect(mailKindLabel("payment_unsettled")).toBe("付款未能生效通知");
     expect(verificationStatusNote("pending")).toBeNull();
     expect(verificationStatusNote("expired")).toContain("過期");
     expect(deliveryStatusLabel("delivered")).toBe("已送達");

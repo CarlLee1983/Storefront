@@ -18,7 +18,10 @@ import {
   selectPaymentByGatewayId,
   recordRefundResult,
   selectPendingPayments,
+  selectPaymentNoticeFacts,
 } from "./queries";
+import { paymentResultNotice, type PaymentNoticeKind } from "../contact/notices";
+import { sendNoticeSafely } from "../contact/notify";
 import { paymentExpiresAt } from "../orders/payment-deadline";
 import { refundReasonFor } from "./refund";
 import type { PaymentEvent } from "./shared";
@@ -105,8 +108,24 @@ export function createPaymentService(
     if (event.outcome === "succeeded" && paymentSettled && !orderSettled) {
       await refundUnsettledPayment({ orderId: payment.orderId, gatewayPaymentId: event.gatewayPaymentId }, orderStatus);
     }
+    await notifyPaymentResult(event.gatewayPaymentId);
     const current = await selectPaymentAndOrderStatus(db, event.gatewayPaymentId);
     return current ? ok(current) : fail("payment_not_found");
+  }
+
+  /**
+   * 付款有了結果就通知顧客（失敗或沒有已驗證 email 都不影響付款，見 `sendNoticeSafely`）。通知依付款目前的狀態決定，
+   * 而且每次套用都會呼叫：事件鍵是付款編號，已有信就不重複，所以事件重送、導回查詢重複套用不會再寄，
+   * 也能補上先前遺失的那一封。付款還沒有結果（pending、expired）不通知。
+   */
+  async function notifyPaymentResult(gatewayPaymentId: string) {
+    const facts = await selectPaymentNoticeFacts(db, gatewayPaymentId);
+    if (!facts) return;
+    const kind: PaymentNoticeKind | null =
+      facts.status === "failed" ? "payment_failed"
+      : facts.status === "pending" || facts.status === "expired" ? null
+      : facts.settledOrder ? "payment_succeeded" : "payment_unsettled";
+    if (kind) await sendNoticeSafely(db, paymentResultNotice(facts.customerId, kind, facts), clock.now());
   }
 
   /**

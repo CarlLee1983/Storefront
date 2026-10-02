@@ -20,7 +20,7 @@ if (!mail.ok) return Astro.redirect(loginUrl(Astro.url), 303);
 
 <Layout title="我的信箱" description="演練用的模擬信箱，不會寄出真實郵件。" noindex>
   <p class="hint">這是演練用的模擬信箱，信件不會寄到真實的郵件服務。</p>
-  {mail.data.length === 0 && <div class="empty"><h2>信箱還是空的</h2><p>送出聯絡 email 後，驗證信會出現在這裡。</p><a href="/account">前往帳戶頁</a></div>}
+  {mail.data.length === 0 && <div class="empty"><h2>信箱還是空的</h2><p>驗證信、下單與付款通知會出現在這裡。</p><a href="/account">前往帳戶頁</a></div>}
   <ul class="mails">
     {mail.data.map((item) => <li class="mail-card">
       <h2><a href={`/account/mailbox/${item.id}`}>{item.subject}</a></h2>

@@ -27,6 +27,10 @@ export function describeVerifyFailure(result: { reason: string }): string {
 
 const MAIL_KIND_LABELS: Record<string, string> = {
   contact_verification: "聯絡 email 驗證",
+  order_placed: "下單通知",
+  payment_succeeded: "付款成功通知",
+  payment_failed: "付款失敗通知",
+  payment_unsettled: "付款未能生效通知",
 };
 
 /** 信件種類的顯示名稱；不認得的種類不顯示原始代碼。 */
@@ -56,7 +60,7 @@ export function describeMailAdminFailure(result: { reason: string }): string {
     invalid_input: "輸入有誤，請重新整理後再試",
     message_not_found: "找不到這封信",
     message_not_resendable: "這封驗證信的驗證請求已過期或被取代，不能重送；請顧客重新送出 email",
-    no_verified_contact: "這位顧客目前沒有已驗證的聯絡 email，不能重送",
+    no_verified_contact: "這位顧客目前沒有已驗證的聯絡 email，不能重送；請顧客先驗證聯絡 email",
   };
   return Object.hasOwn(messages, result.reason) ? messages[result.reason]! : "操作失敗，請稍後再試";
 }

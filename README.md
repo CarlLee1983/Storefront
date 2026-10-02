@@ -44,7 +44,10 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 演練控制：管理員可開啟「投遞失敗」，之後每次投遞（含重送）都失敗，直到關閉；狀態存在 `mail_controls`（沒有這一列等於正常）。新增通知種類只需在 `apps/app/src/contact/mail.ts` 的 `MAIL_KINDS` 加值並寫入 `mail_messages`／`mail_deliveries`，資料表不需改動。
 - 部署順序沿用先 migration、再 App、再 Web。0016 只新增資料表，舊 App 與舊 Web 不受影響；但新 App 搭配舊 Web 時，舊結帳頁遇到 `contact_email_unverified` 只會顯示通用的結帳失敗訊息，應壓短窗口。上線後尚未驗證聯絡 email 的既有顧客（含已有訂單者）下次結帳前都須先驗證。
 - 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0016_contact_mailbox.down.sql`；已有驗證請求、信件或投遞紀錄時守門檢查讓回復失敗（顧客已驗證的聯絡 email 會隨之消失），須先確認這些資料可以捨棄。回復前須一併回復會呼叫這些 RPC 的 Web 與 App，以及 E2E 的會員種子資料。測試見 `apps/app/test/contact-email.test.ts`、`admin-mail.test.ts`、`checkout-contact.test.ts`、`contact-mailbox-migration.test.ts`；手機與桌機的操作（含顧客隔離與管理員控制）由 `e2e/tests/contact-mailbox.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。E2E 與測試用的會員需自行安排一筆已驗證的聯絡 email 才能結帳（`e2e/harness/serve.ts` 的種子會員已含；`apps/app/test/customers.ts` 的 `signInCustomer` 預設寫入）。
-- 尚未涵蓋（後續票）：下單、付款等交易通知（信箱與投遞紀錄已可沿用）。
+- 交易通知（Migration `0018_transaction_notifications.sql`，沿用上述信箱與投遞紀錄）：下單寄 `order_placed`；付款有結果寄 `payment_succeeded`、`payment_failed`，或付款到得太晚而退款時寄 `payment_unsettled`。每封信有業務事件鍵（`mail_messages.event_key`：`order_placed:<訂單>`、`payment:<付款>`，唯一索引），所以結帳冪等重送、付款事件重送（webhook／導回查詢）都不會產生第二封，也不會因技術重試重寄。收件地址是寄信當下已驗證的聯絡 email；顧客沒有已驗證地址時只建立信件（沒有投遞），留在管理端待處理，驗證後可重送。寄信的任何失敗（投遞失敗、例外）都不會讓下單或付款失敗；信件遺失或缺投遞時，同一個訂單的冪等重送或同一個付款事件的重送會補上缺的那封。
+- 待辦與處理紀錄：`/admin/mail` 把「還沒有任何一次送達、且還能處理」的信標為「待處理」（被取代或過期的驗證信不算），超過最新 200 封的舊待辦仍會列出；管理員重送會在新的投遞上記下處理人（`mail_deliveries.handled_by`，系統首次投遞為空）。
+- 0018 只新增兩個可為空的欄位與一個唯一索引，部署順序同樣先 migration、再 App、再 Web；回復用 `apps/app/rollback/0018_transaction_notifications.down.sql`（已有交易通知或處理紀錄時守門檢查讓回復失敗），須先於 0016 的回復。測試見 `apps/app/test/order-notifications.test.ts`、`transaction-migration.test.ts`；手機與桌機的操作由 `e2e/tests/order-notifications.spec.ts` 驗證。
+- 尚未涵蓋（後續票）：取消審核、出貨與配送異常、退貨審核、退款結果、發票完成等通知。
 
 ## 地址簿
 

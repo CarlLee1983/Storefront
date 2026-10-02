@@ -53,7 +53,8 @@ describe("管理員的信件投遞", () => {
       customerId: expect.any(String),
       customerName: "Alice",
       createdAt: NOW,
-      deliveries: [{ id: expect.any(Number), recipientAddress: "alice@example.com", status: "delivered", attemptedAt: NOW }],
+      needsAttention: false,
+      deliveries: [{ id: expect.any(Number), recipientAddress: "alice@example.com", status: "delivered", attemptedAt: NOW, handledBy: null }],
     }]);
     const raw = JSON.stringify(listed);
     expect(raw).not.toContain(mail.data.verification.token);
