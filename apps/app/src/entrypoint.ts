@@ -5,6 +5,7 @@ import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readCustomerSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
+import { createContactService } from "./contact/service";
 import { createOrderService } from "./orders/service";
 import { readPaymentConfig } from "./payments/config";
 import { createPaymentService } from "./payments/service";
@@ -42,6 +43,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       // 取消訂單才需要付款（閘道設定在那時才讀，Cron 與列表不受付款設定影響）
       (orderId) => this.#payments().invalidatePendingPayments(orderId),
     );
+  }
+
+  /** 顧客的聯絡 email 與模擬信箱：與訂單同樣以 cookie 換顧客身分。 */
+  #contact() {
+    return createContactService(this.env.DB, systemClock, async (cookie) => {
+      const { customer } = await readCustomerSession(this.#auth(), cookie);
+      return customer?.customerId ?? null;
+    });
   }
 
   /**
@@ -139,6 +148,26 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   cancelOrder(cookie: string, input: unknown) {
     return this.#orders().cancelOrder(cookie, input);
+  }
+
+  getMyContact(cookie: string) {
+    return this.#contact().getMyContact(cookie);
+  }
+
+  requestContactEmail(cookie: string, input: unknown) {
+    return this.#contact().requestContactEmail(cookie, input);
+  }
+
+  verifyContactEmail(cookie: string, input: unknown) {
+    return this.#contact().verifyContactEmail(cookie, input);
+  }
+
+  listMyMail(cookie: string) {
+    return this.#contact().listMyMail(cookie);
+  }
+
+  getMyMail(cookie: string, input: unknown) {
+    return this.#contact().getMyMail(cookie, input);
   }
 
   startPayment(cookie: string, input: unknown) {
@@ -246,6 +275,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   getOrderForAdmin(jwt: string, input: unknown) {
     return this.#admin().getOrderForAdmin(jwt, input);
+  }
+
+  listMailForAdmin(jwt: string) {
+    return this.#admin().listMailForAdmin(jwt);
+  }
+
+  resendMail(jwt: string, input: unknown) {
+    return this.#admin().resendMail(jwt, input);
+  }
+
+  setMailDeliveryFailure(jwt: string, input: unknown) {
+    return this.#admin().setMailDeliveryFailure(jwt, input);
   }
 
   shipOrder(jwt: string, input: unknown) {

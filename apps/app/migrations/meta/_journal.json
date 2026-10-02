@@ -113,6 +113,13 @@
       "when": 1790956818597,
       "tag": "0015_product_info",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1790958534436,
+      "tag": "0016_contact_mailbox",
+      "breakpoints": true
     }
   ]
 }

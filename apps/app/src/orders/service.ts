@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
+import { selectVerifiedEmail } from "../contact/queries";
 import { selectPaymentSummaries } from "../payments/queries";
 import type { InvalidatePaymentsRefusal } from "../payments/shared";
 import { diagnoseLines } from "./diagnosis";
@@ -38,6 +39,8 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       if (!customerId) return unauthorized;
       const parsed = parseInput(checkoutInput, input);
       if (!parsed.ok) return parsed;
+      // 顧客首次結帳前須有已驗證的聯絡 email（交易通知的收件地址）；已驗證過就一直有，換址的新地址驗證前不影響
+      if (!(await selectVerifiedEmail(db, customerId))) return fail("contact_email_unverified");
 
       const request = { customerId, ...parsed.data, requestHash: await requestHash(parsed.data) };
       // 診斷與寫入之間狀態可能變動（例如剛好有人補貨）：診斷找不到問題就再試一次，有上限

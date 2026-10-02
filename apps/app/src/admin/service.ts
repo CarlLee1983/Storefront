@@ -5,6 +5,8 @@ import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/querie
 import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
 import { createVariant, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
+import { resendMessage, selectMailForAdmin, setDeliveryFailure } from "../contact/admin";
+import { mailMessageIdInput, setMailDeliveryFailureInput } from "../contact/input";
 import { categoryIdInput, createCategoryInput, updateCategoryInput } from "../categories/input";
 import { deleteCategory, setCategoryImage } from "../categories/manage";
 import { isValidSlug } from "../categories/slug";
@@ -263,6 +265,23 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
         }
         return fail((await orderExists(db, orderId)) ? "order_not_shippable" : "order_not_found");
       });
+    },
+
+    /** 模擬信箱的投遞結果與演練控制狀態（不含信件內文與驗證連結）。 */
+    async listMailForAdmin(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectMailForAdmin(db));
+    },
+
+    /** 重送一封信（同一封信的新投遞）；驗證已失效的驗證信回 `message_not_resendable`，沒有已驗證地址的通知回 `no_verified_contact`。 */
+    resendMail(jwt: unknown, input: unknown) {
+      return authorized(jwt, mailMessageIdInput, input, (actor, { messageId }) => resendMessage(db, clock, actor.email, messageId));
+    },
+
+    /** 開關模擬信箱的「投遞失敗」演練：開啟後之後的每次投遞都失敗，直到關閉。 */
+    setMailDeliveryFailure(jwt: unknown, input: unknown) {
+      return authorized(jwt, setMailDeliveryFailureInput, input, (actor, { enabled }) => setDeliveryFailure(db, clock, actor.email, enabled));
     },
 
     /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */

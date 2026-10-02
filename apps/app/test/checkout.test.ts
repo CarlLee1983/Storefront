@@ -536,7 +536,9 @@ describe("結帳診斷不出原因", () => {
     const mug = await createStockedListing("馬克杯", 320, 10);
     // 模擬「寫入什麼都沒發生、診斷又找不到問題」：batch 不做事，其餘照常讀取
     const inertBatch = { prepare: (query: string) => env.DB.prepare(query), batch: async () => Array.from({ length: 4 }, () => ({ meta: { changes: 0 } })) };
-    const service = createOrderService(inertBatch as unknown as D1Database, { now: () => Date.now() }, async () => "someone", async () => null);
+    // 已驗證聯絡 email 的前置檢查是讀取，照常通過；之後的寫入才被架空
+    const customerId = (await app.getCustomerSession(await signInCustomer("alice"))).customer!.customerId;
+    const service = createOrderService(inertBatch as unknown as D1Database, { now: () => Date.now() }, async () => customerId, async () => null);
 
     expect(await service.checkout("cookie", checkoutInput([{ variantId: mug.variantId, quantity: 1, seenUnitPriceTwd: 320 }]))).toEqual({
       ok: false,
