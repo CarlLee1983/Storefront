@@ -55,6 +55,8 @@ const optionValue = z
   .string({ error: "選項值必須是文字" })
   .trim()
   .min(1, "選項值不可為空")
+  // 「 / 」是訂單明細選項快照與購物車標籤的分隔符
+  .refine((value) => !value.includes(" / "), "選項值不可包含「 / 」")
   .max(MAX_OPTION_VALUE_LENGTH, `選項值不可超過 ${MAX_OPTION_VALUE_LENGTH} 個字`);
 
 const optionValues = z.array(optionValue, { error: "選項值必須是清單" }).max(2, "每個商品最多兩個選項維度");

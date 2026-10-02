@@ -141,7 +141,7 @@ const values = {
             <ul class="variant-list">
               {product.variants.map((variant) => <li class:list={["variant-card", { "is-discontinued": variant.discontinued }]} id={`variant-${variant.id}`}>
                 <h3>{variant.optionValues.join(" / ")}{variant.isDefault && <span class="status-badge">預設</span>}{variant.discontinued && <span class="status-badge is-unlisted">已停賣</span>}</h3>
-                {failure && failedTarget === `variant-${variant.id}` && <p class="error" role="alert">{failure.message}{(failure.fields.delta ?? []).map((m) => `：${m}`)}</p>}
+                {failure && failedTarget === `variant-${variant.id}` && <p class="error" role="alert">{failure.message}{Object.values(failure.fields).flat().map((m) => `：${m}`)}</p>}
                 <form method="post" class="variant-form" aria-label={`修改變體：${variant.optionValues.join(" / ")}`}>
                   <input type="hidden" name="intent" value="update-variant" />
                   <input type="hidden" name="variantId" value={variant.id} />

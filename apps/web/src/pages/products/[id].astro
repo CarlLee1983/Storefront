@@ -39,6 +39,7 @@ const variantsData = product ? JSON.stringify({ productId: product.id, name: pro
         {product.category && <p class="eyebrow">{product.category.name}</p>}
         <h1>{product.name}</h1>
         <div class="variant-status" aria-live="polite" aria-atomic="true">
+          {selected && product.optionNames.length > 0 && <p class="visually-hidden" id="variant-summary">已選：{selected.optionValues.join(" / ")}</p>}
           {selected
             ? <p class:list={["price", { "on-sale": sale }]} id="variant-price">
                 <span class="price-now">NT$ {priceFormat.format(selected.priceTwd)}</span>
@@ -99,6 +100,7 @@ const variantsData = product ? JSON.stringify({ productId: product.id, name: pro
     const picker = document.querySelector<HTMLElement>("#option-picker");
     const priceBlock = document.querySelector<HTMLElement>("#variant-price")!;
     const availability = document.querySelector<HTMLElement>("#variant-availability")!;
+    const summary = document.querySelector<HTMLElement>("#variant-summary");
     const gallery = document.querySelector<HTMLElement>(".gallery");
     let current = initialVariant(variants)!;
 
@@ -121,6 +123,7 @@ const variantsData = product ? JSON.stringify({ productId: product.id, name: pro
       const badge = Object.assign(document.createElement("span"), { textContent: sale?.badge ?? "" });
       badge.setAttribute("aria-hidden", "true");
       tag.replaceChildren(badge, Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: sale ? `省 ${sale.percent}%` : "" }));
+      if (summary) summary.textContent = current.optionValues.length > 0 ? `已選：${variantLabel(current)}` : "";
       availability.textContent = describeAvailability(current.available);
       availability.classList.toggle("is-low-stock", current.available > 0 && current.available <= 5);
       form!.dataset.variantId = String(current.id);
@@ -167,12 +170,11 @@ const variantsData = product ? JSON.stringify({ productId: product.id, name: pro
       showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.variantId, () =>
         updateCart(storageOf(window), window, existing => addToCart(existing, item, quantity))));
 
-      const originalHtml = buyBtn.innerHTML;
       buyBtn.innerHTML = '已加入購物車 <span aria-hidden="true">✓</span>';
       buyBtn.classList.add("is-added");
       window.setTimeout(() => {
-        buyBtn.innerHTML = originalHtml;
         buyBtn.classList.remove("is-added");
+        render();
       }, 1500);
     });
   }

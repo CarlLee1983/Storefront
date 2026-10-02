@@ -1,4 +1,6 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
+import { drizzle } from "drizzle-orm/d1";
+import { renameOptions } from "../src/catalog/variants";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { defaultVariantIdOf } from "./checkout-helpers";
@@ -140,6 +142,25 @@ describe("選項維度與變體管理", () => {
     expect(await app.setProductOptions(jwt, { id: single, optionNames: [] })).toEqual({ ok: true, data: { id: single } });
     expect(await app.getProductForAdmin(jwt, { id: single })).toMatchObject({ ok: true, data: { optionNames: [], variants: [expect.objectContaining({ optionValues: [] })] } });
     expect(await defaultVariantIdOf(single)).toBeGreaterThan(0);
+  });
+
+  it("改名是條件寫入：讀取後維度個數被別人改掉，不寫入並回 options_locked", async () => {
+    const jwt = await mintAccessJwt();
+    const productId = await createPlainProduct(jwt);
+    await app.setProductOptions(jwt, { id: productId, optionNames: ["顏色"], defaultVariantValues: ["白"] });
+
+    // 以為目前是 0 個維度（過時的讀取），實際已是 1 個
+    expect(await renameOptions(drizzle(env.DB), productId, ["尺寸", "材質"], 0)).toEqual({ ok: false, reason: "options_locked" });
+    expect(await app.getProductForAdmin(jwt, { id: productId })).toMatchObject({ ok: true, data: { optionNames: ["顏色"] } });
+    expect(await renameOptions(drizzle(env.DB), productId, ["款式"], 1)).toEqual({ ok: true, data: { id: productId } });
+  });
+
+  it("選項值不可含「 / 」（快照分隔符）", async () => {
+    const jwt = await mintAccessJwt();
+    const productId = await createPlainProduct(jwt);
+    expect(await app.setProductOptions(jwt, { id: productId, optionNames: ["顏色"], defaultVariantValues: ["白 / 黑"] })).toMatchObject({ ok: false, reason: "invalid_input" });
+    await app.setProductOptions(jwt, { id: productId, optionNames: ["顏色"], defaultVariantValues: ["白"] });
+    expect(await app.createVariant(jwt, { productId, optionValues: ["a / b"], priceTwd: 100 })).toMatchObject({ ok: false, reason: "invalid_input" });
   });
 
   it("所有選項與變體管理都要求管理員身分", async () => {

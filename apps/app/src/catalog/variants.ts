@@ -22,6 +22,23 @@ type VariantFailure = ProductNotFound | VariantNotFound
   | { ok: false; reason: "option_count_mismatch" | "options_locked" | "duplicate_variant" | "invalid_compare_at_price" | "image_not_found" };
 
 /**
+ * 只改維度名稱（個數不變）。條件寫入帶著「目前維度個數 = 先前讀到的個數」：
+ * 讀取之後若被別的請求增減了維度，這句不更新，回 `options_locked`，不會把名稱寫進個數已不同的商品。
+ */
+export async function renameOptions(
+  db: DrizzleD1Database,
+  id: number,
+  optionNames: string[],
+  expectedCount: number,
+): Promise<{ ok: true; data: { id: number } } | VariantFailure> {
+  const [option1Name, option2Name] = padded(optionNames);
+  const [updated] = await db.update(products).set({ option1Name, option2Name })
+    .where(and(eq(products.id, id), sql`(${products.option1Name} <> '') + (${products.option2Name} <> '') = ${expectedCount}`))
+    .returning({ id: products.id });
+  return updated ? ok({ id }) : fail("options_locked");
+}
+
+/**
  * 設定選項維度名稱。個數不變只改名稱；個數改變時商品只能有一個變體（預設變體），並同批重設它的選項值：
  * 「只有一個變體」同時寫在兩句的條件裡，與同時新增變體的請求互斥，不會留下選項值個數與維度不符的變體。
  */
@@ -33,10 +50,7 @@ export async function setProductOptions(
   if (!product) return fail("product_not_found");
   const [option1Name, option2Name] = padded(optionNames);
   const currentCount = Number(product.option1Name !== "") + Number(product.option2Name !== "");
-  if (optionNames.length === currentCount) {
-    await db.update(products).set({ option1Name, option2Name }).where(eq(products.id, id));
-    return ok({ id });
-  }
+  if (optionNames.length === currentCount) return renameOptions(db, id, optionNames, currentCount);
   if (defaultVariantValues.length !== optionNames.length) return fail("option_count_mismatch");
   const [option1Value, option2Value] = padded(defaultVariantValues);
   const onlyVariant = sql`(select count(*) from product_variants where product_id = ${id}) = 1`;
