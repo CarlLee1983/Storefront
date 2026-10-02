@@ -114,17 +114,21 @@ test("管理員拒絕不高於售價的原價，設定合法原價後顧客在�
   await expect(page.getByRole("main")).not.toContainText("原價");
 });
 
-test("/sale 有特價商品時桌機與手機 axe 零違規，手機抽屜也有「特價」", async ({ page }) => {
+test("/sale 有特價商品時桌機與手機 axe 零違規，手機抽屜也有「特價」", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/sale");
   await expect(card(page, SALE.name)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await audit(page, "/sale 桌機");
+  await testInfo.attach("sale-1280", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   await page.goto(`/products/${(await card(page, SALE.name).getByRole("link").first().getAttribute("href"))!.split("/").pop()}`);
   await audit(page, "特價詳情頁");
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 375, height: 844 });
   await page.goto("/sale");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await audit(page, "/sale 手機");
+  await testInfo.attach("sale-375", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   await page.getByRole("button", { name: "開啟選單" }).click();
   const drawerLink = page.getByRole("navigation", { name: "行動版導覽" }).getByRole("link", { name: "特價", exact: true });
   await expect(drawerLink).toHaveAttribute("aria-current", "page");

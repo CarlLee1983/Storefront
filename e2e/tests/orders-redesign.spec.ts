@@ -8,7 +8,7 @@ import { memberSessionCookie } from "../harness/session-cookie";
 const name = "訂單封面測試商品";
 
 test("訂單封面、付款重點、手機排版與取消中斷", async ({ browser, page }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const adminContext = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await adminContext.newPage();
@@ -56,8 +56,10 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await expect(cover).toHaveAttribute("srcset", /320w.*640w.*1280w/);
     await expect.poll(() => cover.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     const source = await cover.getAttribute("src");
-    for (const width of [320, 768, 1280]) {
+    for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole("region", { name: "訂單進度" })).toContainText("待付款");
+      await expect(page.getByRole("region", { name: "收件資訊" })).toContainText("台北市中正區測試地址");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
       await testInfo.attach(`order-detail-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
@@ -71,6 +73,18 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
       await card.getByRole("link", { name: `查看訂單 #${id} 詳情` }).click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
     }
+    await page.getByRole("button", { name: "前往付款", exact: true }).click();
+    await page.getByRole("radio", { name: "失敗", exact: true }).check();
+    await page.getByRole("radio", { name: "立即回呼", exact: true }).check();
+    await page.getByRole("button", { name: "送出", exact: true }).click();
+    await expect(page.getByText("訂單狀態：待付款")).toBeVisible();
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole("region", { name: "付款資訊" }).getByRole("row")).toHaveCount(2);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      await testInfo.attach(`order-payment-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    }
     page.once("dialog", dialog => void dialog.dismiss());
     await page.getByRole("button", { name: "取消訂單" }).click();
     await expect(page.getByText("訂單狀態：待付款")).toBeVisible();
@@ -79,7 +93,11 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await page.getByRole("button", { name: "取消訂單" }).click();
     await expect(page.getByText("訂單狀態：已取消")).toBeVisible();
     await expect(page.getByRole("button", { name: "前往付款", exact: true })).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    }
     await admin.goto("/admin/orders");
     const orderRow = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${id}`, exact: true }) });
     await expect(orderRow.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", source!);

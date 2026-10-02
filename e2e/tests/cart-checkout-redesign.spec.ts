@@ -61,8 +61,10 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.reload();
   await expect(row.getByLabel(`${name} 數量`)).toHaveValue("2");
   await expect(row.getByRole("img")).toHaveAttribute("src", source!);
-  for (const width of [320, 1280]) {
+  const cartTitleHeights = new Map<number, number>();
+  for (const width of [320, 375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
+    cartTitleHeights.set(width, (await page.getByRole("heading", { level: 1, name: "購物車" }).boundingBox())!.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach(`cart-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
@@ -77,8 +79,9 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("autocomplete", "shipping name");
   await expect(page.getByLabel("收件人電話")).toHaveAttribute("inputmode", "tel");
   await expect(page.getByLabel("收件地址")).toHaveAttribute("autocomplete", "shipping street-address");
-  for (const width of [320, 1280]) {
+  for (const width of [320, 375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
+    expect((await page.getByRole("heading", { level: 1, name: "結帳" }).boundingBox())!.height).toBe(cartTitleHeights.get(width));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach(`checkout-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
