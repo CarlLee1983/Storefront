@@ -10,7 +10,7 @@ const twd = (amount: number) => `NT$ ${priceFormat.format(amount)}`;
 
 /** 逐筆原因 → 提示文字；`line` 是購物車裡那一筆（找不到就用商品編號當名稱）。 */
 export function describeIssue(issue: CheckoutIssue, line: Pick<CartLine, "name" | "unitPriceTwd"> | undefined): string {
-  const name = `「${line?.name ?? `商品 #${issue.productId}`}」`;
+  const name = `「${line?.name ?? `商品 #${issue.variantId}`}」`;
   switch (issue.kind) {
     case "price_changed":
       return `${name}的售價已更新為 ${twd(issue.currentUnitPriceTwd)}。請確認總金額，再決定是否更新購物車。`;
@@ -18,7 +18,7 @@ export function describeIssue(issue: CheckoutIssue, line: Pick<CartLine, "name" 
       return `${name}目前無法購買，請從購物車移除。`;
     case "insufficient_stock":
       return `${name}的可售數量不足，請減少數量或移除。`;
-    case "product_not_found":
+    case "variant_not_found":
       return `${name}目前無法購買，請從購物車移除。`;
   }
 }
@@ -28,21 +28,21 @@ export function applyPriceChanges(cart: Cart, issues: readonly CheckoutIssue[]):
   const newPrices = new Map<number, number>();
   for (const issue of issues) {
     if (issue.kind === "price_changed" && Number.isSafeInteger(issue.currentUnitPriceTwd) && issue.currentUnitPriceTwd >= 1) {
-      newPrices.set(issue.productId, issue.currentUnitPriceTwd);
+      newPrices.set(issue.variantId, issue.currentUnitPriceTwd);
     }
   }
   if (newPrices.size === 0) return cart;
   return {
     ...cart,
     lines: cart.lines.map((line) => {
-      const price = newPrices.get(line.productId);
+      const price = newPrices.get(line.variantId);
       return price === undefined ? line : { ...line, unitPriceTwd: price };
     }),
   };
 }
 
-export function removeLines(cart: Cart, productIds: readonly number[]): Cart {
-  return productIds.reduce(removeFromCart, cart);
+export function removeLines(cart: Cart, variantIds: readonly number[]): Cart {
+  return variantIds.reduce(removeFromCart, cart);
 }
 
 export interface CheckoutFailure {

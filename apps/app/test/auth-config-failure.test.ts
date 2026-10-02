@@ -15,9 +15,10 @@ const MISSING = { BETTER_AUTH_SECRET: undefined, LINE_CHANNEL_SECRET: "" };
 describe("顧客登入設定缺漏時（Holdfast ADR 0008）", () => {
   beforeEach(async () => {
     await resetDb();
-    await env.DB.prepare(
-      "INSERT INTO products (name, description, price_twd, listed) VALUES ('馬克杯', '', 300, 1)",
-    ).run();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO products (name, description, listed) VALUES ('馬克杯', '', 1)"),
+      env.DB.prepare("INSERT INTO product_variants (product_id, is_default, price_twd) VALUES (last_insert_rowid(), 1, 300)"),
+    ]);
   });
   afterEach(() => vi.restoreAllMocks());
 

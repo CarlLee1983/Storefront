@@ -1,10 +1,10 @@
 import type { Cart } from "../cart/cart";
 import { toText } from "../shared/form-values";
 
-/** 購物車 → 結帳明細：只帶商品、數量與加入時看到的單價（App 拿它與最新單價比對）。 */
+/** 購物車 → 結帳明細：只帶商品變體、數量與加入時看到的單價（App 拿它與最新單價比對）。 */
 export function cartToCheckoutLines(cart: Cart) {
   return cart.lines.map((line) => ({
-    productId: line.productId,
+    variantId: line.variantId,
     quantity: line.quantity,
     seenUnitPriceTwd: line.unitPriceTwd,
   }));
@@ -42,7 +42,7 @@ export function checkoutFingerprint(
   shipping: { name: string; phone: string; address: string },
 ): string {
   return JSON.stringify({
-    lines: lines.map((line) => [line.productId, line.quantity, line.seenUnitPriceTwd]),
+    lines: lines.map((line) => [line.variantId, line.quantity, line.seenUnitPriceTwd]),
     shipping: [shipping.name.trim(), shipping.phone.trim(), shipping.address.trim()],
   });
 }

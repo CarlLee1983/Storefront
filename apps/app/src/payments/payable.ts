@@ -42,7 +42,7 @@ export function lateSuccessStatusSql(): SQL {
 export function everyLineReclaimableSql(orderId: number): SQL {
   return sql`NOT EXISTS (
     SELECT 1 FROM order_lines line
-    JOIN products stocked ON stocked.id = line.product_id
+    JOIN product_variants stocked ON stocked.id = line.variant_id
     WHERE line.order_id = ${orderId} AND ${availableExpr(sql`stocked.on_hand`, sql`stocked.id`)} < line.quantity
   )`;
 }

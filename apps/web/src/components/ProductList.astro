@@ -45,7 +45,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {priceFormat.format(sale.compareAtTwd)}</s>}
       </p>
       {p.purchasable && (
-        <form class="add-to-cart" data-product-id={p.id} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
+        <form class="add-to-cart" data-product-id={p.id} data-variant-id={p.defaultVariantId} data-name={p.name} data-price={p.priceTwd} data-cover={JSON.stringify(p.cover)}>
           <input type="hidden" name="quantity" value="1" />
           <button type="submit" class="add-button" aria-label={`加入購物車：${p.name}`}>
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 4h2l2.4 11h11.2L21 7H7" fill="none" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="19" r="1.5" fill="currentColor" /><circle cx="17" cy="19" r="1.5" fill="currentColor" /></svg>
@@ -71,13 +71,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const item = {
+        variantId: Number(form.dataset.variantId),
         productId: Number(form.dataset.productId),
         name: form.dataset.name ?? "",
         unitPriceTwd: Number(form.dataset.price),
         cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")),
       };
       const quantity = Number(new FormData(form).get("quantity"));
-      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
+      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.variantId, () =>
         updateCart(storageOf(window), window, (current) => addToCart(current, item, quantity)),
       ));
     });

@@ -6,7 +6,7 @@ import { selectPaymentSummaries } from "../payments/queries";
 import type { InvalidatePaymentsRefusal } from "../payments/shared";
 import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
-import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectProductStates, selectRequestHash } from "./queries";
+import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectVariantStates, selectRequestHash } from "./queries";
 import { requestHash } from "./request-hash";
 import { CANCELLED } from "./schema";
 import { allowedSources } from "./transitions";
@@ -58,7 +58,7 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
             paymentDeadline: order.paymentDeadline,
           });
         }
-        const states = await selectProductStates(db, request.lines.map((line) => line.productId));
+        const states = await selectVariantStates(db, request.lines.map((line) => line.variantId));
         const issues = diagnoseLines(request.lines, states);
         if (issues.length > 0) return { ok: false as const, reason: "checkout_rejected" as const, issues };
       }

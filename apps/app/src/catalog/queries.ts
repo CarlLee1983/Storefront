@@ -3,7 +3,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
 import type { ProductImage } from "../product-images";
-import { products } from "./schema";
+import { productVariants, products } from "./schema";
 import type { ListProductsInput } from "./input";
 import { PAGE_SIZE, type ProductSort } from "./listing";
 import type { ProductSummary } from "./types";
@@ -13,7 +13,9 @@ interface ProductBase {
   id: number;
   name: string;
   description: string;
-  /** 單價，新台幣整數元。 */
+  /** 預設變體的編號：購物車、結帳與庫存調整都以變體為單位（ADR 0005）。 */
+  defaultVariantId: number;
+  /** 預設變體的單價，新台幣整數元。 */
   priceTwd: number;
   /** 原價，新台幣整數元；null 表示不是特價商品。 */
   compareAtPriceTwd: number | null;
@@ -40,14 +42,19 @@ export interface AdminProductDetail extends AdminProductSummary {
   images: ProductImage[];
 }
 
+/** 商品與其預設變體的 join 條件；多變體商品由後續票擴充，這裡只讀預設變體。 */
+const withDefaultVariant = and(eq(productVariants.productId, products.id), eq(productVariants.isDefault, true));
+
 const summaryColumns = {
   id: products.id,
   name: products.name,
   description: products.description,
-  priceTwd: products.priceTwd,
-  compareAtPriceTwd: products.compareAtPriceTwd,
-  onHand: products.onHand,
-  reserved: reservedQuantity(sql`${products.id}`).as("reserved"),
+  // D1 的 batch 以欄位名稱為鍵回傳列，與 products.id 同名會互相覆蓋，所以要取別名
+  defaultVariantId: sql<number>`${productVariants.id}`.as("default_variant_id"),
+  priceTwd: productVariants.priceTwd,
+  compareAtPriceTwd: productVariants.compareAtPriceTwd,
+  onHand: productVariants.onHand,
+  reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
 };
 
 const cover = sql<ProductImage | null>`(
@@ -85,8 +92,8 @@ function toSummary({ onHand, reserved, ...row }: Omit<ProductSummary, "purchasab
 
 const listingOrder = {
   "new": [desc(products.listedAt), desc(products.id)],
-  "price-asc": [asc(products.priceTwd), desc(products.id)],
-  "price-desc": [desc(products.priceTwd), desc(products.id)],
+  "price-asc": [asc(productVariants.priceTwd), desc(products.id)],
+  "price-desc": [desc(productVariants.priceTwd), desc(products.id)],
 } satisfies Record<ProductSort, SQL[]>;
 
 /** LIKE 的萬用字元與跳脫字元本身加上反斜線，讓關鍵字當成一般文字比對。 */
@@ -112,23 +119,23 @@ export async function selectListedProducts(
   const where = and(
     eq(products.listed, true),
     category === undefined ? undefined : sql`${products.categoryId} = (select id from categories where slug = ${category})`,
-    inStock ? sql`${availableExpr(sql`${products.onHand}`, sql`${products.id}`)} > 0` : undefined,
+    inStock ? sql`${availableExpr(sql`${productVariants.onHand}`, sql`${productVariants.id}`)} > 0` : undefined,
     q === undefined ? undefined : keywordMatch(q),
-    onSale ? isNotNull(products.compareAtPriceTwd) : undefined,
+    onSale ? isNotNull(productVariants.compareAtPriceTwd) : undefined,
   );
   // 同一個查詢帶出封面，按商品＋順位索引找第一張，沒有逐商品 RPC/查詢。
   // 列表與總件數放同一個 batch（隱含交易），兩者看到同一份資料，hasMore 才不會因並行寫入而矛盾。
   const [rows, [counted]] = await db.batch([
-    db.select({ ...summaryColumns, cover }).from(products).where(where).orderBy(...listingOrder[sort]).limit(page * PAGE_SIZE),
-    db.select({ total: sql<number>`count(*)`.mapWith(Number) }).from(products).where(where),
+    db.select({ ...summaryColumns, cover }).from(products).innerJoin(productVariants, withDefaultVariant).where(where).orderBy(...listingOrder[sort]).limit(page * PAGE_SIZE),
+    db.select({ total: sql<number>`count(*)`.mapWith(Number) }).from(products).innerJoin(productVariants, withDefaultVariant).where(where),
   ]);
   return { items: rows.map(toSummary), total: counted!.total };
 }
 
 /** 目前有沒有特價商品（上架中且有原價）；前台導覽列用來決定是否顯示「特價」。 */
 export async function existsProductOnSale(db: DrizzleD1Database): Promise<boolean> {
-  const [row] = await db.select({ id: products.id }).from(products)
-    .where(and(eq(products.listed, true), isNotNull(products.compareAtPriceTwd))).limit(1);
+  const [row] = await db.select({ id: products.id }).from(products).innerJoin(productVariants, withDefaultVariant)
+    .where(and(eq(products.listed, true), isNotNull(productVariants.compareAtPriceTwd))).limit(1);
   return row !== undefined;
 }
 
@@ -140,7 +147,7 @@ const FEATURED_LIMIT = 4;
  * 一個查詢完成：精選（featured_at 非空）排在補位之前，其餘依上架時間，同值以 id 遞減讓順序穩定，所以不會重複。
  */
 export async function selectFeaturedProducts(db: DrizzleD1Database): Promise<ProductSummary[]> {
-  const rows = await db.select({ ...summaryColumns, cover }).from(products).where(eq(products.listed, true))
+  const rows = await db.select({ ...summaryColumns, cover }).from(products).innerJoin(productVariants, withDefaultVariant).where(eq(products.listed, true))
     .orderBy(sql`${products.featuredAt} is null`, desc(products.featuredAt), desc(products.listedAt), desc(products.id))
     .limit(FEATURED_LIMIT);
   return rows.map(toSummary);
@@ -148,13 +155,13 @@ export async function selectFeaturedProducts(db: DrizzleD1Database): Promise<Pro
 
 /** 後台清單：所有商品（含下架），依新增順序。 */
 export async function selectProductsForAdmin(db: DrizzleD1Database): Promise<AdminProductSummary[]> {
-  const rows = await db.select(adminColumns).from(products).leftJoin(categories, eq(products.categoryId, categories.id)).orderBy(asc(products.id));
+  const rows = await db.select(adminColumns).from(products).innerJoin(productVariants, withDefaultVariant).leftJoin(categories, eq(products.categoryId, categories.id)).orderBy(asc(products.id));
   return rows.map(toAdminSummary);
 }
 
 /** 單一商品（含下架）；不存在回 null。 */
 export async function selectProductForAdmin(db: DrizzleD1Database, id: number): Promise<AdminProductDetail | null> {
-  const [row] = await db.select(adminColumns).from(products).leftJoin(categories, eq(products.categoryId, categories.id)).where(eq(products.id, id));
+  const [row] = await db.select(adminColumns).from(products).innerJoin(productVariants, withDefaultVariant).leftJoin(categories, eq(products.categoryId, categories.id)).where(eq(products.id, id));
   if (!row) return null;
   const images = await db.select({ id: productImages.id, variants: productImages.variants }).from(productImages)
     .where(eq(productImages.productId, id)).orderBy(asc(productImages.position), asc(productImages.id));
@@ -176,7 +183,7 @@ const RELATED_LIMIT = 4;
 
 /** 同分類推薦：不含自己，只含上架中的商品。 */
 async function selectRelatedProducts(db: DrizzleD1Database, categoryId: number, excludeId: number): Promise<ProductSummary[]> {
-  const rows = await db.select({ ...summaryColumns, cover }).from(products)
+  const rows = await db.select({ ...summaryColumns, cover }).from(products).innerJoin(productVariants, withDefaultVariant)
     .where(and(eq(products.listed, true), eq(products.categoryId, categoryId), ne(products.id, excludeId)))
     .orderBy(desc(products.listedAt), desc(products.id)).limit(RELATED_LIMIT);
   return rows.map(toSummary);
@@ -191,7 +198,7 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
       order by image.position, image.id
     ) ordered
   )`.mapWith((value: string) => JSON.parse(value) as ProductImage[]);
-  const [row] = await db.select({ ...summaryColumns, images, categoryId: products.categoryId, categorySlug: categories.slug, categoryName: categories.name }).from(products)
+  const [row] = await db.select({ ...summaryColumns, images, categoryId: products.categoryId, categorySlug: categories.slug, categoryName: categories.name }).from(products).innerJoin(productVariants, withDefaultVariant)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .where(and(eq(products.id, id), eq(products.listed, true)));
   if (!row) return null;

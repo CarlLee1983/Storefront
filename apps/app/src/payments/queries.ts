@@ -175,9 +175,9 @@ export async function applyPaymentEvent(
         WHERE id = ${orderId} AND ${settlesOrder} AND ${won} AND ${paymentPending}
       `,
       sql`
-        UPDATE products
-        SET on_hand = on_hand - (SELECT line.quantity FROM order_lines line WHERE line.order_id = ${orderId} AND line.product_id = products.id)
-        WHERE id IN (SELECT product_id FROM order_lines WHERE order_id = ${orderId})
+        UPDATE product_variants
+        SET on_hand = on_hand - (SELECT line.quantity FROM order_lines line WHERE line.order_id = ${orderId} AND line.variant_id = product_variants.id)
+        WHERE id IN (SELECT variant_id FROM order_lines WHERE order_id = ${orderId})
           AND ${orderBecamePaidByThisPayment} AND ${won} AND ${paymentPending}
       `,
     );

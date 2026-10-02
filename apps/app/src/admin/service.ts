@@ -2,7 +2,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
-import { products } from "../catalog/schema";
+import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
 import { categoryIdInput, createCategoryInput, updateCategoryInput } from "../categories/input";
 import { deleteCategory, setCategoryImage } from "../categories/manage";
@@ -64,10 +64,13 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       });
     },
 
-    /** 新增商品，預設下架。 */
+    /** 新增商品，預設下架；同時建立它的預設變體（售價由輸入帶入，在庫數 0），兩者同一個 batch，全有或全無。 */
     createProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, createProductInput, input, async (_actor, data) => {
-        const [row] = await db.insert(products).values({ ...data, listed: false }).returning({ id: products.id });
+      return authorized(jwt, createProductInput, input, async (_actor, { priceTwd, ...data }) => {
+        const [[row]] = await db.batch([
+          db.insert(products).values({ ...data, listed: false }).returning({ id: products.id }),
+          db.insert(productVariants).values({ productId: sql`last_insert_rowid()`, isDefault: true, priceTwd }),
+        ]);
         return ok({ id: row!.id });
       });
     },
@@ -86,32 +89,49 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     },
 
     /**
-     * 修改名稱、說明、單價、原價與分類；不動上架狀態。
+     * 修改名稱、說明、分類，以及預設變體的單價與原價；不動上架狀態。
      * 指定的分類不存在回 `category_not_found`；上架中的商品不能把分類清成空，回 `no_category`（下架中的可以）。
      * 原價必須高於「儲存後」的售價，否則回 `invalid_compare_at_price`：不帶原價時比對既有原價，帶 `null` 則是清空，所以同時把售價改回並清空原價是合法的。
      */
     updateProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, updateProductInput, input, async (_actor, { id, ...values }) => {
-        if (typeof values.categoryId === "number" && !(await categoryExists(db, values.categoryId))) return fail("category_not_found");
+      return authorized(jwt, updateProductInput, input, async (_actor, { id, priceTwd, compareAtPriceTwd, ...productValues }) => {
+        if (typeof productValues.categoryId === "number" && !(await categoryExists(db, productValues.categoryId))) return fail("category_not_found");
         // 商品不存在優先於原價檢查：先確認存在，才有「原價不合法」可說
         const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
         if (!existing) return fail("product_not_found");
-        if (typeof values.compareAtPriceTwd === "number" && values.compareAtPriceTwd <= values.priceTwd) return fail("invalid_compare_at_price");
-        const clearsCategory = values.categoryId === null;
-        // 不帶原價時沿用既有原價，所以「原價仍高於新售價」也寫進同一句 UPDATE 的條件
-        const keepsCompareAt = values.compareAtPriceTwd === undefined;
-        // 「上架中不能清空分類」同樣寫進條件，不會和同時發生的上架互相穿插
-        const updated = await db.update(products).set(values)
-          .where(and(
-            eq(products.id, id),
-            clearsCategory ? eq(products.listed, false) : undefined,
-            keepsCompareAt ? sql`(${products.compareAtPriceTwd} is null or ${products.compareAtPriceTwd} > ${values.priceTwd})` : undefined,
-          ))
-          .returning({ id: products.id });
-        if (updated.length) return ok({ id });
-        const [product] = await db.select({ compareAtPriceTwd: products.compareAtPriceTwd }).from(products).where(eq(products.id, id));
-        if (!product) return fail("product_not_found");
-        return keepsCompareAt && product.compareAtPriceTwd !== null && product.compareAtPriceTwd <= values.priceTwd
+        if (typeof compareAtPriceTwd === "number" && compareAtPriceTwd <= priceTwd) return fail("invalid_compare_at_price");
+        const clearsCategory = productValues.categoryId === null;
+        // 不帶原價時沿用既有原價，所以「原價仍高於新售價」也寫進 UPDATE 的條件
+        const keepsCompareAt = compareAtPriceTwd === undefined;
+        const defaultVariantKeepsCompareAt = sql`exists (
+          select 1 from product_variants kept where kept.product_id = ${id} and kept.is_default = 1
+            and (kept.compare_at_price_twd is null or kept.compare_at_price_twd > ${priceTwd})
+        )`;
+        // 商品欄位與預設變體的價格在同一個 batch；兩句帶著同一組條件（「上架中不能清空分類」、「原價仍高於新售價」），
+        // 條件對兩句的判定相同，所以要嘛都寫入、要嘛都不寫，不會和同時發生的上架互相穿插
+        const [updatedVariant, updatedProduct] = await db.batch([
+          db.update(productVariants)
+            .set({ priceTwd, ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }) })
+            .where(and(
+              eq(productVariants.productId, id),
+              eq(productVariants.isDefault, true),
+              clearsCategory ? sql`exists (select 1 from products listed_check where listed_check.id = ${id} and listed_check.listed = 0)` : undefined,
+              keepsCompareAt ? defaultVariantKeepsCompareAt : undefined,
+            ))
+            .returning({ id: productVariants.id }),
+          db.update(products).set(productValues)
+            .where(and(
+              eq(products.id, id),
+              clearsCategory ? eq(products.listed, false) : undefined,
+              keepsCompareAt ? defaultVariantKeepsCompareAt : undefined,
+            ))
+            .returning({ id: products.id }),
+        ]);
+        if (updatedVariant.length && updatedProduct.length) return ok({ id });
+        const [variant] = await db.select({ compareAtPriceTwd: productVariants.compareAtPriceTwd }).from(productVariants)
+          .where(and(eq(productVariants.productId, id), eq(productVariants.isDefault, true)));
+        if (!variant) return fail("product_not_found");
+        return keepsCompareAt && variant.compareAtPriceTwd !== null && variant.compareAtPriceTwd <= priceTwd
           ? fail("invalid_compare_at_price")
           : fail("no_category");
       });
@@ -202,7 +222,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
 
     /** 庫存調整：只接受增減量，不能覆寫成某個數字。 */
     adjustStock(jwt: unknown, input: unknown) {
-      return authorized(jwt, adjustStockInput, input, (_actor, { id, delta }) => adjustOnHand(db, id, delta));
+      return authorized(jwt, adjustStockInput, input, (_actor, { variantId, delta }) => adjustOnHand(db, variantId, delta));
     },
 
     /** 所有訂單，可依訂單狀態篩選；新的在前，最多 200 筆。 */

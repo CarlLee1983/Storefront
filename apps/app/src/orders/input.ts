@@ -12,10 +12,10 @@ const MAX_NAME_LENGTH = 100;
 const MAX_PHONE_LENGTH = 30;
 const MAX_ADDRESS_LENGTH = 300;
 
-const productId = wholeNumber("商品編號").positive("商品編號無效");
+const variantId = wholeNumber("商品變體編號").positive("商品變體編號無效");
 
 const line = z.object({
-  productId,
+  variantId,
   quantity: wholeNumber("數量").min(1, "數量必須是 1 以上的整數").max(MAX_LINE_QUANTITY, `數量不可超過 ${MAX_LINE_QUANTITY}`),
   seenUnitPriceTwd: wholeNumber("單價").positive("單價必須大於 0").max(MAX_PRICE_TWD, `單價不可超過 ${MAX_PRICE_TWD}`),
 });
@@ -24,7 +24,7 @@ const lines = z
   .array(line, { error: "訂單明細必須是清單" })
   .min(1, "訂單至少要有一筆明細")
   .max(MAX_ORDER_LINES, `訂單明細不可超過 ${MAX_ORDER_LINES} 筆`)
-  .refine((items) => new Set(items.map((item) => item.productId)).size === items.length, "同一個商品不可重複出現");
+  .refine((items) => new Set(items.map((item) => item.variantId)).size === items.length, "同一個商品變體不可重複出現");
 
 const requiredText = (label: string, max: number) =>
   z

@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { signInCustomer } from "./customers";
-import { checkoutInput, createStockedProduct, SHIPPING_INFO } from "./checkout-helpers";
+import { checkoutInput, createStockedListing, SHIPPING_INFO } from "./checkout-helpers";
 import { forceOrderStatus, resetDb, seedPayment } from "./db";
 import { placeMugOrder } from "./payment-helpers";
 
@@ -34,10 +34,10 @@ describe("管理員訂單清單", () => {
 
   it("最新 200 筆都有明細與封面，超過 100 張仍可讀取且較舊訂單不混入", async () => {
     const cookie = await signInCustomer("alice");
-    const productId = await createStockedProduct("大量訂單商品", 100, 201);
+    const { productId, variantId } = await createStockedListing("大量訂單商品", 100, 201);
     const ids: number[] = [];
     for (let index = 0; index < 201; index++) {
-      const placed = await app.checkout(cookie, checkoutInput([{ productId, quantity: 1, seenUnitPriceTwd: 100 }]));
+      const placed = await app.checkout(cookie, checkoutInput([{ variantId, quantity: 1, seenUnitPriceTwd: 100 }]));
       if (!placed.ok) throw new Error(`結帳失敗：${placed.reason}`);
       ids.push(placed.data.orderId);
     }
@@ -46,7 +46,7 @@ describe("管理員訂單清單", () => {
     if (!result.ok) return;
     expect(result.data.map(order => order.id)).toEqual(ids.slice(1).reverse());
     for (const order of result.data) {
-      expect(order.lines).toEqual([{ productId, productName: "大量訂單商品", quantity: 1, unitPriceTwd: 100,
+      expect(order.lines).toEqual([{ productId, variantId, productName: "大量訂單商品", quantity: 1, unitPriceTwd: 100,
         cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }]);
     }
   }, 30_000);
@@ -74,7 +74,7 @@ describe("管理員訂單明細", () => {
 
   it("含訂單明細快照、收件資訊、顧客 email、所有付款嘗試，尚未出貨時物流單號與出貨時間為 null", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { quantity: 2 });
+    const { orderId, productId, variantId } = await placeMugOrder(alice, { quantity: 2 });
     await seedPayment(orderId, "failed", "seed_failed");
     await seedPayment(orderId, "succeeded", "seed_ok");
 
@@ -90,7 +90,7 @@ describe("管理員訂單明細", () => {
         shippingInfo: SHIPPING_INFO,
         paymentDeadline: expect.any(Number),
         createdAt: expect.any(Number),
-        lines: [{ productId, productName: "馬克杯", quantity: 2, unitPriceTwd: 320, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
+        lines: [{ productId, variantId, productName: "馬克杯", quantity: 2, unitPriceTwd: 320, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
         payments: [
           { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, refundReason: null, refundAt: null, needsAttention: false },
           // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄

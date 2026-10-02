@@ -153,12 +153,12 @@ describe("startPayment：發起付款", () => {
     /** 訂單上有一筆進行中的付款，閘道端它其實已經有結果，所以取消回 409。 */
     async function withUncancellablePayment() {
       const alice = await signInCustomer("alice");
-      const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+      const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
       const gateway = installFakeGateway();
       await app.startPayment(alice, { orderId });
       const old = gateway.lastPaymentId();
       gateway.uncancellable.add(old);
-      return { alice, orderId, productId, gateway, old };
+      return { alice, orderId, variantId, gateway, old };
     }
 
     it("閘道說它已失敗（webhook 沒送到）：本地轉 failed，繼續發起新付款", async () => {
@@ -182,7 +182,7 @@ describe("startPayment：發起付款", () => {
     });
 
     it("閘道說它已成功（webhook 沒送到）：套用結果（訂單轉已付款、在庫數扣除），回 payment_already_succeeded，不建立新付款", async () => {
-      const { alice, orderId, productId, gateway, old } = await withUncancellablePayment();
+      const { alice, orderId, variantId, gateway, old } = await withUncancellablePayment();
       gateway.settle(old, "succeeded");
 
       expect(await app.startPayment(alice, { orderId })).toEqual({ ok: false, reason: "payment_already_succeeded" });
@@ -191,7 +191,7 @@ describe("startPayment：發起付款", () => {
       const order = await orderOf(alice, orderId);
       expect(order.status).toBe("paid");
       expect(order.payments).toMatchObject([{ status: "succeeded" }]);
-      expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+      expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
     });
 
     it("閘道回的金額與本站不符：不套用，payment_in_progress，不建立新付款", async () => {
@@ -305,11 +305,11 @@ describe("startPayment：發起付款", () => {
     const alice = await signInCustomer("alice");
     const created = Date.now();
     setNow(created);
-    const { orderId, productId } = await placeMugOrder(alice);
+    const { orderId, variantId } = await placeMugOrder(alice);
     // 另一位顧客在期限之後結帳，把高水位推到期限之後
     const bob = await signInCustomer("bob");
     setNow(created + PAYMENT_WINDOW_MS + 1_000);
-    await app.checkout(bob, checkoutInput([{ productId, quantity: 1, seenUnitPriceTwd: 320 }]));
+    await app.checkout(bob, checkoutInput([{ variantId, quantity: 1, seenUnitPriceTwd: 320 }]));
     const gateway = installFakeGateway();
 
     setNow(created + 1_000); // 系統時鐘倒退

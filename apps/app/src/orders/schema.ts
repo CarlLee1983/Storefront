@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { user } from "../auth/schema";
-import { products } from "../catalog/schema";
+import { productVariants, products } from "../catalog/schema";
 
 /** 訂單狀態（CONTEXT.md 的五種）；存英文代碼，畫面顯示的中文名稱在 Web。 */
 export const ORDER_STATUSES = ["pending_payment", "paid", "shipped", "expired", "cancelled"] as const;
@@ -69,6 +69,10 @@ export const orderLines = sqliteTable(
     productId: integer("product_id")
       .notNull()
       .references(() => products.id),
+    /** 販售單位：購物車、價格校驗與庫存保留都以變體為準；商品編號只用來取封面與連結。 */
+    variantId: integer("variant_id")
+      .notNull()
+      .references(() => productVariants.id),
     /** 商品名稱快照；之後商品改名不影響已成立的訂單明細。 */
     productName: text("product_name").notNull(),
     quantity: integer("quantity").notNull(),
@@ -76,9 +80,9 @@ export const orderLines = sqliteTable(
     unitPriceTwd: integer("unit_price_twd").notNull(),
   },
   (table) => [
-    uniqueIndex("order_lines_order_product_uidx").on(table.orderId, table.productId),
-    // 保留總和依商品加總（見 `catalog/stock.ts`）
-    index("order_lines_product_idx").on(table.productId),
+    uniqueIndex("order_lines_order_variant_uidx").on(table.orderId, table.variantId),
+    // 保留總和依變體加總（見 `catalog/stock.ts`）
+    index("order_lines_variant_idx").on(table.variantId),
     check("order_lines_quantity_check", sql`${table.quantity} > 0`),
   ],
 );

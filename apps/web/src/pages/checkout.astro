@@ -139,7 +139,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   function renderIssues(cart: Cart) {
     const items = issues.map((issue) => {
       const li = document.createElement("li");
-      li.textContent = `${describeIssue(issue, cart.lines.find((line) => line.productId === issue.productId))} `;
+      li.textContent = `${describeIssue(issue, cart.lines.find((line) => line.variantId === issue.variantId))} `;
       if (issue.kind !== "price_changed") {
         const remove = document.createElement("button");
         remove.type = "button";
@@ -147,7 +147,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         remove.textContent = "移除";
         remove.addEventListener("click", () => {
           issues = issues.filter((other) => other !== issue);
-          change((current) => removeLines(current, [issue.productId]));
+          change((current) => removeLines(current, [issue.variantId]));
         });
         li.appendChild(remove);
       }

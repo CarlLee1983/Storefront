@@ -11,7 +11,7 @@ export const prerender = false;
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 let unauthorized = false;
 let listingError = "";
-let stockFailureId: number | undefined;
+let stockFailureVariantId: number | undefined;
 const LISTING_FAILED = "操作失敗，請稍後再試";
 
 /** 清單上按鈕（上下架、精選）的失敗：未授權交給頁面回 403，其餘顯示在清單上方。 */
@@ -47,7 +47,7 @@ if (Astro.request.method === "POST") {
     else {
       const described = describeFailure(result, LISTING_FAILED);
       listingError = [described.message, ...(described.fields.delta ?? [])].join("：");
-      stockFailureId = dispatch.input.id;
+      stockFailureVariantId = dispatch.input.variantId;
     }
   }
 }
@@ -236,9 +236,9 @@ function paginationUrl(p: number) {
                             <button type="submit" class="btn-action">{p.listed ? "下架" : "重新上架"}</button>
                           </form>
                           <form method="post" class="inline inline-stock-adjust">
-                            <input type="hidden" name="id" value={p.id} />
+                            <input type="hidden" name="variantId" value={p.defaultVariantId} />
                             <input type="hidden" name="intent" value="adjust-stock" />
-                            <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="±增減" aria-label={`${p.name}的庫存增減量`} aria-describedby={stockFailureId === p.id ? "listing-error" : undefined} aria-invalid={stockFailureId === p.id ? "true" : undefined} required />
+                            <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="±增減" aria-label={`${p.name}的庫存增減量`} aria-describedby={stockFailureVariantId === p.defaultVariantId ? "listing-error" : undefined} aria-invalid={stockFailureVariantId === p.defaultVariantId ? "true" : undefined} required />
                             <button type="submit" class="btn-action">調整庫存</button>
                           </form>
                         </div>

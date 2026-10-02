@@ -67,18 +67,18 @@ export const prerender = false;
   // 商品名稱來自 localStorage，一律用 textContent，不當 HTML
   function renderLine(line: CartLine) {
     const item = make("li", "cart-line");
-    item.dataset.productId = String(line.productId);
+    item.dataset.variantId = String(line.variantId);
     const cover = createCartCover(line.cover, line.name);
     cover.classList.add("line-cover");
     const stepper = stepperTemplate.content.firstElementChild!.cloneNode(true) as HTMLElement;
     const input = stepper.querySelector<HTMLInputElement>("input")!;
     input.value = String(line.quantity);
     input.setAttribute("aria-label", `${line.name} 數量`);
-    input.addEventListener("change", () => change((c) => setQuantity(c, line.productId, Number(input.value)), input));
+    input.addEventListener("change", () => change((c) => setQuantity(c, line.variantId, Number(input.value)), input));
     // 以最新的購物車內容加減；已在下限或上限時數量不變
     const stepBy = (delta: number) => (cart: Cart) => {
-      const current = cart.lines.find((l) => l.productId === line.productId);
-      return current ? setQuantity(cart, line.productId, clampQuantity(current.quantity + delta)) : cart;
+      const current = cart.lines.find((l) => l.variantId === line.variantId);
+      return current ? setQuantity(cart, line.variantId, clampQuantity(current.quantity + delta)) : cart;
     };
     for (const button of stepper.querySelectorAll<HTMLButtonElement>("[data-step]")) {
       const delta = Number(button.dataset.step);
@@ -89,7 +89,7 @@ export const prerender = false;
     remove.type = "button";
     remove.dataset.action = "remove";
     remove.setAttribute("aria-label", `移除${line.name}`);
-    remove.addEventListener("click", () => change((c) => removeFromCart(c, line.productId)));
+    remove.addEventListener("click", () => change((c) => removeFromCart(c, line.variantId)));
     const actions = make("div", "line-actions");
     actions.replaceChildren(stepper, remove);
     const main = make("div", "line-main");
@@ -116,9 +116,9 @@ export const prerender = false;
   // 無效數量（如清空輸入框）會被 setQuantity 拒絕、購物車不變；照樣重畫，輸入框就還原成實際數量
   function change(fn: (cart: Cart) => Cart, quantityInput?: HTMLInputElement) {
     const focused = document.activeElement as HTMLElement | null;
-    const row = focused?.closest<HTMLLIElement>("li[data-product-id]");
+    const row = focused?.closest<HTMLLIElement>("li[data-variant-id]");
     const previousIndex = row ? Array.from(row.parentElement!.children).indexOf(row) : -1;
-    const productId = row?.dataset.productId;
+    const variantId = row?.dataset.variantId;
     const action = focused?.dataset.action;
     const { cart, saved } = updateCart(storageOf(window), window, fn);
     const error = $("#cart-error");
@@ -127,7 +127,7 @@ export const prerender = false;
     // Keep the edited input in the DOM so Tab/Shift+Tab retain their native focus order.
     if (quantityInput) {
       const editedRow = quantityInput.closest<HTMLLIElement>("li")!;
-      const line = cart.lines.find(line => String(line.productId) === editedRow.dataset.productId);
+      const line = cart.lines.find(line => String(line.variantId) === editedRow.dataset.variantId);
       if (line) {
         quantityInput.value = String(line.quantity);
         editedRow.querySelector<HTMLElement>(".line-subtotal")!.replaceChildren(...subtotalText(line));
@@ -136,8 +136,8 @@ export const prerender = false;
       }
     }
     render(cart);
-    if (productId && action) {
-      const next = document.querySelector<HTMLElement>(`li[data-product-id="${productId}"] [data-action="${action}"]`)
+    if (variantId && action) {
+      const next = document.querySelector<HTMLElement>(`li[data-variant-id="${variantId}"] [data-action="${action}"]`)
         ?? document.querySelectorAll<HTMLElement>(`#cart-lines [data-action="${action}"]`)[Math.min(previousIndex, cart.lines.length - 1)]
         ?? document.querySelector<HTMLElement>("#cart-empty a");
       next?.focus();

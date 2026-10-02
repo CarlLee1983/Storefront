@@ -80,16 +80,17 @@ describe("dispatchProductForm", () => {
     expect(dispatchProductForm(form({ intent: "feature" }))).toEqual({ kind: "invalid" });
   });
 
-  it("庫存調整的表單解析出商品編號與增減量", () => {
-    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "3", delta: "-3" }))).toEqual({
+  it("庫存調整的表單解析出商品變體編號與增減量", () => {
+    expect(dispatchProductForm(form({ intent: "adjust-stock", variantId: "3", delta: "-3" }))).toEqual({
       kind: "stock",
-      input: { id: 3, delta: -3 },
+      input: { variantId: 3, delta: -3 },
     });
   });
 
-  it("庫存調整缺少或無效的 id 是 invalid，不呼叫 RPC", () => {
+  it("庫存調整缺少或無效的 variantId 是 invalid，不呼叫 RPC（只帶商品 id 也不行）", () => {
     expect(dispatchProductForm(form({ intent: "adjust-stock", delta: "5" }))).toEqual({ kind: "invalid" });
-    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "0", delta: "5" }))).toEqual({ kind: "invalid" });
+    expect(dispatchProductForm(form({ intent: "adjust-stock", variantId: "0", delta: "5" }))).toEqual({ kind: "invalid" });
+    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "3", delta: "5" }))).toEqual({ kind: "invalid" });
   });
 
   it.each([
@@ -104,9 +105,9 @@ describe("dispatchProductForm", () => {
 });
 
 describe("stockAdjustFormToInput", () => {
-  it("商品編號與增減量轉成 RPC 輸入，+20 與 -3 都是數字", () => {
-    expect(stockAdjustFormToInput(form({ delta: "+20" }), 3)).toEqual({ id: 3, delta: 20 });
-    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ id: 3, delta: -3 });
+  it("變體編號與增減量轉成 RPC 輸入，+20 與 -3 都是數字", () => {
+    expect(stockAdjustFormToInput(form({ delta: "+20" }), 3)).toEqual({ variantId: 3, delta: 20 });
+    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ variantId: 3, delta: -3 });
   });
 
   it("增減量留空或不是數字為 NaN，不在 Web 判斷，由 App 回報欄位錯誤", () => {

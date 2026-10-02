@@ -12,10 +12,10 @@ describe("顧客取消待付款訂單", () => {
   beforeEach(resetDb);
 
   it("取消成功：訂單轉為已取消，保留釋放，在庫數不變", async () => {
-    const productId = await stocked(10);
+    const variantId = await stocked(10);
     const cookie = await signInCustomer("alice");
-    const order = await placeOrderAt(cookie, productId, 4, T0);
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 6 });
+    const order = await placeOrderAt(cookie, variantId, 4, T0);
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 6 });
 
     expect(await app.cancelOrder(cookie, { orderId: order.orderId })).toEqual({
       ok: true,
@@ -23,27 +23,27 @@ describe("顧客取消待付款訂單", () => {
     });
 
     expect(await statusOf(cookie, order.orderId)).toBe("cancelled");
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 10 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 10 });
   });
 
   it("取消別人的訂單：order_not_found，訂單不動；不存在的訂單同樣回 order_not_found", async () => {
-    const productId = await stocked(10);
+    const variantId = await stocked(10);
     const alice = await signInCustomer("alice");
     const bob = await signInCustomer("bob");
-    const order = await placeOrderAt(alice, productId, 2, T0);
+    const order = await placeOrderAt(alice, variantId, 2, T0);
 
     expect(await app.cancelOrder(bob, { orderId: order.orderId })).toEqual({ ok: false, reason: "order_not_found" });
     expect(await app.cancelOrder(bob, { orderId: order.orderId + 1000 })).toEqual({ ok: false, reason: "order_not_found" });
 
     expect(await statusOf(alice, order.orderId)).toBe("pending_payment");
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("取消已逾期或已取消的訂單：order_not_cancellable，狀態不變", async () => {
-    const productId = await stocked(10);
+    const variantId = await stocked(10);
     const cookie = await signInCustomer("alice");
-    const expired = await placeOrderAt(cookie, productId, 1, T0);
-    const cancelled = await placeOrderAt(cookie, productId, 1, T0 + 1000);
+    const expired = await placeOrderAt(cookie, variantId, 1, T0);
+    const cancelled = await placeOrderAt(cookie, variantId, 1, T0 + 1000);
     await app.cancelOrder(cookie, { orderId: cancelled.orderId });
     await runCron(T0 + PAYMENT_WINDOW_MS);
 
@@ -55,9 +55,9 @@ describe("顧客取消待付款訂單", () => {
   });
 
   it("已取消是終點：之後 Cron 不會把它轉為已逾期", async () => {
-    const productId = await stocked(10);
+    const variantId = await stocked(10);
     const cookie = await signInCustomer("alice");
-    const order = await placeOrderAt(cookie, productId, 1, T0);
+    const order = await placeOrderAt(cookie, variantId, 1, T0);
     await app.cancelOrder(cookie, { orderId: order.orderId });
 
     await runCron(T0 + 2 * PAYMENT_WINDOW_MS);
@@ -77,11 +77,11 @@ describe("Cron 與顧客取消並行", () => {
   beforeEach(resetDb);
 
   it("每張訂單最終只會是逾期或取消其中一種，取消回 ok 的必為已取消，保留只釋放一次", async () => {
-    const productId = await stocked(100);
+    const variantId = await stocked(100);
     const cookie = await signInCustomer("alice");
     // 訂單越多，Cron 逐筆寫入的空窗越長，越容易讓先讀後寫的實作露餡
     const orders = [];
-    for (let i = 0; i < 100; i += 1) orders.push(await placeOrderAt(cookie, productId, 1, T0 + i));
+    for (let i = 0; i < 100; i += 1) orders.push(await placeOrderAt(cookie, variantId, 1, T0 + i));
     const at = T0 + PAYMENT_WINDOW_MS + 1000;
 
     // 取消走 service 並以固定身分取代 session 驗證：驗證的延遲會讓取消整批晚於 Cron，兩邊的語句就不會交錯。
@@ -99,18 +99,18 @@ describe("Cron 與顧客取消並行", () => {
       expect(status).toBe(result.ok ? "cancelled" : "expired");
       if (!result.ok) expect(result.reason).toBe("order_not_cancellable");
     }
-    expect(await stockOf(productId)).toEqual({ onHand: 100, available: 100 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 100, available: 100 });
   }, 30_000);
 
   it("付款期限當下 Cron 先跑：之後取消回 order_not_cancellable，訂單維持已逾期", async () => {
-    const productId = await stocked(10);
+    const variantId = await stocked(10);
     const cookie = await signInCustomer("alice");
-    const order = await placeOrderAt(cookie, productId, 3, T0);
+    const order = await placeOrderAt(cookie, variantId, 3, T0);
 
     await runCron(order.paymentDeadline);
 
     expect(await app.cancelOrder(cookie, { orderId: order.orderId })).toEqual({ ok: false, reason: "order_not_cancellable" });
     expect(await statusOf(cookie, order.orderId)).toBe("expired");
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 10 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 10 });
   });
 });

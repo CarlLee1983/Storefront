@@ -12,7 +12,8 @@ it("0007 將舊商品下架、改預設值，保留商品 ID、庫存與既有�
     db.prepare(`INSERT INTO orders (id, customer_id, total_twd, shipping_name, shipping_phone, shipping_address, payment_deadline, created_at, idempotency_key, request_hash) VALUES (1, 'legacy', 320, 'Legacy', '0900000000', 'Address', 100, 0, 'legacy-key', 'hash')`),
     db.prepare(`INSERT INTO order_lines (order_id, product_id, product_name, quantity, unit_price_twd) VALUES (1, 42, 'Legacy product', 1, 320)`),
   ]);
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  // 只套到 0007 為止：此測試驗證 0007 本身，之後的遷移各有自己的測試
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, 8));
   expect(await db.prepare("SELECT id, name, listed, on_hand FROM products ORDER BY id").all()).toMatchObject({ results: [
     { id: 42, name: "Legacy product", listed: 0, on_hand: 7 },
     { id: 43, name: "Unlisted product", listed: 0, on_hand: 2 },

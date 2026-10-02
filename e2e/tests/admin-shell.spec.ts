@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
+import { defaultVariantIds, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
@@ -75,7 +75,8 @@ for (const width of [375, 1280]) {
 
       await page.context().addCookies([memberSessionCookie()]);
       await page.goto("/cart");
-      await page.evaluate(({ ids, prefix }) => localStorage.setItem("storefront.cart", JSON.stringify({ version: 1, lines: ids.map((productId, index) => ({ productId, name: `${prefix}商品${index + 1}`, unitPriceTwd: (index + 1) * 100, quantity: 1 })) })), { ids, prefix });
+      const variantIds = await defaultVariantIds(context.request, ids);
+      await page.evaluate(({ ids, variantIds, prefix }) => localStorage.setItem("storefront.cart", JSON.stringify({ version: 2, lines: ids.map((productId, index) => ({ variantId: variantIds[index], productId, name: `${prefix}商品${index + 1}`, unitPriceTwd: (index + 1) * 100, quantity: 1 })) })), { ids, variantIds, prefix });
       await page.goto("/checkout");
       await page.getByLabel("收件人姓名").fill("後台測試");
       await page.getByLabel("收件人電話").fill("0912345678");

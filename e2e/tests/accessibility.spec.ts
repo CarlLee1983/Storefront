@@ -47,7 +47,7 @@ for (const width of [320, 768, 1280]) {
     }
     await page.context().addCookies([memberSessionCookie()]);
     await page.goto("/cart");
-    await page.evaluate(() => localStorage.setItem("storefront.cart", JSON.stringify({ version: 1, lines: [{ productId: 1, name: "測試商品很長的名稱 ABCDEFGHIJKLMNOPQRSTUVWXYZ", unitPriceTwd: 1200, quantity: 1 }] })));
+    await page.evaluate(() => localStorage.setItem("storefront.cart", JSON.stringify({ version: 2, lines: [{ variantId: 1, productId: 1, name: "測試商品很長的名稱 ABCDEFGHIJKLMNOPQRSTUVWXYZ", unitPriceTwd: 1200, quantity: 1 }] })));
     for (const path of ["/cart", "/checkout", "/orders", "/orders/999999999"]) {
       await page.goto(path);
       await expectStorefrontHead(page);

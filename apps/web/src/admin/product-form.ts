@@ -29,12 +29,12 @@ export function productUpdateFormToInput(form: FormData, id: number) {
   };
 }
 
-/** 庫存調整表單 → RPC 輸入；增減量（+20、-3）轉成數字，是否合法由 App 驗證。 */
-export function stockAdjustFormToInput(form: FormData, id: number) {
-  return { id, delta: toNumber(form.get("delta")) };
+/** 庫存調整表單 → RPC 輸入；庫存以商品變體為單位，增減量（+20、-3）轉成數字，是否合法由 App 驗證。 */
+export function stockAdjustFormToInput(form: FormData, variantId: number) {
+  return { variantId, delta: toNumber(form.get("delta")) };
 }
 
-/** 網址上的商品編號；不是正整數就回傳 null（頁面顯示找不到）。 */
+/** 網址上的商品編號與表單上的編號；不是正整數就回傳 null（頁面顯示找不到）。 */
 export function parseProductId(value: string | undefined): number | null {
   return value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) : null;
 }
@@ -58,9 +58,12 @@ export type ProductFormDispatch =
 export function dispatchProductForm(form: FormData): ProductFormDispatch {
   const intent = form.get("intent");
   if (intent === null) return { kind: "invalid" };
+  if (intent === "adjust-stock") {
+    const variantId = parseProductId(toText(form.get("variantId")));
+    return variantId === null ? { kind: "invalid" } : { kind: "stock", input: stockAdjustFormToInput(form, variantId) };
+  }
   const id = parseProductId(toText(form.get("id")));
   if (id === null) return { kind: "invalid" };
-  if (intent === "adjust-stock") return { kind: "stock", input: stockAdjustFormToInput(form, id) };
   if (intent === FEATURE_INTENT || intent === UNFEATURE_INTENT) return { kind: "featured", featured: intent === FEATURE_INTENT, id };
   if (intent !== "unlist" && intent !== "relist") return { kind: "invalid" };
   return { kind: "listing", action: intent, id };

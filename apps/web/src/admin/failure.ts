@@ -21,6 +21,7 @@ export function describeFailure(
   const messages: Record<string, string> = {
     invalid_input: "輸入有誤，請修正後再送出",
     product_not_found: "找不到這個商品",
+    variant_not_found: "找不到這個商品變體",
     no_images: "請先上傳商品圖片，再上架商品",
     image_limit: "每件商品最多 8 張商品圖片",
     image_set_changed: "商品圖片清單已變更，請重新載入後再排序",

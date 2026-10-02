@@ -3,10 +3,10 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { currentCover } from "../images/cover-query";
 import type { ProductImage } from "../product-images";
 import { user } from "../auth/schema";
-import { products } from "../catalog/schema";
+import { productVariants, products } from "../catalog/schema";
 import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/stock";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
-import type { ProductState } from "./diagnosis";
+import type { VariantState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
 import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, SHIPPED, type OrderStatus } from "./schema";
@@ -57,18 +57,20 @@ export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutReq
       ON CONFLICT (customer_id, idempotency_key) DO NOTHING
     `,
     sql`
-      INSERT INTO order_lines (order_id, product_id, product_name, quantity, unit_price_twd)
-      SELECT orders.id, products.id, products.name, json_extract(j.value, '$.quantity'), products.price_twd
+      INSERT INTO order_lines (order_id, product_id, variant_id, product_name, quantity, unit_price_twd)
+      SELECT orders.id, products.id, variant.id, products.name, json_extract(j.value, '$.quantity'), variant.price_twd
       FROM orders
       JOIN json_each(${linesJson}) j
-      JOIN products ON products.id = json_extract(j.value, '$.productId')
+      JOIN product_variants variant ON variant.id = json_extract(j.value, '$.variantId')
+      JOIN products ON products.id = variant.product_id
       WHERE ${ownOrder}
         AND NOT EXISTS (SELECT 1 FROM order_lines existing WHERE existing.order_id = orders.id)
         AND NOT EXISTS (
           SELECT 1 FROM json_each(${linesJson}) wanted
-          LEFT JOIN products current ON current.id = json_extract(wanted.value, '$.productId')
+          LEFT JOIN product_variants current ON current.id = json_extract(wanted.value, '$.variantId')
+          LEFT JOIN products current_product ON current_product.id = current.product_id
           WHERE current.id IS NULL
-            OR current.listed = 0
+            OR current_product.listed = 0
             OR current.price_twd <> json_extract(wanted.value, '$.seenUnitPriceTwd')
             OR ${availableExpr(sql`current.on_hand`, sql`current.id`)} < json_extract(wanted.value, '$.quantity')
         )
@@ -82,18 +84,19 @@ export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutReq
   return { created: insertedLines!.meta.changes > 0 };
 }
 
-/** 結帳被拒之後的唯讀診斷：這些商品現在的價格、上架狀態與可售數量；不存在的商品不會出現在結果裡。 */
-export async function selectProductStates(db: DrizzleD1Database, productIds: number[]): Promise<ProductState[]> {
+/** 結帳被拒之後的唯讀診斷：這些變體現在的價格、所屬商品的上架狀態與可售數量；不存在的變體不會出現在結果裡。 */
+export async function selectVariantStates(db: DrizzleD1Database, variantIds: number[]): Promise<VariantState[]> {
   const rows = await db
     .select({
-      id: products.id,
-      priceTwd: products.priceTwd,
+      id: productVariants.id,
+      priceTwd: productVariants.priceTwd,
       listed: products.listed,
-      onHand: products.onHand,
-      reserved: reservedQuantity(sql`${products.id}`).as("reserved"),
+      onHand: productVariants.onHand,
+      reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     })
-    .from(products)
-    .where(inArray(products.id, productIds));
+    .from(productVariants)
+    .innerJoin(products, eq(products.id, productVariants.productId))
+    .where(inArray(productVariants.id, variantIds));
   return rows.map(({ onHand, reserved, ...row }) => ({ ...row, available: availableQuantity(onHand, reserved) }));
 }
 
@@ -106,7 +109,7 @@ export interface OrderView {
   paymentDeadline: number;
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
-  lines: { productId: number; productName: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
+  lines: { productId: number; variantId: number; productName: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
   /** 出貨時附的物流單號；未出貨或出貨時沒附為 null。 */
   trackingNumber: string | null;
   /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
@@ -149,6 +152,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       order: orders,
       customerEmail: user.email,
       productId: orderLines.productId,
+      variantId: orderLines.variantId,
       productName: orderLines.productName,
       quantity: orderLines.quantity,
       unitPriceTwd: orderLines.unitPriceTwd,
@@ -180,9 +184,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       };
       views.set(order.id, view);
     }
-    const { productId, productName, quantity, unitPriceTwd, cover } = line;
-    if (productId !== null && productName !== null && quantity !== null && unitPriceTwd !== null) {
-      view.lines.push({ productId, productName, quantity, unitPriceTwd, cover });
+    const { productId, variantId, productName, quantity, unitPriceTwd, cover } = line;
+    if (productId !== null && variantId !== null && productName !== null && quantity !== null && unitPriceTwd !== null) {
+      view.lines.push({ productId, variantId, productName, quantity, unitPriceTwd, cover });
     }
   }
 

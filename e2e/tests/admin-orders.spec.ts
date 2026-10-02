@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
+import { defaultVariantIds, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 
@@ -49,7 +49,8 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
     writeFixture(`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES ('${identity}', '訂單版面顧客', '${EMAIL}', 0, ${now}, ${now}); INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id) VALUES ('${identity}', ${now + 86_400_000}, '${token}', ${now}, ${now}, '${identity}');`);
     await customerContext.addCookies([memberSessionCookie({ token })]);
     await customer.goto("/cart");
-    await customer.evaluate(({ ids, names }) => localStorage.setItem("storefront.cart", JSON.stringify({ version: 1, lines: ids.map((productId, index) => ({ productId, name: names[index], unitPriceTwd: (index + 1) * 680, quantity: index + 1 })) })), { ids, names: NAMES });
+    const variantIds = await defaultVariantIds(adminContext.request, ids);
+    await customer.evaluate(({ ids, variantIds, names }) => localStorage.setItem("storefront.cart", JSON.stringify({ version: 2, lines: ids.map((productId, index) => ({ variantId: variantIds[index], productId, name: names[index], unitPriceTwd: (index + 1) * 680, quantity: index + 1 })) })), { ids, variantIds, names: NAMES });
     await customer.goto("/checkout");
     await customer.getByLabel("收件人姓名").fill("訂單版面顧客");
     await customer.getByLabel("收件人電話").fill("0912345678");

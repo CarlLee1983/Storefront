@@ -3,16 +3,16 @@ import { addToCart, emptyCart } from "../cart/cart";
 import { cartToCheckoutLines, checkoutFingerprint, checkoutFormToInput } from "./request";
 
 const cart = addToCart(
-  addToCart(emptyCart, { productId: 1, name: "馬克杯", unitPriceTwd: 320 }, 2),
-  { productId: 7, name: "原子筆", unitPriceTwd: 45 },
+  addToCart(emptyCart, { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320 }, 2),
+  { variantId: 7, productId: 7, name: "原子筆", unitPriceTwd: 45 },
   3,
 );
 
 describe("cartToCheckoutLines（購物車 → 結帳明細）", () => {
   it("每筆帶商品、數量與加入時看到的單價，不帶名稱", () => {
     expect(cartToCheckoutLines(cart)).toEqual([
-      { productId: 1, quantity: 2, seenUnitPriceTwd: 320 },
-      { productId: 7, quantity: 3, seenUnitPriceTwd: 45 },
+      { variantId: 1, quantity: 2, seenUnitPriceTwd: 320 },
+      { variantId: 7, quantity: 3, seenUnitPriceTwd: 45 },
     ]);
   });
 
@@ -28,7 +28,7 @@ function formOf(fields: Record<string, string>): FormData {
 }
 
 describe("checkoutFormToInput（結帳表單 → RPC 輸入）", () => {
-  const lines = [{ productId: 1, quantity: 2, seenUnitPriceTwd: 320 }];
+  const lines = [{ variantId: 1, quantity: 2, seenUnitPriceTwd: 320 }];
 
   it("組出明細、收件資訊與冪等鍵", () => {
     const form = formOf({
@@ -61,7 +61,7 @@ describe("checkoutFormToInput（結帳表單 → RPC 輸入）", () => {
 });
 
 describe("checkoutFingerprint（結帳內容指紋）", () => {
-  const lines = [{ productId: 1, quantity: 2, seenUnitPriceTwd: 320 }];
+  const lines = [{ variantId: 1, quantity: 2, seenUnitPriceTwd: 320 }];
   const shipping = { name: "王小明", phone: "0912", address: "台北" };
 
   it("同樣的明細與收件資訊得到同樣的指紋", () => {

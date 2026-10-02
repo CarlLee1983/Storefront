@@ -26,7 +26,7 @@ describe("修改商品", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: { items: [{ id, name: "大馬克杯", description: "500ml", priceTwd: 450, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
+      data: { items: [{ id, name: "大馬克杯", description: "500ml", defaultVariantId: expect.any(Number), priceTwd: 450, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
     });
   });
 
@@ -67,7 +67,7 @@ describe("下架與重新上架", () => {
 
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: { items: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
+      data: { items: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", defaultVariantId: expect.any(Number), priceTwd: 320, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
     });
   });
 
@@ -109,7 +109,7 @@ describe("讀取單一商品（編輯頁用）", () => {
     const id = await createMug(jwt);
     expect(await app.getProductForAdmin(jwt, { id })).toEqual({
       ok: true,
-      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, compareAtPriceTwd: null, listed: true, featured: false, category: { id: expect.any(Number), slug: "default", name: "預設分類" }, onHand: 0, reserved: 0, available: 0, cover: expect.objectContaining({ id: expect.any(String) }), images: [expect.objectContaining({ id: expect.any(String) })] },
+      data: { id, name: "馬克杯", description: "350ml 陶瓷杯", defaultVariantId: expect.any(Number), priceTwd: 320, compareAtPriceTwd: null, listed: true, featured: false, category: { id: expect.any(Number), slug: "default", name: "預設分類" }, onHand: 0, reserved: 0, available: 0, cover: expect.objectContaining({ id: expect.any(String) }), images: [expect.objectContaining({ id: expect.any(String) })] },
     });
 
     await app.unlistProduct(jwt, { id });
@@ -172,7 +172,7 @@ describe("修改、下架、上架的守門", () => {
     });
     expect(await app.listProducts()).toEqual({
       ok: true,
-      data: { items: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", priceTwd: 320, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
+      data: { items: [{ id, name: "馬克杯", description: "350ml 陶瓷杯", defaultVariantId: expect.any(Number), priceTwd: 320, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }], total: 1, hasMore: false },
     });
   });
 

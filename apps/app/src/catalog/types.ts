@@ -5,7 +5,9 @@ export interface ProductSummary {
   id: number;
   name: string;
   description: string;
-  /** 單價，新台幣整數元。 */
+  /** 預設變體的編號：加入購物車與結帳都以變體為單位（ADR 0005）。 */
+  defaultVariantId: number;
+  /** 預設變體的單價，新台幣整數元。 */
   priceTwd: number;
   /** 原價，新台幣整數元；null 表示不是特價商品。 */
   compareAtPriceTwd: number | null;

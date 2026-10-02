@@ -148,3 +148,12 @@ Migration `0007_product_images.sql` 會新增圖片表、把商品 `listed` 預�
 排序 RPC 必須提交完整、不重複的商品圖片 ID 清單，與 D1 現況不一致即拒絕。Migration `0008_careful_blonde_phantom.sql` 保留現有圖片、key 與 uploadId，將順位索引改為非唯一索引：SQLite 的逐列唯一性檢查無法交換已滿 8 張的順位。所有順位寫入透過原子 SQL／D1 batch 保持唯一且連續，排序驗證與更新在同一交易內。
 
 刪除先以同一 D1 batch 檢查「上架中至少一張」、寫入清理佇列、移除引用並緊縮順位，提交後才刪除 R2 物件，避免留下破圖封面。失敗回應會重新載入後台圖庫，保留未完成的上傳。R2 失敗或提交回應遺失可重試；既有每分鐘 Cron 每次重試最多 20 筆清理，失敗項目依最近嘗試時間輪替，避免阻塞其他圖片。商品下架後可刪至 0 張。已下載或快取的公開圖片不會因來源物件刪除而撤回。
+
+### 商品變體（預設變體）
+
+依 [ADR 0005](docs/adr/0005-variants-own-price-and-stock.md)，可購買、定價與計算庫存的單位是商品變體（`product_variants`）。目前每個商品只有一個預設變體，由 Migration `0013_product_variants.sql` 從既有商品的售價、原價與在庫數轉成；新增商品時一併建立。商品保留名稱、說明、分類、圖片與上架狀態，不再有 `price_twd`、`compare_at_price_twd`、`on_hand`。多變體與選項維度由後續票擴充。
+
+- 購物車、結帳與庫存調整都以變體編號為準：結帳明細帶 `variantId`，訂單明細同時記 `variant_id` 與 `product_id`（取封面、連結），後台庫存調整送 `variantId`。商品詳情與列表帶 `defaultVariantId` 供加入購物車。被取代的以商品編號結帳的路徑已移除，瀏覽器購物車格式升到第 2 版，舊版購物車會被視為空（顧客需重新加入）。
+- 沿用現行付款扣庫語意：保留 = 待付款訂單明細（以變體加總），付款成功才扣在庫數；逾期、取消與遲到付款的規則不變。
+- 遷移保留歷史：舊明細逐筆指向該商品的預設變體，單價、數量、名稱快照與訂單總額原樣不動，所以實付金額與免運結果不變；對不到預設變體的明細會讓 `variant_id NOT NULL` 失敗、整個遷移中止，不會丟掉明細或編造對應。
+- 回復：套用後若要退回，先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0013_product_variants.down.sql`（加 `--local`／`--remote`／`--env`）；它把預設變體寫回 `products`、明細改回只指向商品、移除 `d1_migrations` 紀錄。只在每個商品都恰好一個預設變體時可用，否則守門檢查會讓回復失敗。回復前須一併回復 Web、App 與 E2E 呼叫端（購物車格式與結帳輸入都已變更）。測試見 `apps/app/test/product-variants-migration.test.ts`。

@@ -53,12 +53,15 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
   // 依序新增，編號才會跟著名稱順序遞增
   for (const { name, priceTwd } of products) await post(admin, "/admin/products/new", { name, description: `${name}的說明`, priceTwd: String(priceTwd) });
 
-  const html = await (await admin.get("/admin")).text();
-  const ids = products.map(({ name }) => {
-    const id = new RegExp(`<td[^>]*>${name}</td>[\\s\\S]*?href="/admin/products/(\\d+)"`).exec(html)?.[1];
-    if (!id) throw new Error(`後台清單找不到剛建立的商品：${name}`);
-    return id;
+  let html = "";
+  for (let page = 1; page <= 20; page++) { const part = await (await admin.get(`/admin?page=${page}`)).text(); html += part; if (!part.includes(`page=${page + 1}`)) break; }
+  // 商品編號用在編輯頁與圖片上傳，庫存調整則以預設變體為單位（清單每列的庫存表單帶著 variantId）
+  const rows = products.map(({ name }) => {
+    const match = new RegExp(`<a href="/admin/products/(\\d+)"[^>]*>${name}</a>[\\s\\S]*?name="variantId" value="(\\d+)"`).exec(html);
+    if (!match) throw new Error(`後台清單找不到剛建立的商品：${name}`);
+    return { id: match[1]!, variantId: match[2]! };
   });
+  const ids = rows.map(({ id }) => id);
 
   // 分類編號只出現在商品編輯頁的下拉選單裡
   const editPage = await (await admin.get(`/admin/products/${ids[0]}`)).text();
@@ -79,12 +82,22 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
       },
     });
     expect(upload.status(), `上傳 ${name} 的封面`).toBe(201);
-    if (stock > 0) await post(admin, "/admin", { intent: "adjust-stock", id, delta: `+${stock}` });
+    if (stock > 0) await post(admin, "/admin", { intent: "adjust-stock", variantId: rows[index]!.variantId, delta: `+${stock}` });
   }));
 
   // 依序上架：上架時間才會跟著名稱順序遞增
   for (const id of ids) await post(admin, "/admin", { intent: "relist", id });
   return ids.map(Number);
+}
+
+/** 上架商品的預設變體編號（讀商品頁上加入購物車表單的 data-variant-id）；購物車與結帳以變體為單位，直接寫入購物車的測試需要它。 */
+export async function defaultVariantIds(request: APIRequestContext, productIds: number[]): Promise<number[]> {
+  return Promise.all(productIds.map(async (id) => {
+    const html = await (await request.get(`/products/${id}`)).text();
+    const variantId = /data-variant-id="(\d+)"/.exec(html)?.[1];
+    if (!variantId) throw new Error(`商品頁找不到預設變體編號：${id}`);
+    return Number(variantId);
+  }));
 }
 
 /** 依序把商品標為精選（走後台清單的表單，不開瀏覽器頁面）；精選時間跟著傳入順序遞增。 */

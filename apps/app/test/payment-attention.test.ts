@@ -111,7 +111,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
 
   it("已逾期的訂單上有一筆舊的成功付款 B（沒有退款紀錄），遲到成功的 A 重新保留成功：在庫數扣除，旗標標在 B、不標 A（不論編號大小）", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     // B 的編號比 A 小：安排成先有一筆（之後被改成「成功、沒退款」的）舊付款，再由真正的流程發起 A
     const older = await seedPayment(orderId, "expired", "older_success");
@@ -121,7 +121,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
 
     await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
 
-    expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
     const payments = await adminPayments(orderId);
     expect(payments).toMatchObject([
       { status: "succeeded", needsAttention: true }, // B：訂單不是由它支付
@@ -132,7 +132,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
 
   it("已出貨的訂單收到重複的成功付款：在庫數不動，退款（duplicate_success），訂單維持已出貨", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId, totalTwd } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId, totalTwd } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const first = await startPaymentFor(alice, orderId, gateway);
     await app.applyPaymentResult(gateway.settle(first, "succeeded"));
@@ -142,7 +142,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
 
     await app.applyPaymentResult(gateway.settle(second, "succeeded"));
 
-    expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
     expect(gateway.refunded).toEqual([second]);
     expect(await adminPayments(orderId)).toMatchObject([
       { status: "succeeded", needsAttention: false },

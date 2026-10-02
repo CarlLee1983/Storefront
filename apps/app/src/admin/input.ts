@@ -11,6 +11,7 @@ const MAX_PRICE_TWD = 10_000_000;
 const MAX_STOCK_DELTA = 1_000_000;
 
 const productId = wholeNumber("商品編號").positive("商品編號無效");
+const variantId = wholeNumber("商品變體編號").positive("商品變體編號無效");
 
 const name = z
   .string({ error: "名稱必須是文字" })
@@ -44,13 +45,13 @@ export const updateProductInput = z.object({ id: productId, name, description, p
 export const productIdInput = z.object({ id: productId });
 export const setProductFeaturedInput = z.object({ id: productId, featured: z.boolean({ error: "精選必須是布林值" }) });
 
-/** 庫存調整的增減量：非零整數（+20 補貨、-3 盤損）；沒有「設成某個數字」的輸入。 */
+/** 庫存調整的增減量（作用在變體上）：非零整數（+20 補貨、-3 盤損）；沒有「設成某個數字」的輸入。 */
 const stockDelta = wholeNumber("增減量")
   .refine((value) => value !== 0, "增減量不可為 0")
   .min(-MAX_STOCK_DELTA, `增減量不可小於 -${MAX_STOCK_DELTA}`)
   .max(MAX_STOCK_DELTA, `增減量不可超過 ${MAX_STOCK_DELTA}`);
 
-export const adjustStockInput = z.object({ id: productId, delta: stockDelta });
+export const adjustStockInput = z.object({ variantId, delta: stockDelta });
 
 const MAX_TRACKING_NUMBER_LENGTH = 100;
 

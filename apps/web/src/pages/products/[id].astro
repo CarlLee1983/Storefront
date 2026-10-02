@@ -41,7 +41,7 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
           {product.purchasable ? (product.available <= 5 ? `僅剩 ${product.available} 件現貨` : `現貨，可售 ${product.available} 件`) : "已售完"}
         </p>
         <p class="description">{product.description}</p>
-        {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
+        {product.purchasable && <form class="buy-form" data-product-id={product.id} data-variant-id={product.defaultVariantId} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
           <label for="buy-quantity">數量</label>
           <QuantityStepper id="buy-quantity" max={MAX_QUANTITY} decreaseLabel="減少數量" increaseLabel="增加數量" />
           <button type="submit" class="buy-button">加入購物車<span aria-hidden="true"> →</span></button>
@@ -76,9 +76,9 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
     const buyBtn = form.querySelector<HTMLButtonElement>(".buy-button");
     form.addEventListener("submit", event => {
       event.preventDefault();
-      const item = { productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
+      const item = { variantId: Number(form.dataset.variantId), productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
       const quantity = Number(new FormData(form).get("quantity"));
-      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
+      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.variantId, () =>
         updateCart(storageOf(window), window, current => addToCart(current, item, quantity))));
 
       if (buyBtn) {

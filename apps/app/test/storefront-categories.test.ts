@@ -77,7 +77,7 @@ describe("依代稱取得前台分類", () => {
     expect(await app.listProducts({ category: "living" })).toEqual({
       ok: true,
       data: {
-        items: [{ id: sofa, name: "沙發", description: "沙發的說明", priceTwd: 500, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+        items: [{ id: sofa, name: "沙發", description: "沙發的說明", defaultVariantId: expect.any(Number), priceTwd: 500, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
         total: 1,
         hasMore: false,
       },
