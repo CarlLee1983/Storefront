@@ -1,0 +1,93 @@
+{
+  "commit": "9006075",
+  "environment": "production-style local E2E harness, seeded demo catalog (4 categories, 32 listed products), isolated D1/R2 and fake E2E credentials",
+  "chromeVersion": "154.0.8037.93",
+  "chromeDebugPort": 19229,
+  "lighthouseVersion": "13.5.0",
+  "mode": "Navigation",
+  "categories": [
+    "performance",
+    "accessibility"
+  ],
+  "formFactor": "mobile",
+  "throttlingMethod": "simulate",
+  "disableStorageReset": true,
+  "cart": {
+    "name": "Luma 弧形單椅",
+    "quantity": 2,
+    "proof": "cart-proof.json",
+    "screenshot": "cart-proof.png"
+  },
+  "reports": [
+    {
+      "name": "home",
+      "requestedUrl": "http://localhost:8790/",
+      "finalUrl": "http://localhost:8790/",
+      "performance": 97,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T06:58:44.511Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+      "formFactor": "mobile",
+      "throttlingMethod": "simulate",
+      "html": "home.report.html",
+      "json": "home.report.json"
+    },
+    {
+      "name": "detail",
+      "requestedUrl": "http://localhost:8790/products/1",
+      "finalUrl": "http://localhost:8790/products/1",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T06:59:02.719Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+      "formFactor": "mobile",
+      "throttlingMethod": "simulate",
+      "html": "detail.report.html",
+      "json": "detail.report.json"
+    },
+    {
+      "name": "cart",
+      "requestedUrl": "http://localhost:8790/cart",
+      "finalUrl": "http://localhost:8790/cart",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T06:59:12.353Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+      "formFactor": "mobile",
+      "throttlingMethod": "simulate",
+      "html": "cart.report.html",
+      "json": "cart.report.json"
+    },
+    {
+      "name": "category",
+      "requestedUrl": "http://localhost:8790/categories/living",
+      "finalUrl": "http://localhost:8790/categories/living",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T06:59:21.903Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+      "formFactor": "mobile",
+      "throttlingMethod": "simulate",
+      "html": "category.report.html",
+      "json": "category.report.json"
+    },
+    {
+      "name": "search",
+      "requestedUrl": "http://localhost:8790/search?q=luma",
+      "finalUrl": "http://localhost:8790/search?q=luma",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T06:59:31.826Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+      "formFactor": "mobile",
+      "throttlingMethod": "simulate",
+      "html": "search.report.html",
+      "json": "search.report.json"
+    }
+  ]
+}

@@ -1,0 +1,335 @@
+{
+  "gitSha": "0f3aa241e1fd391c674c1fa66e6759fa3fc3f735",
+  "gitStatus": "",
+  "scriptSha256": "7b0b51d1c5cae05f0ca951425306f5f1d2bcef32e26fddac795c840e1e79462f",
+  "tools": {
+    "node": "v24.21.0",
+    "bun": "1.4.2",
+    "lighthouse": "13.5.0"
+  },
+  "browserVersion": "Chrome/154.0.8037.93",
+  "lighthouse": {
+    "categories": [
+      "performance",
+      "accessibility"
+    ],
+    "mode": "Navigation",
+    "formFactor": "mobile",
+    "throttlingMethod": "simulate",
+    "disableStorageReset": true
+  },
+  "startedAt": "2026-10-02T07:10:54.656Z",
+  "finishedAt": "2026-10-02T07:12:23.327Z",
+  "seed": "Expected fresh local E2E D1/R2 with demo catalog: 4 categories, 32 listed products; fake E2E identities only",
+  "seedVerified": true,
+  "cart": {
+    "name": "Luma 弧形單椅",
+    "quantity": 2,
+    "productId": 1
+  },
+  "orderPath": "/orders/1",
+  "productPath": "/products/1",
+  "pages": [
+    {
+      "name": "home",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "png": "home-375.png",
+      "finalUrl": "http://localhost:8790/",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "home",
+      "path": "/",
+      "width": 1280,
+      "height": 900,
+      "png": "home-1280.png",
+      "finalUrl": "http://localhost:8790/",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "category",
+      "path": "/categories/living",
+      "width": 375,
+      "height": 812,
+      "png": "category-375.png",
+      "finalUrl": "http://localhost:8790/categories/living",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "category",
+      "path": "/categories/living",
+      "width": 1280,
+      "height": 900,
+      "png": "category-1280.png",
+      "finalUrl": "http://localhost:8790/categories/living",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "detail",
+      "path": "/products/1",
+      "width": 375,
+      "height": 812,
+      "png": "detail-375.png",
+      "finalUrl": "http://localhost:8790/products/1",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "detail",
+      "path": "/products/1",
+      "width": 1280,
+      "height": 900,
+      "png": "detail-1280.png",
+      "finalUrl": "http://localhost:8790/products/1",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "cart",
+      "path": "/cart",
+      "width": 375,
+      "height": 812,
+      "png": "cart-375.png",
+      "finalUrl": "http://localhost:8790/cart",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "cart",
+      "path": "/cart",
+      "width": 1280,
+      "height": 900,
+      "png": "cart-1280.png",
+      "finalUrl": "http://localhost:8790/cart",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "checkout",
+      "path": "/checkout",
+      "width": 375,
+      "height": 812,
+      "png": "checkout-375.png",
+      "finalUrl": "http://localhost:8790/checkout",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "checkout",
+      "path": "/checkout",
+      "width": 1280,
+      "height": 900,
+      "png": "checkout-1280.png",
+      "finalUrl": "http://localhost:8790/checkout",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "orders-detail",
+      "path": "/orders/1",
+      "width": 375,
+      "height": 812,
+      "png": "orders-detail-375.png",
+      "finalUrl": "http://localhost:8790/orders/1",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "orders-detail",
+      "path": "/orders/1",
+      "width": 1280,
+      "height": 900,
+      "png": "orders-detail-1280.png",
+      "finalUrl": "http://localhost:8790/orders/1",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "orders-list",
+      "path": "/orders",
+      "width": 375,
+      "height": 812,
+      "png": "orders-list-375.png",
+      "finalUrl": "http://localhost:8790/orders",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "orders-list",
+      "path": "/orders",
+      "width": 1280,
+      "height": 900,
+      "png": "orders-list-1280.png",
+      "finalUrl": "http://localhost:8790/orders",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "sale",
+      "path": "/sale",
+      "width": 375,
+      "height": 812,
+      "png": "sale-375.png",
+      "finalUrl": "http://localhost:8790/sale",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "sale",
+      "path": "/sale",
+      "width": 1280,
+      "height": 900,
+      "png": "sale-1280.png",
+      "finalUrl": "http://localhost:8790/sale",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "content-about",
+      "path": "/about",
+      "width": 375,
+      "height": 812,
+      "png": "content-about-375.png",
+      "finalUrl": "http://localhost:8790/about",
+      "overflow": false,
+      "axeViolations": []
+    },
+    {
+      "name": "content-about",
+      "path": "/about",
+      "width": 1280,
+      "height": 900,
+      "png": "content-about-1280.png",
+      "finalUrl": "http://localhost:8790/about",
+      "overflow": false,
+      "axeViolations": []
+    }
+  ],
+  "reports": [
+    {
+      "name": "home",
+      "path": "/",
+      "html": "home.report.html",
+      "json": "home.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/",
+      "finalUrl": "http://localhost:8790/",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:11:07.007Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "detail",
+      "path": "/products/1",
+      "html": "detail.report.html",
+      "json": "detail.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/products/1",
+      "finalUrl": "http://localhost:8790/products/1",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:11:16.745Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "cart",
+      "path": "/cart",
+      "html": "cart.report.html",
+      "json": "cart.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/cart",
+      "finalUrl": "http://localhost:8790/cart",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:11:26.320Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "category",
+      "path": "/categories/living",
+      "html": "category.report.html",
+      "json": "category.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/categories/living",
+      "finalUrl": "http://localhost:8790/categories/living",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:11:36.055Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "search",
+      "path": "/search?q=luma",
+      "html": "search.report.html",
+      "json": "search.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/search?q=luma",
+      "finalUrl": "http://localhost:8790/search?q=luma",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:11:45.518Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "checkout",
+      "path": "/checkout",
+      "html": "checkout.report.html",
+      "json": "checkout.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/checkout",
+      "finalUrl": "http://localhost:8790/checkout",
+      "performance": 96,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:11:55.834Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "orders",
+      "path": "/orders/1",
+      "html": "orders.report.html",
+      "json": "orders.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/orders/1",
+      "finalUrl": "http://localhost:8790/orders/1",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:12:05.835Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    },
+    {
+      "name": "sale",
+      "path": "/sale",
+      "html": "sale.report.html",
+      "json": "sale.report.json",
+      "exitCode": 0,
+      "requestedUrl": "http://localhost:8790/sale",
+      "finalUrl": "http://localhost:8790/sale",
+      "performance": 100,
+      "accessibility": 100,
+      "fetchTime": "2026-10-02T07:12:15.462Z",
+      "lighthouseVersion": "13.5.0",
+      "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+    }
+  ],
+  "issueCount": 0,
+  "sourceEquality": {
+    "captureCheckpoint": "0f3aa241e1fd391c674c1fa66e6759fa3fc3f735",
+    "mergedMain": "9c0c160972d42cf18fcd87ac1893d21fc368d321",
+    "verification": "git diff --quiet captureCheckpoint mergedMain",
+    "trackedDiff": "empty"
+  }
+}
