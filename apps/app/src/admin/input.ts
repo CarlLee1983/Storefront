@@ -25,6 +25,12 @@ const description = z
   .trim()
   .max(MAX_DESCRIPTION_LENGTH, `說明不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`);
 
+/** 尺寸、材質、保養資訊：純文字，可以留空（清空）；更新時不帶表示不動。 */
+const productInfoText = (label: string) => z
+  .string({ error: `${label}必須是文字` })
+  .trim()
+  .max(MAX_DESCRIPTION_LENGTH, `${label}不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`);
+
 /** 單價：新台幣整數元，正整數。 */
 const priceTwd = wholeNumber("單價")
   .positive("單價必須大於 0")
@@ -66,8 +72,19 @@ export const createProductInput = z.object({ name, description, priceTwd });
 /**
  * 修改商品；`categoryId` 不帶表示不動分類，帶 `null` 表示清成沒有分類
  *（上架中的商品不允許，由 service 檢查）。`compareAtPriceTwd` 不帶表示不動原價，帶 `null` 表示清空（結束特價）。
+ * `dimensions`、`material`、`care` 不帶表示不動，帶空字串表示清空。
  */
-export const updateProductInput = z.object({ id: productId, name, description, priceTwd, compareAtPriceTwd: compareAtPriceTwd.nullable().optional(), categoryId: categoryId.nullable().optional() });
+export const updateProductInput = z.object({
+  id: productId,
+  name,
+  description,
+  priceTwd,
+  compareAtPriceTwd: compareAtPriceTwd.nullable().optional(),
+  categoryId: categoryId.nullable().optional(),
+  dimensions: productInfoText("尺寸").optional(),
+  material: productInfoText("材質").optional(),
+  care: productInfoText("保養").optional(),
+});
 export const productIdInput = z.object({ id: productId });
 export const setProductFeaturedInput = z.object({ id: productId, featured: z.boolean({ error: "精選必須是布林值" }) });
 

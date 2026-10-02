@@ -171,3 +171,10 @@ Migration `0007_product_images.sql` 會新增圖片表、把商品 `listed` 預�
 - 部署順序沿用先 migration、再 App、再 Web。0014 只新增欄位與索引，舊 App 不受影響；新 App 搭配舊 Web 時，商品詳情回傳的欄位已改為 `variants`，舊詳情頁會顯示不出價格，應壓短窗口。
 - 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0014_variant_options.down.sql`；只在尚未使用任何新功能（沒有選項、選項值、停賣、指定圖片與明細選項快照）時可用，否則守門檢查讓回復失敗。要連 0013 一起回復，接著執行 0013 的回復腳本。測試見 `apps/app/test/variant-options-migration.test.ts`。
 - 購物車行加上選項標籤 `label`（選填，僅顯示用），仍是第 2 版格式。手機與桌機的選取與操作由 `e2e/tests/variants.spec.ts` 驗證（375／1280 寬，含無障礙掃描），選取邏輯的單元測試在 `apps/web/src/catalog/variant-picker.test.ts`。
+
+#### 尺寸、材質與保養資訊
+
+管理員在商品編輯頁（`/admin/products/:id`「基本資訊」）維護純文字的尺寸、材質與保養（各至多 2000 字，可留空）。`updateProduct` 的 `dimensions`／`material`／`care` 不帶表示不動、帶空字串表示清空；商品詳情（`getProduct`）與後台（`getProductForAdmin`）回傳這三欄。顧客在商品頁看到「尺寸、材質與保養」區塊，沒填的項目不顯示、全沒填則整個區塊不出現；它們是商品層級資訊，不隨變體變動，也不併入列表。資料在 Migration `0015_product_info.sql`（`products.dimensions`／`material`／`care`，預設空字串）。價格範圍、特價選項與有貨篩選沿用 `0014` 的規則（只計販售中變體）。
+
+- 部署順序沿用先 migration、再 App、再 Web；0015 只新增欄位，舊 App 與舊 Web 不受影響（舊 Web 只是不顯示、也不送出這三欄）。
+- 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0015_product_info.down.sql`；三欄有任何內容時守門檢查讓回復失敗。測試見 `apps/app/test/product-info.test.ts`、`apps/app/test/product-info-migration.test.ts`，手機與桌機的操作由 `e2e/tests/product-info.spec.ts` 驗證（含無障礙掃描）。

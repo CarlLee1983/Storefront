@@ -37,7 +37,7 @@ it("0007→0008 preserves full galleries, image keys and upload identities while
   };
   await applyD1Migrations(d1, env.TEST_MIGRATIONS);
   // 0009 讓沒有分類的上架商品下架，其餘（封面、圖庫、庫存、內容）完全不變
-  expect(await service.getProductForAdmin(jwt, { id })).toEqual({ ...before, data: { ...before.data, listed: false, category: null } });
+  expect(await service.getProductForAdmin(jwt, { id })).toEqual({ ...before, data: { ...before.data, listed: false, category: null, dimensions: "", material: "", care: "" } });
   for (const upload of uploads) expect(await service.addProductImage(jwt, upload.input)).toEqual(upload.result);
   expect((await d1.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
   expect((await service.reorderProductImages(jwt, { id, imageIds: [...uploads].reverse().map(upload => upload.result.data.image.id) })).ok).toBe(true);

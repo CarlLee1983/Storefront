@@ -64,6 +64,9 @@ const values = {
   description: product?.description ?? "",
   priceTwd: String(product?.priceTwd ?? ""),
   compareAtPriceTwd: String(product?.compareAtPriceTwd ?? ""),
+  dimensions: product?.dimensions ?? "",
+  material: product?.material ?? "",
+  care: product?.care ?? "",
   categoryId: product?.category ? String(product.category.id) : "",
   ...submitted,
 };
@@ -92,6 +95,21 @@ const values = {
               說明
               <textarea name="description" rows="3">{values.description}</textarea>
               {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              尺寸（選填）
+              <textarea name="dimensions" rows="2" maxlength="2000">{values.dimensions}</textarea>
+              {failure?.fields.dimensions?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              材質（選填）
+              <textarea name="material" rows="2" maxlength="2000">{values.material}</textarea>
+              {failure?.fields.material?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              保養（選填）
+              <textarea name="care" rows="2" maxlength="2000">{values.care}</textarea>
+              {failure?.fields.care?.map((m) => <span class="error">{m}</span>)}
             </label>
             <div class="admin-form-grid">
               <label>

@@ -49,6 +49,16 @@ describe("productUpdateFormToInput", () => {
     expect(productUpdateFormToInput(form(base), 7).compareAtPriceTwd).toBeUndefined();
   });
 
+  it("尺寸、材質、保養：欄位存在是文字（留空即清空）、不存在是 undefined（不動）", () => {
+    const base = { name: "馬克杯", description: "", priceTwd: "320" };
+    const input = productUpdateFormToInput(form({ ...base, dimensions: "寬 45 cm", material: "", care: "乾布擦拭" }), 7);
+    expect(input).toMatchObject({ dimensions: "寬 45 cm", material: "", care: "乾布擦拭" });
+    const untouched = productUpdateFormToInput(form(base), 7);
+    expect(untouched.dimensions).toBeUndefined();
+    expect(untouched.material).toBeUndefined();
+    expect(untouched.care).toBeUndefined();
+  });
+
   it("原價不是數字時轉成 NaN，由 App 回報欄位錯誤", () => {
     expect(productUpdateFormToInput(form({ name: "a", description: "", priceTwd: "1", compareAtPriceTwd: "abc" }), 7).compareAtPriceTwd).toBeNaN();
   });

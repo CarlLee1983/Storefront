@@ -19,6 +19,11 @@ export function compareAtPriceFromInput(value: FormDataEntryValue | null): numbe
   return toText(value).trim() === "" ? null : toNumber(value);
 }
 
+/** 欄位不存在是 `undefined`（不動），存在則為文字（留空即清空）。 */
+function optionalText(value: FormDataEntryValue | null): string | undefined {
+  return value === null ? undefined : toText(value);
+}
+
 /** 修改商品表單 → RPC 輸入，含分類下拉選單與原價欄位的值。 */
 export function productUpdateFormToInput(form: FormData, id: number) {
   return {
@@ -26,6 +31,9 @@ export function productUpdateFormToInput(form: FormData, id: number) {
     ...productFormToInput(form),
     compareAtPriceTwd: compareAtPriceFromInput(form.get("compareAtPriceTwd")),
     categoryId: categoryIdFromSelect(form.get("categoryId")),
+    dimensions: optionalText(form.get("dimensions")),
+    material: optionalText(form.get("material")),
+    care: optionalText(form.get("care")),
   };
 }
 

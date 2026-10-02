@@ -22,6 +22,7 @@ const variants = product?.variants ?? [];
 const selected = initialVariant(variants);
 const selection = selected?.optionValues ?? [];
 const sale = selected ? saleDisplay(selected.priceTwd, selected.compareAtPriceTwd) : null;
+const specs = product ? [["尺寸", product.dimensions], ["材質", product.material], ["保養", product.care]].filter(([, text]) => text !== "") : [];
 const variantsData = product ? JSON.stringify({ productId: product.id, name: product.name, images: product.images, variants }).replace(/</g, "\\u003c") : "";
 ---
 <Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={product?.images[0]?.variants.at(-1)?.key ? `/images/${product.images[0]!.variants.at(-1)!.key}` : undefined} noindex={!product} hideTitle={!!product}>
@@ -50,6 +51,12 @@ const variantsData = product ? JSON.stringify({ productId: product.id, name: pro
           {selected && <p class:list={["availability", { "is-low-stock": selected.available > 0 && selected.available <= 5 }]} id="variant-availability">{describeAvailability(selected.available)}</p>}
         </div>
         <p class="description">{product.description}</p>
+        {specs.length > 0 && <section class="specs" aria-labelledby="specs-heading">
+          <h2 id="specs-heading">尺寸、材質與保養</h2>
+          <dl>
+            {specs.map(([label, text]) => <div class="spec"><dt>{label}</dt><dd>{text}</dd></div>)}
+          </dl>
+        </section>}
         {selected && product.optionNames.length > 0 && <div class="option-picker" id="option-picker">
           {product.optionNames.map((optionName, dimension) => <fieldset class="option-group" data-dimension={dimension}>
             <legend>{optionName}</legend>
@@ -242,6 +249,12 @@ const variantsData = product ? JSON.stringify({ productId: product.id, name: pro
   .option-choice input:focus-visible + span { outline: 2px solid var(--color-primary); outline-offset: 2px; }
   .option-sold-out { margin-left: var(--space-1); min-height: 0; min-width: 0; padding: 0; border: 0; color: var(--color-muted); }
   .description { margin: 0 0 var(--space-6); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; color: var(--color-text); }
+  .specs { margin: 0 0 var(--space-6); }
+  .specs h2 { margin: 0 0 var(--space-2); font-size: var(--text-lg); font-weight: 700; }
+  .specs dl { margin: 0; }
+  .spec { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); font-size: var(--text-sm); line-height: 1.7; }
+  .spec dt { font-weight: 600; }
+  .spec dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .buy-form {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);

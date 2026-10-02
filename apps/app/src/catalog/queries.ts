@@ -19,6 +19,10 @@ interface ProductBase {
   priceTwd: number;
   /** 原價，新台幣整數元；null 表示不是特價商品。 */
   compareAtPriceTwd: number | null;
+  /** 尺寸、材質、保養資訊（純文字，空字串表示未提供）。 */
+  dimensions: string;
+  material: string;
+  care: string;
 }
 
 export type { AdminVariant, ProductSummary, VariantDetail };
@@ -55,6 +59,9 @@ const defaultVariantColumns = {
   id: products.id,
   name: products.name,
   description: products.description,
+  dimensions: products.dimensions,
+  material: products.material,
+  care: products.care,
   // D1 的 batch 以欄位名稱為鍵回傳列，與 products.id 同名會互相覆蓋，所以要取別名
   defaultVariantId: sql<number>`${productVariants.id}`.as("default_variant_id"),
   priceTwd: productVariants.priceTwd,
@@ -236,6 +243,10 @@ export interface ProductDetail {
   id: number;
   name: string;
   description: string;
+  /** 尺寸、材質、保養資訊（純文字，空字串表示未提供）。 */
+  dimensions: string;
+  material: string;
+  care: string;
   /** 選項維度名稱，依序；沒有選項為空陣列。 */
   optionNames: string[];
   /** 販售中的變體，預設變體在前，其餘依建立順序；全部停賣時為空（不得顯示報價或結帳）。 */
@@ -268,7 +279,7 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
     ) ordered
   )`.mapWith((value: string) => JSON.parse(value) as ProductImage[]);
   const [[row], variantRows] = await db.batch([
-    db.select({ id: products.id, name: products.name, description: products.description, option1Name: products.option1Name, option2Name: products.option2Name, images, categoryId: products.categoryId,
+    db.select({ id: products.id, name: products.name, description: products.description, dimensions: products.dimensions, material: products.material, care: products.care, option1Name: products.option1Name, option2Name: products.option2Name, images, categoryId: products.categoryId,
       // batch 的列以欄位名稱為鍵：分類的 name 會蓋掉商品的 name，所以要取別名
       categorySlug: sql<string | null>`${categories.slug}`.as("category_slug"), categoryName: sql<string | null>`${categories.name}`.as("category_name") })
       .from(products).leftJoin(categories, eq(products.categoryId, categories.id)).where(and(eq(products.id, id), eq(products.listed, true))),

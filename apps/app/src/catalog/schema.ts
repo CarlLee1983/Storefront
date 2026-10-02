@@ -17,6 +17,10 @@ export const products = sqliteTable("products", {
   /** 選項維度（Option）名稱，例如「顏色」；最多兩個，空字串表示沒有該維度（沒有選項的商品兩者皆空）。第二個有值時第一個一定有值，由管理 RPC 維持。 */
   option1Name: text("option1_name").notNull().default(""),
   option2Name: text("option2_name").notNull().default(""),
+  /** 尺寸、材質與保養資訊：純文字，由管理員維護，空字串表示未提供（詳情頁不顯示該項）。 */
+  dimensions: text("dimensions").notNull().default(""),
+  material: text("material").notNull().default(""),
+  care: text("care").notNull().default(""),
 }, (table) => [
   index("products_category_listed_idx").on(table.categoryId, table.listed),
 ]);
