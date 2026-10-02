@@ -1,5 +1,6 @@
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import type { DeliveryType } from "../shipping/types";
 import { fail, ok, type ProductNotFound, type VariantNotFound } from "../shared/result";
 import { productVariants, products } from "./schema";
 
@@ -68,15 +69,16 @@ export async function setProductOptions(
  */
 export async function createVariant(
   db: DrizzleD1Database,
-  { productId, optionValues, priceTwd, compareAtPriceTwd }: { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number },
+  { productId, optionValues, priceTwd, compareAtPriceTwd, deliveryType = "standard" }:
+    { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number; deliveryType?: DeliveryType },
 ): Promise<{ ok: true; data: { id: number } } | VariantFailure> {
   if (compareAtPriceTwd !== undefined && compareAtPriceTwd <= priceTwd) return fail("invalid_compare_at_price");
   const [option1Value, option2Value] = padded(optionValues);
   const dimensionsMatch = optionValues.length > 0 ? sql`${optionCountOf(sql`products.id`)} = ${optionValues.length}` : sql`0`;
   try {
     const [created] = await db.all<{ id: number }>(sql`
-      INSERT INTO product_variants (product_id, is_default, price_twd, compare_at_price_twd, on_hand, option1_value, option2_value)
-      SELECT products.id, 0, ${priceTwd}, ${compareAtPriceTwd ?? null}, 0, ${option1Value}, ${option2Value}
+      INSERT INTO product_variants (product_id, is_default, price_twd, compare_at_price_twd, on_hand, option1_value, option2_value, delivery_type)
+      SELECT products.id, 0, ${priceTwd}, ${compareAtPriceTwd ?? null}, 0, ${option1Value}, ${option2Value}, ${deliveryType}
       FROM products WHERE products.id = ${productId} AND ${dimensionsMatch}
       RETURNING id`);
     if (created) return ok({ id: created.id });
@@ -89,13 +91,13 @@ export async function createVariant(
 }
 
 /**
- * 修改變體的選項值、售價，以及（有帶時）原價與指定圖片。維度個數、「原價仍高於售價」、「圖片屬於同一商品」
+ * 修改變體的選項值、售價，以及（有帶時）原價、指定圖片與配送類型。維度個數、「原價仍高於售價」、「圖片屬於同一商品」
  * 都寫在 UPDATE 的條件裡；沒有任何一列被更新時，再逐項查出原因。
  */
 export async function updateVariant(
   db: DrizzleD1Database,
-  { variantId, optionValues, priceTwd, compareAtPriceTwd, imageId }:
-    { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null },
+  { variantId, optionValues, priceTwd, compareAtPriceTwd, imageId, deliveryType }:
+    { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null; deliveryType?: DeliveryType },
 ): Promise<{ ok: true; data: { id: number } } | VariantFailure> {
   if (typeof compareAtPriceTwd === "number" && compareAtPriceTwd <= priceTwd) return fail("invalid_compare_at_price");
   const [option1Value, option2Value] = padded(optionValues);
@@ -109,6 +111,7 @@ export async function updateVariant(
         option2Value,
         ...(keepsCompareAt ? {} : { compareAtPriceTwd }),
         ...(imageId === undefined ? {} : { imageId }),
+        ...(deliveryType === undefined ? {} : { deliveryType }),
       })
       .where(and(
         eq(productVariants.id, variantId),

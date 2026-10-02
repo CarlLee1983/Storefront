@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import OrderStatus from "../../orders/OrderStatus.astro";
+import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
 import Layout from "../../layouts/Layout.astro";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary, formatDateTime, parseOrderId } from "../../orders/labels";
@@ -82,7 +83,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         <section class="order-detail-section" aria-labelledby="order-lines-title">
           <h2 id="order-lines-title">訂單明細</h2>
           <OrderLines lines={order.lines} />
-          <p class="order-total">總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+          <OrderFees totalTwd={order.totalTwd} shippingFees={order.shippingFees} lines={order.lines} />
         </section>
         {
           order.payments.length > 0 && (

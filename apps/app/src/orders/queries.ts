@@ -9,8 +9,10 @@ import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/s
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import type { VariantState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
+import { shippingFeeSql } from "../shipping/queries";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
 import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, SHIPPED, type OrderStatus } from "./schema";
+import type { DeliveryType } from "../shipping/types";
 import { canTransitionTo } from "./transitions";
 
 export interface CheckoutRequest extends CheckoutInput {
@@ -40,6 +42,9 @@ export interface CheckoutRequest extends CheckoutInput {
  * 冪等鍵重送但內容不同：第 1 句 DO NOTHING、第 2 句因「已有明細」不寫，整批不動既有訂單；
  * 指紋 `request_hash` 在第 1 句隨訂單一起寫入、之後不變，呼叫端讀回訂單時比對，不是先查再寫。
  *
+ * 運費在第 1 句由當下的費率與變體配送類型算出、連同訂單總額一起寫入；第 2 句的 WHERE 另外要求同一份運費等於顧客確認過的
+ * `seenShippingTwd`，費率或類型在顧客確認之後被改動就整批不成立（與價格變動同樣由診斷回報）。
+ *
  * 第 4 句把下單通知的信件寫進模擬信箱（`contact/notices.ts`），與訂單同成同敗；投遞在 batch 之外，失敗不影響訂單。
  *
  * 成敗看第 2 句的 `meta.changes`（> 0 = 這次呼叫成立了訂單）；= 0 時可能是冪等重送，也可能是被拒，
@@ -47,29 +52,33 @@ export interface CheckoutRequest extends CheckoutInput {
  * https://github.com/CarlLee1983/Holdfast/blob/main/docs/adr/0011-expiry-clock-source.md），`now` 只用來推進高水位。
  */
 export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutRequest, now: number): Promise<{ created: boolean }> {
-  const { customerId, lines, shippingInfo, idempotencyKey, requestHash } = request;
-  const totalTwd = lines.reduce((sum, line) => sum + line.seenUnitPriceTwd * line.quantity, 0);
+  const { customerId, lines, shippingInfo, seenShippingTwd, idempotencyKey, requestHash } = request;
+  const itemsTwd = lines.reduce((sum, line) => sum + line.seenUnitPriceTwd * line.quantity, 0);
   const linesJson = JSON.stringify(lines);
+  // 運費由 batch 內當下的費率與變體配送類型算出（兩類各至多收一次），與寫入訂單明細的類型快照讀同一份資料
+  const standardFee = shippingFeeSql(linesJson, "standard");
+  const largeFee = shippingFeeSql(linesJson, "large");
   const ownOrder = sql`${orders.customerId} = ${customerId} AND ${orders.idempotencyKey} = ${idempotencyKey}`;
 
   const [, insertedLines] = await batchAtEffectiveNow(d1, now, [
     sql`
-      INSERT INTO orders (customer_id, status, total_twd, shipping_name, shipping_phone, shipping_address, payment_deadline, created_at, idempotency_key, request_hash)
-      VALUES (${customerId}, ${PENDING_PAYMENT}, ${totalTwd}, ${shippingInfo.name}, ${shippingInfo.phone}, ${shippingInfo.address},
+      INSERT INTO orders (customer_id, status, total_twd, standard_shipping_fee_twd, large_shipping_fee_twd, shipping_name, shipping_phone, shipping_address, payment_deadline, created_at, idempotency_key, request_hash)
+      VALUES (${customerId}, ${PENDING_PAYMENT}, ${itemsTwd} + ${standardFee} + ${largeFee}, ${standardFee}, ${largeFee}, ${shippingInfo.name}, ${shippingInfo.phone}, ${shippingInfo.address},
         ${effectiveNow} + ${PAYMENT_WINDOW_MS}, ${effectiveNow}, ${idempotencyKey}, ${requestHash})
       ON CONFLICT (customer_id, idempotency_key) DO NOTHING
     `,
     sql`
-      INSERT INTO order_lines (order_id, product_id, variant_id, product_name, variant_label, quantity, unit_price_twd)
+      INSERT INTO order_lines (order_id, product_id, variant_id, product_name, variant_label, quantity, unit_price_twd, delivery_type)
       SELECT orders.id, products.id, variant.id, products.name,
         variant.option1_value || CASE WHEN variant.option2_value <> '' THEN ' / ' || variant.option2_value ELSE '' END,
-        json_extract(j.value, '$.quantity'), variant.price_twd
+        json_extract(j.value, '$.quantity'), variant.price_twd, variant.delivery_type
       FROM orders
       JOIN json_each(${linesJson}) j
       JOIN product_variants variant ON variant.id = json_extract(j.value, '$.variantId')
       JOIN products ON products.id = variant.product_id
       WHERE ${ownOrder}
         AND NOT EXISTS (SELECT 1 FROM order_lines existing WHERE existing.order_id = orders.id)
+        AND ${standardFee} + ${largeFee} = ${seenShippingTwd}
         AND NOT EXISTS (
           SELECT 1 FROM json_each(${linesJson}) wanted
           LEFT JOIN product_variants current ON current.id = json_extract(wanted.value, '$.variantId')
@@ -112,13 +121,16 @@ export async function selectVariantStates(db: DrizzleD1Database, variantIds: num
 export interface OrderView {
   id: number;
   status: OrderStatus;
+  /** 應付總額，含下面兩類運費。 */
   totalTwd: number;
+  /** 成立當下各配送類型實收的運費快照；舊單為 0。 */
+  shippingFees: { standard: number; large: number };
   shippingInfo: { name: string; phone: string; address: string };
   /** 付款期限，UTC epoch 毫秒。 */
   paymentDeadline: number;
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
-  lines: { productId: number; variantId: number; productName: string; variantLabel: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
+  lines: { productId: number; variantId: number; productName: string; variantLabel: string; quantity: number; unitPriceTwd: number; deliveryType: DeliveryType; cover: ProductImage | null }[];
   /** 出貨時附的物流單號；未出貨或出貨時沒附為 null。 */
   trackingNumber: string | null;
   /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
@@ -166,6 +178,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       variantLabel: orderLines.variantLabel,
       quantity: orderLines.quantity,
       unitPriceTwd: orderLines.unitPriceTwd,
+      deliveryType: orderLines.deliveryType,
       cover: currentCover(sql`${orderLines.productId}`),
     })
     .from(orders)
@@ -185,6 +198,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
         customerEmail,
         status: order.status,
         totalTwd: order.totalTwd,
+        shippingFees: { standard: order.standardShippingFeeTwd, large: order.largeShippingFeeTwd },
         shippingInfo: { name: order.shippingName, phone: order.shippingPhone, address: order.shippingAddress },
         paymentDeadline: order.paymentDeadline,
         createdAt: order.createdAt,
@@ -194,9 +208,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
       };
       views.set(order.id, view);
     }
-    const { productId, variantId, productName, variantLabel, quantity, unitPriceTwd, cover } = line;
-    if (productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null) {
-      view.lines.push({ productId, variantId, productName, variantLabel, quantity, unitPriceTwd, cover });
+    const { productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, cover } = line;
+    if (productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null && deliveryType !== null) {
+      view.lines.push({ productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, cover });
     }
   }
 

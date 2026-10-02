@@ -93,6 +93,7 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByLabel("收件人電話")).toHaveValue(HOME.phone);
       await expect(page.getByLabel("收件地址")).toHaveValue(HOME.address);
       await assertAccessibleLayout(page, viewport.width);
+      await page.getByLabel(/我確認配送地點位於台灣本島/).check();
       await page.getByRole("button", { name: "送出訂單" }).click();
       await expect(page).toHaveURL(/\/orders\/(\d+)\?placed=1$/);
       const orderUrl = page.url();

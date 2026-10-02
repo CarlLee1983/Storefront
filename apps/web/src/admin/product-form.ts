@@ -1,12 +1,19 @@
 import { toNumber, toText } from "../shared/form-values";
 import { categoryIdFromSelect } from "./category-form";
 
+/** 配送類型欄位：欄位不存在是 `undefined`（新增時用預設、修改時不動），存在則原樣交給 App 驗證。 */
+export function deliveryTypeFromInput(value: FormDataEntryValue | null): string | undefined {
+  return value === null ? undefined : toText(value);
+}
+
 /** 新增商品表單 → RPC 輸入；不判斷內容是否合法，由 App 驗證。 */
 export function productFormToInput(form: FormData) {
+  const deliveryType = deliveryTypeFromInput(form.get("deliveryType"));
   return {
     name: toText(form.get("name")),
     description: toText(form.get("description")),
     priceTwd: toNumber(form.get("priceTwd")),
+    ...(deliveryType === undefined ? {} : { deliveryType }),
   };
 }
 

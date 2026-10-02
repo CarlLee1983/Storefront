@@ -2,6 +2,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import rollbackSql from "../rollback/0014_variant_options.down.sql?raw";
+import rollback0019Sql from "../rollback/0019_shipping_fees.down.sql?raw";
 
 const db = env.MIGRATION_DB;
 const THROUGH_0013 = 14;
@@ -51,7 +52,8 @@ it("沒有使用任何新功能時，回復程序移除新欄位並可重新套�
   await seedThrough0013();
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
-  for (const statement of rollbackSql.split("--> statement-breakpoint")) await db.prepare(statement).run();
+  // 回復順序由新到舊：0019 的欄位在 product_variants 上，須先移除
+  for (const statement of [...rollback0019Sql.split("--> statement-breakpoint"), ...rollbackSql.split("--> statement-breakpoint")]) await db.prepare(statement).run();
 
   const columns = async (table: string) => (await db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all<{ name: string }>()).results.map(({ name }) => name);
   expect(await columns("product_variants")).toEqual(["id", "product_id", "is_default", "price_twd", "compare_at_price_twd", "on_hand"]);

@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { DELIVERY_TYPE_LABELS, DELIVERY_TYPES } from "@storefront/app/shipping-types";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeFailure, type Failure } from "../../../admin/failure";
 import { parseProductId, productUpdateFormToInput } from "../../../admin/product-form";
@@ -123,6 +124,16 @@ const values = {
                 {failure?.fields.compareAtPriceTwd?.map((m) => <span class="error">{m}</span>)}
               </label>
             </div>
+            {product && product.optionNames.length === 0 && (
+              <label>
+                配送類型
+                <select name="deliveryType" aria-describedby="delivery-type-hint">
+                  {DELIVERY_TYPES.map((type) => <option value={type} selected={(product.variants.find((variant) => variant.isDefault)?.deliveryType ?? "standard") === type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+                </select>
+                {failure?.fields.deliveryType?.map((m) => <span class="error">{m}</span>)}
+              </label>
+            )}
+            <p id="delivery-type-hint"><small>配送類型決定結帳時的運費，只影響之後的訂單。{product && product.optionNames.length > 0 && "有選項的商品在下方「選項與變體」逐一設定各變體的配送類型。"}</small></p>
             <p id="compare-at-hint"><small>填寫後商品以特價呈現，必須高於售價；清空即結束特價。{product && product.optionNames.length > 0 && "有選項的商品，這裡的單價與原價是預設變體的，其他變體在下方「選項與變體」修改。"}</small></p>
             {/* 標籤文字用 for 關聯：巢狀在 label 裡的話，所有選項文字都會變成它的名稱 */}
             <label for="category-id">分類</label>
@@ -167,6 +178,11 @@ const values = {
                     {product.optionNames.map((optionName, index) => <label>{optionName}<input name={`value${index + 1}`} value={variant.optionValues[index] ?? ""} maxlength="50" required /></label>)}
                     <label>單價（新台幣整數元）<input name="priceTwd" type="number" min="1" step="1" value={variant.priceTwd} required /></label>
                     <label>原價（選填）<input name="compareAtPriceTwd" type="number" min="1" step="1" value={variant.compareAtPriceTwd ?? ""} /></label>
+                    <label>配送類型
+                      <select name="deliveryType">
+                        {DELIVERY_TYPES.map((type) => <option value={type} selected={variant.deliveryType === type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+                      </select>
+                    </label>
                     <label>選取時顯示的圖片
                       <select name="imageId">
                         <option value="" selected={variant.imageId === null}>不指定</option>
@@ -200,8 +216,13 @@ const values = {
                 {product.optionNames.map((optionName, index) => <label>{optionName}<input name={`value${index + 1}`} maxlength="50" required /></label>)}
                 <label>單價（新台幣整數元）<input name="priceTwd" type="number" min="1" step="1" required /></label>
                 <label>原價（選填）<input name="compareAtPriceTwd" type="number" min="1" step="1" /></label>
+                <label>配送類型
+                  <select name="deliveryType">
+                    {DELIVERY_TYPES.map((type) => <option value={type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+                  </select>
+                </label>
               </div>
-              <p><small>新變體的在庫數從 0 開始，建立後在變體上調整庫存。停賣的變體不再接受新購買，但歷史訂單與庫存紀錄仍保留。</small></p>
+              <p><small>配送類型決定結帳時的運費，只影響之後的訂單。新變體的在庫數從 0 開始，建立後在變體上調整庫存。停賣的變體不再接受新購買，但歷史訂單與庫存紀錄仍保留。</small></p>
               <button type="submit" class="button-primary">新增變體</button>
             </form>
           </>}

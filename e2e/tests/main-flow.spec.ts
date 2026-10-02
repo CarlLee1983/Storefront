@@ -286,8 +286,8 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await page.goto("/cart");
   await expect(page.getByRole("listitem").filter({ hasText: PRODUCT.name })).toBeVisible();
   const cartSummary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
-  await expect(cartSummary).toContainText(/總金額\s*NT\$ 1,200/);
-  for (const text of ["新台幣", "含稅", "免運"]) await expect(cartSummary).toContainText(text);
+  await expect(cartSummary).toContainText(/商品合計\s*NT\$ 1,200/);
+  for (const text of ["新台幣", "含稅", "未含運費", "結帳時依配送類型計算"]) await expect(cartSummary).toContainText(text);
   await expect(page.getByRole("img", { name: PRODUCT.name, exact: true })).toHaveAttribute("src", coverSrc);
   await audit(page, testInfo, "populated-cart-mobile");
   await page.getByRole("link", { name: "前往結帳" }).click();
@@ -298,6 +298,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await page.getByLabel("收件地址").fill("台北市中正區（E2E 示意地址）");
   await expect(page.locator("#checkout-lines .cart-cover")).toHaveAttribute("aria-hidden", "true");
   await audit(page, testInfo, "populated-checkout-mobile");
+  await page.getByLabel(/我確認配送地點位於台灣本島/).check();
   await page.getByRole("button", { name: "送出訂單" }).click();
 
   await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);

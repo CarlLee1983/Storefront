@@ -1,4 +1,5 @@
 import type { ProductImage } from "../product-images";
+import type { DeliveryType } from "../shipping/types";
 
 /** 前台商品項目：只含上架中的商品，帶封面與是否可購買；商品清單、分類頁與詳情頁的同分類推薦共用。價格只看販售中（未停賣）的變體。 */
 export interface ProductSummary {
@@ -36,6 +37,8 @@ export interface VariantDetail {
   available: number;
   /** 選取此變體時顯示的商品圖片（`images` 中的一張）；null 表示不指定，維持目前顯示。 */
   imageId: string | null;
+  /** 配送類型：結帳時依它計運費。 */
+  deliveryType: DeliveryType;
 }
 
 /** 後台的變體列：包含停賣的，帶在庫數、保留數與可售數量。 */
@@ -51,5 +54,6 @@ export interface AdminVariant {
   available: number;
   discontinued: boolean;
   /** 選取此變體時顯示的商品圖片編號；null 表示不指定。 */
-  imageId: string | null;
+  imageId: string | null;  /** 配送類型；改它只影響之後的訂單。 */
+  deliveryType: DeliveryType;
 }

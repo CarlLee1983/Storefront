@@ -46,7 +46,7 @@ export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: Order
   // One bounded query for all returned orders, rather than one query per order or line.
   const lines = await db.select({
     orderId: orderLines.orderId, productId: orderLines.productId, variantId: orderLines.variantId, productName: orderLines.productName, variantLabel: orderLines.variantLabel,
-    quantity: orderLines.quantity, unitPriceTwd: orderLines.unitPriceTwd,
+    quantity: orderLines.quantity, unitPriceTwd: orderLines.unitPriceTwd, deliveryType: orderLines.deliveryType,
     cover: currentCover(sql`${orderLines.productId}`),
   }).from(orderLines).where(sql`${orderLines.orderId} IN (SELECT value FROM json_each(${JSON.stringify(summaries.map(order => order.id))}))`).orderBy(asc(orderLines.id));
   const grouped = new Map<number, OrderView["lines"]>();

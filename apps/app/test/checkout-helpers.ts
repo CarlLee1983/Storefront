@@ -12,9 +12,9 @@ export async function defaultVariantIdOf(productId: number): Promise<number> {
 }
 
 /** 新增一個上架中的商品並補足預設變體的在庫數，回傳商品與預設變體的 id；商品與庫存的行為由各自的測試驗證。 */
-export async function createStockedListing(name: string, priceTwd: number, onHand: number): Promise<{ productId: number; variantId: number }> {
+export async function createStockedListing(name: string, priceTwd: number, onHand: number, deliveryType?: "standard" | "large"): Promise<{ productId: number; variantId: number }> {
   const jwt = await mintAccessJwt();
-  const created = await app.createProduct(jwt, { name, description: `${name}的說明`, priceTwd });
+  const created = await app.createProduct(jwt, { name, description: `${name}的說明`, priceTwd, deliveryType });
   if (!created.ok) throw new Error("新增商品失敗");
   const variantId = await defaultVariantIdOf(created.data.id);
   if (onHand > 0) await app.adjustStock(jwt, { variantId, delta: onHand });
@@ -42,6 +42,9 @@ export interface LineInput {
   seenUnitPriceTwd: number;
 }
 
-export function checkoutInput(lines: LineInput[], idempotencyKey = newKey()) {
-  return { lines, shippingInfo: SHIPPING_INFO, idempotencyKey };
+/** 預設運費：測試商品都是一般宅配（預設費率 NT$100），顧客確認的運費合計就是 100；混合或調過費率的情境要明確傳入。 */
+export const DEFAULT_SHIPPING_TWD = 100;
+
+export function checkoutInput(lines: LineInput[], idempotencyKey = newKey(), seenShippingTwd = DEFAULT_SHIPPING_TWD) {
+  return { lines, shippingInfo: SHIPPING_INFO, seenShippingTwd, idempotencyKey };
 }

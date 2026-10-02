@@ -1,13 +1,13 @@
 import { toNumber, toText } from "../shared/form-values";
-import { compareAtPriceFromInput, parseProductId, stockAdjustFormToInput } from "./product-form";
+import { compareAtPriceFromInput, deliveryTypeFromInput, parseProductId, stockAdjustFormToInput } from "./product-form";
 
 /** 變體管理表單的 intent；商品編輯頁的表單用這組值區分要做什麼（沒有 intent 就是儲存商品基本資訊）。 */
 export const VARIANT_INTENTS = ["set-options", "create-variant", "update-variant", "discontinue-variant", "resume-variant", "adjust-variant-stock"] as const;
 
 export type VariantFormDispatch =
   | { kind: "set-options"; input: { id: number; optionNames: string[]; defaultVariantValues?: string[] } }
-  | { kind: "create-variant"; input: { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number } }
-  | { kind: "update-variant"; input: { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null } }
+  | { kind: "create-variant"; input: { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number; deliveryType?: string } }
+  | { kind: "update-variant"; input: { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null; deliveryType?: string } }
   | { kind: "discontinue"; input: { variantId: number; discontinued: boolean } }
   | { kind: "adjust-stock"; input: ReturnType<typeof stockAdjustFormToInput> }
   | { kind: "invalid" };
@@ -42,15 +42,23 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
   }
   if (intent === "create-variant") {
     const compareAtPriceTwd = newVariantCompareAt(form.get("compareAtPriceTwd"));
+    const deliveryType = deliveryTypeFromInput(form.get("deliveryType"));
     return {
       kind: "create-variant",
-      input: { productId, optionValues: presentValues(form, ["value1", "value2"]), priceTwd: toNumber(form.get("priceTwd")), ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }) },
+      input: {
+        productId,
+        optionValues: presentValues(form, ["value1", "value2"]),
+        priceTwd: toNumber(form.get("priceTwd")),
+        ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }),
+        ...(deliveryType === undefined ? {} : { deliveryType }),
+      },
     };
   }
   const variantId = parseProductId(toText(form.get("variantId")));
   if (variantId === null) return { kind: "invalid" };
   if (intent === "update-variant") {
     const imageId = form.get("imageId");
+    const deliveryType = deliveryTypeFromInput(form.get("deliveryType"));
     return {
       kind: "update-variant",
       input: {
@@ -59,6 +67,7 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
         priceTwd: toNumber(form.get("priceTwd")),
         compareAtPriceTwd: compareAtPriceFromInput(form.get("compareAtPriceTwd")),
         ...(imageId === null ? {} : { imageId: toText(imageId) === "" ? null : toText(imageId) }),
+        ...(deliveryType === undefined ? {} : { deliveryType }),
       },
     };
   }

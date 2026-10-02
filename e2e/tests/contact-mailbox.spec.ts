@@ -231,6 +231,7 @@ for (const viewport of VIEWPORTS) {
       await page.getByLabel("收件人姓名").fill("通知王");
       await page.getByLabel("收件人電話").fill("0912345678");
       await page.getByLabel("收件地址").fill("台北市中正區重慶南路一段 122 號");
+      await page.getByLabel(/我確認配送地點位於台灣本島/).check();
       await page.getByRole("button", { name: "送出訂單" }).click();
       await expect(page).toHaveURL(/\/orders\/(\d+)\?placed=1$/);
       await page.goto("/account/mailbox");
@@ -257,7 +258,7 @@ for (const viewport of VIEWPORTS) {
       await expect(page.locator(".mail-card")).toContainText("下單通知");
       await assertAccessibleLayout(page, viewport.width);
       await page.locator(".mail-card").getByRole("link").click();
-      await expect(page.getByText(/已成立，應付 NT\$500/)).toBeVisible();
+      await expect(page.getByText(/已成立，應付 NT\$600/)).toBeVisible();
 
       // 別人的信箱沒有這封信
       await otherSide.page.goto("/account/mailbox");

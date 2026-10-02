@@ -143,6 +143,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   }
 
   // 顧客 RPC：第一個參數是瀏覽器的 cookie，由 App 自行驗 session，不信任呼叫端的任何身分聲明。
+  getShippingQuote(input: unknown) {
+    return this.#catalog().getShippingQuote(input);
+  }
+
   checkout(cookie: string, input: unknown) {
     return this.#orders().checkout(cookie, input);
   }
@@ -252,6 +256,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   updateVariant(jwt: string, input: unknown) {
     return this.#admin().updateVariant(jwt, input);
+  }
+
+  getShippingRates(jwt: string) {
+    return this.#admin().getShippingRates(jwt);
+  }
+
+  setShippingRate(jwt: string, input: unknown) {
+    return this.#admin().setShippingRate(jwt, input);
   }
 
   setVariantDiscontinued(jwt: string, input: unknown) {

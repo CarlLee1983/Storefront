@@ -91,6 +91,8 @@ export function describeCheckoutFailure(result: {
     invalid_input: "輸入有誤，請確認資料後再送出。",
     // 同一個冪等鍵帶了不同內容（例如另一個分頁改過購物車）；頁面會清掉舊鍵，下一次送出用新鍵
     idempotency_key_reused: "結帳內容已有變動，請確認商品與總金額後再送出一次。",
+    // 運費在顧客確認之後被調整；結帳頁重新載入會取得新的運費，顧客確認新總額後再送出
+    shipping_fee_changed: "運費已調整，請確認新的運費與總金額後再送出。",
     checkout_unavailable: "目前無法完成結帳，請稍後再試。",
   };
   return {

@@ -3,6 +3,7 @@ import { categoryId } from "../categories/input";
 import { orderIdInput } from "../orders/input";
 import { ORDER_STATUSES } from "../orders/schema";
 import { wholeNumber } from "../shared/input";
+import { DELIVERY_TYPES } from "../shipping/types";
 
 // 上限：擋掉明顯的手誤與亂填（超長文字、離譜的價格），不是業務規則
 const MAX_NAME_LENGTH = 200;
@@ -67,12 +68,15 @@ const optionValue = z
 
 const optionValues = z.array(optionValue, { error: "選項值必須是清單" }).max(2, "每個商品最多兩個選項維度");
 
-export const createProductInput = z.object({ name, description, priceTwd });
+const deliveryType = z.enum(DELIVERY_TYPES, { error: "配送類型無效" });
+
+/** 新增商品：預設變體的配送類型不帶為一般宅配。 */
+export const createProductInput = z.object({ name, description, priceTwd, deliveryType: deliveryType.optional() });
 
 /**
  * 修改商品；`categoryId` 不帶表示不動分類，帶 `null` 表示清成沒有分類
  *（上架中的商品不允許，由 service 檢查）。`compareAtPriceTwd` 不帶表示不動原價，帶 `null` 表示清空（結束特價）。
- * `dimensions`、`material`、`care` 不帶表示不動，帶空字串表示清空。
+ * `dimensions`、`material`、`care` 不帶表示不動，帶空字串表示清空。`deliveryType` 是預設變體的配送類型，不帶表示不動。
  */
 export const updateProductInput = z.object({
   id: productId,
@@ -81,6 +85,7 @@ export const updateProductInput = z.object({
   priceTwd,
   compareAtPriceTwd: compareAtPriceTwd.nullable().optional(),
   categoryId: categoryId.nullable().optional(),
+  deliveryType: deliveryType.optional(),
   dimensions: productInfoText("尺寸").optional(),
   material: productInfoText("材質").optional(),
   care: productInfoText("保養").optional(),
@@ -120,11 +125,11 @@ export const listOrdersInput = z.object({ status: z.enum(ORDER_STATUSES, { error
 export const setProductOptionsInput = z.object({ id: productId, optionNames, defaultVariantValues: optionValues.optional() });
 
 /** 新增變體：選項值依商品的維度順序；新變體的在庫數為 0，由庫存調整補貨。 */
-export const createVariantInput = z.object({ productId, optionValues, priceTwd, compareAtPriceTwd: compareAtPriceTwd.optional() });
+export const createVariantInput = z.object({ productId, optionValues, priceTwd, compareAtPriceTwd: compareAtPriceTwd.optional(), deliveryType: deliveryType.optional() });
 
 /**
  * 修改變體：選項值、售價整組送出；`compareAtPriceTwd` 不帶表示不動原價、`null` 表示清空；
- * `imageId` 不帶表示不動、`null` 表示不指定圖片。
+ * `imageId` 不帶表示不動、`null` 表示不指定圖片；`deliveryType` 不帶表示不動。
  */
 export const updateVariantInput = z.object({
   variantId,
@@ -132,6 +137,16 @@ export const updateVariantInput = z.object({
   priceTwd,
   compareAtPriceTwd: compareAtPriceTwd.nullable().optional(),
   imageId: z.string({ error: "圖片編號必須是文字" }).min(1, "圖片編號無效").nullable().optional(),
+  deliveryType: deliveryType.optional(),
+});
+
+/** 費率上限只擋手誤；0 表示該類型免運。 */
+const MAX_SHIPPING_FEE_TWD = 100_000;
+
+/** 調整某配送類型的費率（新台幣整數元）；只影響之後成立的訂單。 */
+export const setShippingRateInput = z.object({
+  deliveryType,
+  feeTwd: wholeNumber("運費").min(0, "運費不可為負").max(MAX_SHIPPING_FEE_TWD, `運費不可超過 ${MAX_SHIPPING_FEE_TWD}`),
 });
 
 export const setVariantDiscontinuedInput = z.object({ variantId, discontinued: z.boolean({ error: "停賣必須是布林值" }) });

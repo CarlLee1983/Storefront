@@ -14,6 +14,7 @@ import { categoryExists, insertCategory, selectCategoriesForAdmin, selectCategor
 import { addProductImageInput, reorderProductImagesInput, deleteProductImageInput, setCategoryImageInput } from "../images/input";
 import { reorderProductImages, deleteProductImage } from "../images/manage";
 import { uploadProductImage, type ProductImageBucket } from "../images/upload";
+import { selectShippingRates, updateShippingRate } from "../shipping/queries";
 import { selectOrdersForAdmin } from "../orders/admin-queries";
 import { orderIdInput } from "../orders/input";
 import { markOrderShipped, orderExists, selectOrderForAdmin } from "../orders/queries";
@@ -23,7 +24,7 @@ import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, productIdInput, setProductFeaturedInput, setProductOptionsInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
+import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, productIdInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
 export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
   const db = drizzle(d1);
@@ -69,10 +70,10 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
 
     /** 新增商品，預設下架；同時建立它的預設變體（售價由輸入帶入，在庫數 0），兩者同一個 batch，全有或全無。 */
     createProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, createProductInput, input, async (_actor, { priceTwd, ...data }) => {
+      return authorized(jwt, createProductInput, input, async (_actor, { priceTwd, deliveryType, ...data }) => {
         const [[row]] = await db.batch([
           db.insert(products).values({ ...data, listed: false }).returning({ id: products.id }),
-          db.insert(productVariants).values({ productId: sql`last_insert_rowid()`, isDefault: true, priceTwd }),
+          db.insert(productVariants).values({ productId: sql`last_insert_rowid()`, isDefault: true, priceTwd, deliveryType }),
         ]);
         return ok({ id: row!.id });
       });
@@ -97,7 +98,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
      * 原價必須高於「儲存後」的售價，否則回 `invalid_compare_at_price`：不帶原價時比對既有原價，帶 `null` 則是清空，所以同時把售價改回並清空原價是合法的。
      */
     updateProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, updateProductInput, input, async (_actor, { id, priceTwd, compareAtPriceTwd, ...productValues }) => {
+      return authorized(jwt, updateProductInput, input, async (_actor, { id, priceTwd, compareAtPriceTwd, deliveryType, ...productValues }) => {
         if (typeof productValues.categoryId === "number" && !(await categoryExists(db, productValues.categoryId))) return fail("category_not_found");
         // 商品不存在優先於原價檢查：先確認存在，才有「原價不合法」可說
         const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
@@ -114,7 +115,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
         // 條件對兩句的判定相同，所以要嘛都寫入、要嘛都不寫，不會和同時發生的上架互相穿插
         const [updatedVariant, updatedProduct] = await db.batch([
           db.update(productVariants)
-            .set({ priceTwd, ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }) })
+            .set({ priceTwd, ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }), ...(deliveryType === undefined ? {} : { deliveryType }) })
             .where(and(
               eq(productVariants.productId, id),
               eq(productVariants.isDefault, true),
@@ -236,6 +237,18 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 修改變體的選項值、售價、原價與指定圖片。 */
     updateVariant(jwt: unknown, input: unknown) {
       return authorized(jwt, updateVariantInput, input, (_actor, data) => updateVariant(db, data));
+    },
+
+    /** 目前兩類配送的費率。 */
+    async getShippingRates(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectShippingRates(db));
+    },
+
+    /** 調整某配送類型的費率；只影響之後成立的訂單，舊單的實收運費是快照，不變。 */
+    setShippingRate(jwt: unknown, input: unknown) {
+      return authorized(jwt, setShippingRateInput, input, async (_actor, { deliveryType, feeTwd }) => ok(await updateShippingRate(db, deliveryType, feeTwd)));
     },
 
     /** 停賣或恢復販售變體：停賣後不接受新購買，變體與歷史保留；重複操作冪等。 */

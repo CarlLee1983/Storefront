@@ -26,8 +26,8 @@ describe("管理員訂單清單", () => {
     expect(result).toEqual({
       ok: true,
       data: [
-        { id: second.orderId, status: "pending_payment", totalTwd: 320, customerEmail: "bob@example.com", createdAt: expect.any(Number), needsAttention: false, lines: [expect.objectContaining({ cover: expect.objectContaining({ id: expect.any(String) }) })] },
-        { id: first.orderId, status: "pending_payment", totalTwd: 640, customerEmail: "alice@example.com", createdAt: expect.any(Number), needsAttention: false, lines: [expect.objectContaining({ cover: expect.objectContaining({ id: expect.any(String) }) })] },
+        { id: second.orderId, status: "pending_payment", totalTwd: 420, customerEmail: "bob@example.com", createdAt: expect.any(Number), needsAttention: false, lines: [expect.objectContaining({ cover: expect.objectContaining({ id: expect.any(String) }) })] },
+        { id: first.orderId, status: "pending_payment", totalTwd: 740, customerEmail: "alice@example.com", createdAt: expect.any(Number), needsAttention: false, lines: [expect.objectContaining({ cover: expect.objectContaining({ id: expect.any(String) }) })] },
       ],
     });
   });
@@ -46,7 +46,7 @@ describe("管理員訂單清單", () => {
     if (!result.ok) return;
     expect(result.data.map(order => order.id)).toEqual(ids.slice(1).reverse());
     for (const order of result.data) {
-      expect(order.lines).toEqual([{ productId, variantId, productName: "大量訂單商品", variantLabel: "", quantity: 1, unitPriceTwd: 100,
+      expect(order.lines).toEqual([{ productId, variantId, productName: "大量訂單商品", variantLabel: "", quantity: 1, unitPriceTwd: 100, deliveryType: "standard",
         cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }]);
     }
   }, 30_000);
@@ -85,12 +85,13 @@ describe("管理員訂單明細", () => {
       data: {
         id: orderId,
         status: "pending_payment",
-        totalTwd: 640,
+        totalTwd: 740,
+        shippingFees: { standard: 100, large: 0 },
         customerEmail: "alice@example.com",
         shippingInfo: SHIPPING_INFO,
         paymentDeadline: expect.any(Number),
         createdAt: expect.any(Number),
-        lines: [{ productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
+        lines: [{ productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
         payments: [
           { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, refundReason: null, refundAt: null, needsAttention: false },
           // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄

@@ -56,6 +56,18 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0017_address_book.down.sql`；表內已有地址時守門檢查讓回復失敗（顧客保存的地址會消失，訂單上的快照不受影響），須先確認可以捨棄。回復前須一併回復呼叫這些 RPC 的 Web 與 App。
 - 測試見 `apps/app/test/address-book.test.ts`、`address-book-migration.test.ts`；手機與桌機的操作（含顧客隔離、結帳選用與舊單不變）由 `e2e/tests/address-book.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
 
+## 配送類型與運費
+
+台灣本島限定，兩種配送類型：一般宅配與大型配送（`apps/app/src/shipping/types.ts` 的 `DELIVERY_TYPES`）。配送類型設在商品變體（`product_variants.delivery_type`，預設一般宅配）：沒有選項的商品在商品編輯頁的主表單設定，有選項的商品在「選項與變體」的各變體卡片設定；新增商品與新增變體也可指定。費率在 `/admin/shipping`（RPC `getShippingRates`、`setShippingRate`，需 Access JWT），初始演練值一般 NT$100、大型 NT$600，可調為 0（該類型免運）。
+
+- 計費：一張訂單裡含某類型的變體就收該類型費率一次，混合兩類各收一次，同類不按件數或明細數加收；商家日後分批出貨不追加。總額 `orders.total_twd` = 商品小計 + 兩類運費，付款金額與下單通知信件都用它，三者一致。
+- 快照：訂單把成立當下各類實收運費寫進 `orders.standard_shipping_fee_twd`、`large_shipping_fee_twd`（沒有該類型為 0），明細把配送類型寫進 `order_lines.delivery_type`，連同商品名、選項、實付單價與收件資訊都不隨之後的改價、改費率或改類型而變。#112（分批出貨）、#115（異常退款）、#116（部分取消退運費）從這幾個欄位讀取。
+- 顧客確認：購物車只在瀏覽器，結帳頁向 `GET /api/shipping-quote?variants=…`（App 的公開 RPC `getShippingQuote`）取得現行費率與各變體的配送類型，列出兩類運費與總額、說明限台灣本島並要求勾選確認；送出時帶 `seenShippingTwd`（顧客確認的運費合計），App 在下單 batch 內以當下的費率與類型重算並比對，不符就整批不成立並回 `shipping_fee_changed`（與價格變動同樣由重新載入的結帳頁讓顧客再確認）。查不到運費時結帳頁停用送出鈕。
+- 下單 batch 的語句數與順序不變（#109 的通知信仍是第 4 句）：運費由訂單本體那句用 `json_each` 子查詢算出並寫入，明細那句的 WHERE 加上「運費合計 = 顧客確認的金額」；兩句在同一個 batch 讀同一份資料。冪等鍵的內容指紋含 `seenShippingTwd`。
+- 舊單：Migration `0019_shipping_fees.sql` 對既有訂單的兩個運費欄位預設 0、明細預設一般宅配，所以歷史訂單的總額與免運結果不變；寫入初始費率兩列。新增欄位未加 CHECK（否則要重建資料表），合法值由管理 RPC 的輸入驗證限定；`shipping_rates` 有 CHECK。
+- 部署順序沿用先 migration、再 App、再 Web。舊 App 搭配新 migration 仍可運作（欄位都有預設），但新 App 的結帳要求 `seenShippingTwd`，所以舊 Web 的結帳頁在新 App 上會被拒（回 `invalid_input`），Web 與 App 應壓短窗口一起部署。回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0019_shipping_fees.down.sql`；已有訂單收過運費、或有大型配送的變體／明細時守門檢查讓回復失敗（總額含運費卻會失去拆分），須先確認可以捨棄。回復前須一併回復 Web 與 App；順序是 0019 → 0018 → …。
+- 測試見 `apps/app/test/shipping-fees.test.ts`（計費、快照、金額一致、權限、輸入驗證）、`shipping-migration.test.ts`；Web 的試算與表單轉換在 `apps/web/src/checkout/shipping.test.ts`；手機與桌機操作由 `e2e/tests/shipping-fees.spec.ts`（混合結帳與後台）與 `shipping-rates.spec.ts`（調整費率不改舊單、非管理員 403；費率是全域狀態，獨立成最後執行的 project）驗證。
+
 ## 付款
 
 顧客在訂單頁按「前往付款」→ App 向閘道建立付款 → 導向閘道付款頁；結果由兩條路徑確認，共用同一個冪等的「套用付款結果」（以閘道事件 ID 去重）：閘道 webhook（Web 的 `POST /api/payments/webhook`，驗簽後轉給 App）為主，顧客被導回 `/orders/:id/payment-return?paymentId=…` 時 App 再主動向閘道查詢一次。付款成功依訂單當下的狀態分流（都只由搶到事件 ID 的那次呼叫執行一次）：待付款轉已付款；已逾期則在同一個 batch 內以條件式語句「重新保留」庫存（每一筆明細的可售數量都夠才轉已付款並扣在庫數，全有全無），見 ADR 0001；重新保留不到、落在已取消的訂單、或同一張訂單的第二筆成功付款，則付款記為成功、訂單不動，並在 batch 之外向閘道退款。退款結果記在付款上：狀態 `refunded`／`refund_failed`、原因 `late_success_unreclaimable`／`cancelled_order`／`duplicate_success`、時間。退款失敗只記錄與結構化 log（`payment_refund_failed`），不自動重試，管理員之後在後台處理；閘道退款是冪等的。

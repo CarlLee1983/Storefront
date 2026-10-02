@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { user } from "../auth/schema";
 import { productVariants, products } from "../catalog/schema";
+import type { DeliveryType } from "../shipping/types";
 
 /** 訂單狀態（CONTEXT.md 的五種）；存英文代碼，畫面顯示的中文名稱在 Web。 */
 export const ORDER_STATUSES = ["pending_payment", "paid", "shipped", "expired", "cancelled"] as const;
@@ -28,8 +29,14 @@ export const orders = sqliteTable(
       .notNull()
       .references(() => user.id),
     status: text("status").$type<OrderStatus>().notNull().default(PENDING_PAYMENT),
-    /** 總金額，新台幣整數元、含稅、免運；等於各訂單明細單價快照 × 數量的總和。 */
+    /** 總金額（應付），新台幣整數元、含稅；等於各訂單明細單價快照 × 數量的總和，加上下面兩類實收運費。付款與通知都以它為準。 */
     totalTwd: integer("total_twd").notNull(),
+    /**
+     * 成立當下各配送類型實收的運費快照（Shipping Fee），新台幣整數元；明細不含該類型為 0。
+     * 舊單（運費上線前）為 0 = 當時免運。之後調整費率或變體配送類型都不改它；退運費（#115、#116）也以它為準。
+     */
+    standardShippingFeeTwd: integer("standard_shipping_fee_twd").notNull().default(0),
+    largeShippingFeeTwd: integer("large_shipping_fee_twd").notNull().default(0),
     /** 收件資訊（Shipping Info）快照。 */
     shippingName: text("shipping_name").notNull(),
     shippingPhone: text("shipping_phone").notNull(),
@@ -81,6 +88,8 @@ export const orderLines = sqliteTable(
     quantity: integer("quantity").notNull(),
     /** 單價快照，新台幣整數元；之後商品改價不影響它。 */
     unitPriceTwd: integer("unit_price_twd").notNull(),
+    /** 配送類型快照；舊單的明細為一般宅配。之後變體改類型不影響它。 */
+    deliveryType: text("delivery_type").$type<DeliveryType>().notNull().default("standard"),
   },
   (table) => [
     uniqueIndex("order_lines_order_variant_uidx").on(table.orderId, table.variantId),

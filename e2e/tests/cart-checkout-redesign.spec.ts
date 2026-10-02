@@ -75,7 +75,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await expect(row.getByRole("img")).toHaveCount(0);
   await page.getByRole("link", { name: "前往結帳" }).click();
   await expect(page.getByRole("heading", { name: "訂單摘要" })).toBeVisible();
-  await expect(page.locator("#checkout-total")).toHaveText("1,360");
+  await expect(page.locator("#checkout-total")).toHaveText("1,460");
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("autocomplete", "shipping name");
   await expect(page.getByLabel("收件人電話")).toHaveAttribute("inputmode", "tel");
   await expect(page.getByLabel("收件地址")).toHaveAttribute("autocomplete", "shipping street-address");
@@ -89,12 +89,14 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.getByLabel("收件人姓名").fill("   ");
   await page.getByLabel("收件人電話").fill("0912345678");
   await page.getByLabel("收件地址").fill("台北市中正區測試地址");
+  await page.getByLabel(/我確認配送地點位於台灣本島/).check();
   await page.getByRole("button", { name: "送出訂單" }).click();
   await expect(page.locator("#name-error")).toContainText("請填寫收件人姓名。");
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-describedby", "name-error");
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-invalid", "true");
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.getByLabel("收件人姓名").fill("購物車測試");
+  await page.getByLabel(/我確認配送地點位於台灣本島/).check();
   await page.getByRole("button", { name: "送出訂單" }).click();
   await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
   // URL commitment precedes module execution. Do not abort the order page before

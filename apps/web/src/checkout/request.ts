@@ -1,5 +1,5 @@
 import type { Cart } from "../cart/cart";
-import { toText } from "../shared/form-values";
+import { toNumber, toText } from "../shared/form-values";
 
 /** 購物車 → 結帳明細：只帶商品變體、數量與加入時看到的單價（App 拿它與最新單價比對）。 */
 export function cartToCheckoutLines(cart: Cart) {
@@ -20,7 +20,7 @@ function parseLines(raw: unknown): unknown {
   }
 }
 
-/** 結帳表單 → RPC 輸入；不判斷內容是否合法，由 App 驗證。 */
+/** 結帳表單 → RPC 輸入；不判斷內容是否合法，由 App 驗證。`seenShippingTwd` 是顧客在畫面上確認過的運費合計。 */
 export function checkoutFormToInput(form: FormData) {
   return {
     lines: parseLines(form.get("lines")),
@@ -29,20 +29,23 @@ export function checkoutFormToInput(form: FormData) {
       phone: toText(form.get("phone")),
       address: toText(form.get("address")),
     },
+    seenShippingTwd: toNumber(form.get("seenShippingTwd")),
     idempotencyKey: toText(form.get("idempotencyKey")),
   };
 }
 
 /**
- * 這一次結帳的內容指紋（明細與收件資訊；收件資訊 trim，與 App 一致）：內容變了就要換一把冪等鍵，
+ * 這一次結帳的內容指紋（明細、確認的運費與收件資訊；收件資訊 trim，與 App 一致）：內容變了就要換一把冪等鍵，
  * 因為 App 對「同一個鍵、不同內容」回 `idempotency_key_reused`。
  */
 export function checkoutFingerprint(
   lines: ReturnType<typeof cartToCheckoutLines>,
   shipping: { name: string; phone: string; address: string },
+  seenShippingTwd: number,
 ): string {
   return JSON.stringify({
     lines: lines.map((line) => [line.variantId, line.quantity, line.seenUnitPriceTwd]),
+    seenShippingTwd,
     shipping: [shipping.name.trim(), shipping.phone.trim(), shipping.address.trim()],
   });
 }

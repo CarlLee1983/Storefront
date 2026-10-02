@@ -100,6 +100,14 @@ describe("describeCheckoutFailure（RPC 失敗結果 → 頁面訊息）", () =>
     });
   });
 
+  it("運費在確認之後被調整：請顧客重新確認新的運費與總金額", () => {
+    expect(describeCheckoutFailure({ reason: "shipping_fee_changed" })).toEqual({
+      message: "運費已調整，請確認新的運費與總金額後再送出。",
+      fields: {},
+      issues: [],
+    });
+  });
+
   it("暫時無法完成結帳（診斷不出原因）", () => {
     expect(describeCheckoutFailure({ reason: "checkout_unavailable" })).toEqual({
       message: "目前無法完成結帳，請稍後再試。",

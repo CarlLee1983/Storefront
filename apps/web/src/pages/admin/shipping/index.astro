@@ -1,0 +1,72 @@
+---
+import { env } from "cloudflare:workers";
+import { DELIVERY_TYPE_LABELS, DELIVERY_TYPES } from "@storefront/app/shipping-types";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { describeFailure, type Failure } from "../../../admin/failure";
+import { shippingRateFormToInput } from "../../../admin/shipping-form";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { formToRecord } from "../../../shared/form-values";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let failure: Failure | undefined;
+let failedType = "";
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+// 調整費率（POST）：成功後 303 回本頁；費率只影響之後成立的訂單
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = formToRecord(form);
+  const input = shippingRateFormToInput(form);
+  const result = await env.APP.setShippingRate(jwt, input);
+  if (result.ok) return Astro.redirect("/admin/shipping?saved=1", 303);
+  if (result.reason === "unauthorized") unauthorized = true;
+  else {
+    Astro.response.status = 400;
+    failedType = input.deliveryType;
+    failure = describeFailure(result, "儲存運費失敗，請稍後再試");
+  }
+}
+
+const rates = unauthorized ? null : await env.APP.getShippingRates(jwt);
+if (unauthorized || (rates && !rates.ok)) Astro.response.status = 403;
+---
+
+<AdminLayout title="運費設定">
+  {
+    !rates?.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        {Astro.url.searchParams.get("saved") === "1" && <p role="status">已儲存運費。</p>}
+        <div class="admin-card-section">
+          <h2>配送運費</h2>
+          <p>配送範圍限台灣本島。每張訂單的每個配送類型各收一次運費：混合兩類各收一次，同類型不按件數另計。調整只影響之後成立的訂單，舊單的實收運費與免運條件不變；費率設為 0 即該類型免運。配送類型在各商品變體上設定。</p>
+          <ul class="shipping-rates">
+            {DELIVERY_TYPES.map((type) => (
+              <li>
+                <form method="post" aria-label={`${DELIVERY_TYPE_LABELS[type]}運費`}>
+                  <input type="hidden" name="deliveryType" value={type} />
+                  {failure && failedType === type && <p class="error" role="alert">{failure.message}{Object.values(failure.fields).flat().map((m) => `：${m}`)}</p>}
+                  <label>
+                    {DELIVERY_TYPE_LABELS[type]}運費（新台幣整數元）
+                    <input name="feeTwd" type="number" min="0" step="1" value={failedType === type ? (submitted.feeTwd ?? "") : rates.data[type]} required />
+                  </label>
+                  <button type="submit" class="btn-action">儲存</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </>
+    )
+  }
+</AdminLayout>
+
+<style>
+  .shipping-rates { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-4); }
+  .shipping-rates form { display: grid; gap: var(--space-3); max-width: 24rem; }
+</style>

@@ -81,6 +81,7 @@ for (const width of [375, 1280]) {
       await page.getByLabel("收件人姓名").fill("後台測試");
       await page.getByLabel("收件人電話").fill("0912345678");
       await page.getByLabel("收件地址").fill("台北市中正區測試地址");
+      await page.getByLabel(/我確認配送地點位於台灣本島/).check();
       await page.getByRole("button", { name: "送出訂單" }).click();
       await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
       const orderPath = new URL(page.url()).pathname;

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { describeAvailability, findVariant, initialVariant, optionChoices, selectOption, variantLabel } from "./variant-picker";
 
 const variant = (id: number, optionValues: string[], available: number, overrides: Partial<VariantDetail> = {}): VariantDetail => ({
-  id, isDefault: id === 1, optionValues, priceTwd: 1000 * id, compareAtPriceTwd: null, available, imageId: null, ...overrides,
+  id, isDefault: id === 1, optionValues, priceTwd: 1000 * id, compareAtPriceTwd: null, available, imageId: null, deliveryType: "standard", ...overrides,
 });
 
 // 尺寸 × 顏色：只販售三種組合（150 公分只有胡桃色）

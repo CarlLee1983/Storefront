@@ -28,7 +28,7 @@ describe("結帳：同商品的不同變體", () => {
       { variantId: variantIds[1]!, quantity: 1, seenUnitPriceTwd: 12000 },
     ]);
 
-    expect(await app.getMyOrder(alice, { orderId })).toMatchObject({ ok: true, data: { totalTwd: 30000, lines: [
+    expect(await app.getMyOrder(alice, { orderId })).toMatchObject({ ok: true, data: { totalTwd: 30100, lines: [
       { productId, variantId: variantIds[0], productName: "餐桌", variantLabel: "120 公分 / 胡桃色", quantity: 2, unitPriceTwd: 9000 },
       { productId, variantId: variantIds[1], productName: "餐桌", variantLabel: "150 公分 / 胡桃色", quantity: 1, unitPriceTwd: 12000 },
     ] } });
@@ -88,7 +88,7 @@ describe("結帳：同商品的不同變體", () => {
     await app.updateVariant(jwt, { variantId: variantIds[0]!, optionValues: ["125 公分", "胡桃色"], priceTwd: 9800 });
     await app.setVariantDiscontinued(jwt, { variantId: variantIds[0]!, discontinued: true });
 
-    expect(await app.getMyOrder(alice, { orderId })).toMatchObject({ ok: true, data: { totalTwd: 18000, lines: [{ variantLabel: "120 公分 / 胡桃色", unitPriceTwd: 9000, quantity: 2 }] } });
+    expect(await app.getMyOrder(alice, { orderId })).toMatchObject({ ok: true, data: { totalTwd: 18100, lines: [{ variantLabel: "120 公分 / 胡桃色", unitPriceTwd: 9000, quantity: 2 }] } });
     expect(await app.getOrderForAdmin(jwt, { orderId })).toMatchObject({ ok: true, data: { lines: [{ variantLabel: "120 公分 / 胡桃色" }] } });
     expect(await stockOf(variantIds[0]!)).toEqual({ onHand: 3, available: 1 });
 

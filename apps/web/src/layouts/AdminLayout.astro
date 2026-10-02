@@ -5,11 +5,12 @@ import "../styles/admin.css";
 interface Props { title: string }
 const { title } = Astro.props;
 const path = Astro.url.pathname;
-const section = path.startsWith("/admin/categories") ? "categories" : path.startsWith("/admin/orders") ? "orders" : path.startsWith("/admin/mail") ? "mail" : "products";
+const section = path.startsWith("/admin/categories") ? "categories" : path.startsWith("/admin/orders") ? "orders" : path.startsWith("/admin/mail") ? "mail" : path.startsWith("/admin/shipping") ? "shipping" : "products";
 const links = [
   { section: "products", href: "/admin", label: "商品管理" },
   { section: "categories", href: "/admin/categories", label: "分類管理" },
   { section: "orders", href: "/admin/orders", label: "訂單管理" },
+  { section: "shipping", href: "/admin/shipping", label: "運費設定" },
   { section: "mail", href: "/admin/mail", label: "信件投遞" },
 ];
 ---

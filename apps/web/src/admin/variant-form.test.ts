@@ -37,6 +37,12 @@ describe("dispatchVariantForm", () => {
   it("修改變體：原價留白是清空、圖片留白是不指定，欄位不存在就不動", () => {
     expect(dispatchVariantForm(formOf({ intent: "update-variant", variantId: "3", value1: "白", priceTwd: "800", compareAtPriceTwd: "", imageId: "" }), 7))
       .toEqual({ kind: "update-variant", input: { variantId: 3, optionValues: ["白"], priceTwd: 800, compareAtPriceTwd: null, imageId: null } });
+    expect(dispatchVariantForm(formOf({ intent: "create-variant", value1: "白", priceTwd: "800", deliveryType: "large" }), 7))
+      .toEqual({ kind: "create-variant", input: { productId: 7, optionValues: ["白"], priceTwd: 800, deliveryType: "large" } });
+    expect(dispatchVariantForm(formOf({ intent: "update-variant", variantId: "3", value1: "白", priceTwd: "800", deliveryType: "large" }), 7))
+      .toMatchObject({ kind: "update-variant", input: { deliveryType: "large" } });
+    expect(dispatchVariantForm(formOf({ intent: "update-variant", variantId: "3", value1: "白", priceTwd: "800" }), 7))
+      .not.toHaveProperty("input.deliveryType");
     expect(dispatchVariantForm(formOf({ intent: "update-variant", variantId: "3", value1: "白", priceTwd: "800", imageId: "img-1" }), 7))
       .toEqual({ kind: "update-variant", input: { variantId: 3, optionValues: ["白"], priceTwd: 800, compareAtPriceTwd: undefined, imageId: "img-1" } });
   });

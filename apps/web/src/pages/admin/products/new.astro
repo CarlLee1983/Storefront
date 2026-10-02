@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { DELIVERY_TYPE_LABELS, DELIVERY_TYPES } from "@storefront/app/shipping-types";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeFailure, type Failure } from "../../../admin/failure";
 import { productFormToInput } from "../../../admin/product-form";
@@ -56,6 +57,13 @@ if (unauthorized || (access && !access.ok)) Astro.response.status = 403;
             單價（新台幣整數元）
             <input name="priceTwd" type="number" min="1" step="1" value={submitted.priceTwd ?? ""} required />
             {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            配送類型
+            <select name="deliveryType">
+              {DELIVERY_TYPES.map((type) => <option value={type} selected={(submitted.deliveryType ?? "standard") === type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+            </select>
+            {failure?.fields.deliveryType?.map((m) => <span class="error">{m}</span>)}
           </label>
           <div class="admin-actions">
             <button type="submit" class="button-primary">新增商品</button>

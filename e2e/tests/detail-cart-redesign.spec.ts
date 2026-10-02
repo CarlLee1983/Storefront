@@ -78,7 +78,7 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   await expect(information).toContainText(CATEGORY.name);
   await expect(information).toContainText("NT$ 680");
   await expect(information).toContainText("現貨，可售 10 件");
-  await expect(information).toContainText("售價含稅、免運。付款後無法自行取消訂單；商品或訂單問題請寫信至 hello@gravito.dev。");
+  await expect(information).toContainText("售價含稅，運費依配送類型於結帳時計算。付款後無法自行取消訂單；商品或訂單問題請寫信至 hello@gravito.dev。");
 
   // 鍵盤：焦點在「增加數量」按鈕上按 Enter 加一、在「減少數量」上按空白鍵減一，再 Tab 到加入購物車
   const quantity = information.getByLabel("數量", { exact: true });
@@ -134,8 +134,8 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(line).toContainText("單價 NT$ 680");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   const summary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
-  await expect(summary).toContainText(/總金額\s*NT\$ 1,360/);
-  await expect(summary).toContainText("金額為新台幣，含稅、免運。");
+  await expect(summary).toContainText(/商品合計\s*NT\$ 1,360/);
+  await expect(summary).toContainText("金額為新台幣、含稅，未含運費；運費於結帳時依配送類型計算");
   // 所有加減按鈕都是 44px
   for (const button of await line.locator("[data-step]").all()) expect((await button.boundingBox())!.width).toBe(44);
   await expect(summary).toContainText("單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。");

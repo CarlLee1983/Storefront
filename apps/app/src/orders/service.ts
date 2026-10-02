@@ -6,6 +6,7 @@ import { deliverNoticeSafely } from "../contact/notify";
 import { selectVerifiedEmail } from "../contact/queries";
 import { selectPaymentSummaries } from "../payments/queries";
 import type { InvalidatePaymentsRefusal } from "../payments/shared";
+import { selectShippingFees } from "../shipping/queries";
 import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
 import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectVariantStates, selectRequestHash } from "./queries";
@@ -67,6 +68,9 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
         const states = await selectVariantStates(db, request.lines.map((line) => line.variantId));
         const issues = diagnoseLines(request.lines, states);
         if (issues.length > 0) return { ok: false as const, reason: "checkout_rejected" as const, issues };
+        // 明細都沒問題卻沒成立：可能是運費在顧客確認之後被調整；回報現行運費，由顧客重新確認總額
+        const currentShippingTwd = (await selectShippingFees(db, request.lines.map((line) => line.variantId))).totalTwd;
+        if (currentShippingTwd !== request.seenShippingTwd) return { ok: false as const, reason: "shipping_fee_changed" as const, currentShippingTwd };
       }
       // 狀態一直在變動而診斷不出原因：不是顧客的錯，重送同一個冪等鍵是安全的
       return fail("checkout_unavailable");

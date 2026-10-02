@@ -2,6 +2,8 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
+import { DELIVERY_TYPE_LABELS } from "@storefront/app/shipping-types";
+import OrderFees from "../../../orders/OrderFees.astro";
 import OrderStatus from "../../../orders/OrderStatus.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
@@ -79,7 +81,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         </div>
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
-            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
+            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>配送類型</th><th>小計</th></tr>
           </thead>
           <tbody>
             {order.lines.map((line) => (
@@ -87,12 +89,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                 <td data-label="商品"><div class="order-product"><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName}{line.variantLabel && <small>（{line.variantLabel}）</small>}</span></div></td>
                 <td data-label="單價（下單當時）">NT$ {priceFormat.format(line.unitPriceTwd)}</td>
                 <td data-label="數量">{line.quantity}</td>
+                <td data-label="配送類型">{DELIVERY_TYPE_LABELS[line.deliveryType]}</td>
                 <td data-label="小計">NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
               </tr>
             ))}
           </tbody>
         </table></div>
-        <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+        <OrderFees totalTwd={order.totalTwd} shippingFees={order.shippingFees} lines={order.lines} />
         <h2>付款嘗試</h2>
         {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
         {

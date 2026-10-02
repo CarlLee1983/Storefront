@@ -43,7 +43,10 @@ export const shippingInfo = z.object({
 /** 冪等鍵：由用戶端產生的不透明字串（例如 UUID），只接受安全字元，避免亂填。 */
 const idempotencyKey = z.string({ error: "冪等鍵必須是文字" }).regex(/^[A-Za-z0-9_-]{16,64}$/, "冪等鍵格式無效");
 
-export const checkoutInput = z.object({ lines, shippingInfo, idempotencyKey });
+/** 顧客在結帳畫面確認過的運費合計（新台幣整數元，含兩類運費；0 為合法值，例如費率被調為免運）。與下單當下的現行運費不符就拒絕。 */
+const seenShippingTwd = wholeNumber("運費").min(0, "運費不可為負").max(MAX_PRICE_TWD, `運費不可超過 ${MAX_PRICE_TWD}`);
+
+export const checkoutInput = z.object({ lines, shippingInfo, seenShippingTwd, idempotencyKey });
 export type CheckoutInput = z.output<typeof checkoutInput>;
 export type CheckoutLine = CheckoutInput["lines"][number];
 

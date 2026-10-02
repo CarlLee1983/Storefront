@@ -14,6 +14,13 @@ const form = (values: Record<string, string>) => {
   return data;
 };
 
+describe("productFormToInput 的配送類型", () => {
+  it("有選就帶上、沒有欄位就不帶（App 用預設的一般宅配）", () => {
+    expect(productFormToInput(form({ name: "桌", description: "", priceTwd: "6000", deliveryType: "large" }))).toMatchObject({ deliveryType: "large" });
+    expect(productFormToInput(form({ name: "桌", description: "", priceTwd: "6000" }))).not.toHaveProperty("deliveryType");
+  });
+});
+
 describe("productFormToInput", () => {
   it("表單欄位轉成 RPC 輸入，單價轉成數字", () => {
     expect(productFormToInput(form({ name: "馬克杯", description: "陶瓷", priceTwd: "320" }))).toEqual({

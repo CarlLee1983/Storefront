@@ -86,7 +86,7 @@ export function lineSubtotal(line: CartLine): number {
   return line.unitPriceTwd * line.quantity;
 }
 
-/** 總額，新台幣整數元、含稅、免運。 */
+/** 商品合計，新台幣整數元、含稅、未含運費（運費依配送類型，於結帳時由 App 試算）。 */
 export function cartTotal(cart: Cart): number {
   return cart.lines.reduce((sum, line) => sum + lineSubtotal(line), 0);
 }

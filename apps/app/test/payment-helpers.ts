@@ -1,6 +1,6 @@
 import { exports } from "cloudflare:workers";
 import { mintAccessJwt } from "./access";
-import { checkoutInput, createStockedListing, type LineInput } from "./checkout-helpers";
+import { checkoutInput, createStockedListing, DEFAULT_SHIPPING_TWD, type LineInput } from "./checkout-helpers";
 
 const app = exports.default;
 
@@ -15,7 +15,7 @@ export async function placeOrder(cookie: string, lines: LineInput[]): Promise<nu
 export async function placeMugOrder(cookie: string, { onHand = 10, quantity = 2 } = {}) {
   const { productId, variantId } = await createStockedListing("馬克杯", 320, onHand);
   const orderId = await placeOrder(cookie, [{ variantId, quantity, seenUnitPriceTwd: 320 }]);
-  return { productId, variantId, orderId, totalTwd: 320 * quantity };
+  return { productId, variantId, orderId, totalTwd: 320 * quantity + DEFAULT_SHIPPING_TWD };
 }
 
 /** 訂單目前的狀態與付款嘗試（走 RPC 讀取）。 */

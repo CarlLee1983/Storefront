@@ -135,6 +135,7 @@ async function selectAdminVariants(db: DrizzleD1Database, productId?: number): P
     reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     discontinuedAt: productVariants.discontinuedAt,
     imageId: productVariants.imageId,
+    deliveryType: productVariants.deliveryType,
   }).from(productVariants).where(productId === undefined ? undefined : eq(productVariants.productId, productId))
     .orderBy(desc(productVariants.isDefault), asc(productVariants.id));
   const byProduct = new Map<number, AdminVariant[]>();
@@ -292,6 +293,7 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
       onHand: productVariants.onHand,
       reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
       imageId: productVariants.imageId,
+      deliveryType: productVariants.deliveryType,
     }).from(productVariants).where(and(eq(productVariants.productId, id), isNull(productVariants.discontinuedAt)))
       .orderBy(desc(productVariants.isDefault), asc(productVariants.id)),
   ]);

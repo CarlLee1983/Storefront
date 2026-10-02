@@ -55,6 +55,7 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
     await customer.getByLabel("收件人姓名").fill("訂單版面顧客");
     await customer.getByLabel("收件人電話").fill("0912345678");
     await customer.getByLabel("收件地址").fill("台北市中正區測試地址");
+    await customer.getByLabel(/我確認配送地點位於台灣本島/).check();
     await customer.getByRole("button", { name: "送出訂單" }).click();
     await expect(customer).toHaveURL(/\/orders\/\d+\?placed=1$/);
     const orderId = new URL(customer.url()).pathname.split("/").pop()!;

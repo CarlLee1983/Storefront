@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { categories } from "../categories/schema";
+import type { DeliveryType } from "../shipping/types";
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -54,6 +55,11 @@ export const productVariants = sqliteTable("product_variants", {
    * 圖片刪除時由 `deleteProductImage` 在同一個 batch 清空。
    */
   imageId: text("image_id"),
+  /**
+   * 配送類型（`shipping/types.ts`）：下單時按它計運費，並快照到訂單明細。由管理 RPC 的輸入驗證限定為已知類型
+   *（新增欄位不另設 CHECK，否則遷移要重建資料表）。
+   */
+  deliveryType: text("delivery_type").$type<DeliveryType>().notNull().default("standard"),
 }, (table) => [
   uniqueIndex("product_variants_options_uidx").on(table.productId, table.option1Value, table.option2Value),
   index("product_variants_product_idx").on(table.productId),

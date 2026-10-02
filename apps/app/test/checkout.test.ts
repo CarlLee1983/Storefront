@@ -46,7 +46,7 @@ describe("結帳成功", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { orderId: expect.any(Number), status: "pending_payment", totalTwd: 320 * 2 + 45 * 3, paymentDeadline: now + PAYMENT_WINDOW_MS },
+      data: { orderId: expect.any(Number), status: "pending_payment", totalTwd: 320 * 2 + 45 * 3 + 100, paymentDeadline: now + PAYMENT_WINDOW_MS },
     });
     if (!result.ok) return;
     expect(await app.getMyOrder(cookie, { orderId: result.data.orderId })).toEqual({
@@ -54,13 +54,14 @@ describe("結帳成功", () => {
       data: {
         id: result.data.orderId,
         status: "pending_payment",
-        totalTwd: 775,
+        totalTwd: 875,
+        shippingFees: { standard: 100, large: 0 },
         shippingInfo: SHIPPING_INFO,
         paymentDeadline: now + PAYMENT_WINDOW_MS,
         createdAt: now,
         lines: [
-          { productId: mug.productId, variantId: mug.variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
-          { productId: pen.productId, variantId: pen.variantId, productName: "原子筆", variantLabel: "", quantity: 3, unitPriceTwd: 45, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
+          { productId: mug.productId, variantId: mug.variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
+          { productId: pen.productId, variantId: pen.variantId, productName: "原子筆", variantLabel: "", quantity: 3, unitPriceTwd: 45, deliveryType: "standard", cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
         ],
         payments: [],
         trackingNumber: null,
@@ -97,7 +98,7 @@ describe("訂單明細的單價快照", () => {
 
     expect(await app.getMyOrder(cookie, { orderId: placed.data.orderId })).toMatchObject({
       ok: true,
-      data: { totalTwd: 640, lines: [{ productId: mug.productId, variantId: mug.variantId, unitPriceTwd: 320, quantity: 2 }] },
+      data: { totalTwd: 740, lines: [{ productId: mug.productId, variantId: mug.variantId, unitPriceTwd: 320, quantity: 2 }] },
     });
   });
 });
@@ -449,7 +450,7 @@ describe("結帳的冪等", () => {
     });
     expect(await app.checkout(cookie, checkoutInput([{ variantId: mug.variantId, quantity: 1, seenUnitPriceTwd: 350 }], key))).toMatchObject({
       ok: true,
-      data: { totalTwd: 350 },
+      data: { totalTwd: 450 },
     });
   });
 });

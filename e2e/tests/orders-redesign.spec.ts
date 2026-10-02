@@ -46,6 +46,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await page.getByLabel("收件人姓名").fill("訂單測試");
     await page.getByLabel("收件人電話").fill("0912345678");
     await page.getByLabel("收件地址").fill("台北市中正區測試地址");
+    await page.getByLabel(/我確認配送地點位於台灣本島/).check();
     await page.getByRole("button", { name: "送出訂單" }).click();
     await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
     const path = new URL(page.url()).pathname;

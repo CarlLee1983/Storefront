@@ -134,6 +134,13 @@
       "when": 1790962939873,
       "tag": "0018_transaction_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1790965253849,
+      "tag": "0019_shipping_fees",
+      "breakpoints": true
     }
   ]
 }
