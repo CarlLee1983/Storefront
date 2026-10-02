@@ -61,16 +61,19 @@ Chrome 154.0.8037.93、Lighthouse 13.5.0、Node 24.21.0、Bun 1.4.2。Lighthouse
 
 ## 重現此份驗收
 
-[實際執行腳本](91-assets/capture-final.mjs) 原樣保存，SHA-256 與 public manifest 的 `scriptSha256` 完全一致。另保存[中止的前置檢查腳本](91-assets/capture-stopped-preflight.mjs)，雜湊與 stopped-preflight 紀錄一致；它只供追溯，請執行完成版。
+[實際執行腳本](91-assets/capture-final.mjs) 與[中止的前置檢查腳本](91-assets/capture-stopped-preflight.mjs) 原樣保存，SHA-256 分別與 public manifest、stopped-preflight 紀錄一致。**兩份原始腳本只供追溯，不作為重跑入口。** 原始 CLI 透過固定 CDP 埠連線，埠若被別的瀏覽器占用會有誤接風險；已完成量測使用隔離 Chrome，原始截圖和報告不變。
 
-使用隔離 worktree `9c0c160`，先執行 `bun install --frozen-lockfile`，再用既有 `bun e2e/harness/serve.ts` 啟動 production harness。等待 localhost:8790 就緒，將 harness 產生的 `.wrangler/e2e/admin-access-jwt` 寫成該 worktree 的 `apps/web/.dev.vars` 中 `ACCESS_DEV_JWT`（僅本次假 E2E token），然後執行 `bun e2e/seed/demo-seed.ts local http://localhost:8790`；確認 4 個分類、32 件上架。這與本次擷取使用相同資料與偽身份，不使用正式店面或 owner 的 cookie。
+重跑使用 [replay-safe.mjs](91-assets/replay-safe.mjs)：新建 OS 暫存設定檔，由 Chrome 自選除錯埠，核對該設定檔的 `DevToolsActivePort` 與 Chrome 回傳的瀏覽器 UUID，再用完全相同的 WebSocket 連到該子行程。Lighthouse 使用 `navigation(page, …)` 與這個已取得的 Puppeteer page，不依埠號搜尋或另啟瀏覽器；mobile、模擬節流、Performance／Accessibility、保留 storage 的設定一致。這個重跑版本有自己的腳本及瀏覽器邊界雜湊，不冒充原始執行腳本。
 
-將 `TASK_REPLAY_WORKTREE` 設為此隔離 worktree 的絕對路徑。腳本會把 Chrome 設定檔放在腳本旁，因此必須先複製到新建的暫存目錄，再執行：
+使用隔離 worktree `9c0c160`，先執行 `bun install --frozen-lockfile`，再用既有 `bun e2e/harness/serve.ts` 啟動 production harness。等待 localhost:8790 就緒，將 harness 產生的 `.wrangler/e2e/admin-access-jwt` 寫成該 worktree 的 `apps/web/.dev.vars` 中 `ACCESS_DEV_JWT`（僅本次假 E2E token），然後執行 `bun e2e/seed/demo-seed.ts local http://localhost:8790`；確認 4 個分類、32 件上架。重跑只使用固定的本機 fixture origins，不接受正式店面網址或 owner 的 cookie。
+
+將 `TASK_REPLAY_WORKTREE` 設為此隔離 worktree 的絕對路徑。在有本驗收附件的 checkout 執行：
 
 ```sh
 TASK_REPLAY_ROOT=$(mktemp -d)
-cp docs/acceptance/91-assets/capture-final.mjs "$TASK_REPLAY_ROOT/capture-final.mjs"
-bun "$TASK_REPLAY_ROOT/capture-final.mjs" "$TASK_REPLAY_WORKTREE" "$TASK_REPLAY_ROOT/reports"
+bun docs/acceptance/91-assets/replay-safe.mjs "$TASK_REPLAY_WORKTREE" "$TASK_REPLAY_ROOT/reports"
 ```
 
-執行前以 `lsof -nP -iTCP:19229 -sTCP:LISTEN` 確認選用的 CDP 埠未占用。若已有服務，先選另一個未占用埠，透過 `LH_CDP_PORT` 指定，避免連到既有瀏覽器。兩個原始腳本記錄本機 Google Chrome 標準路徑與本次 Lighthouse 13.5.0 的 npm cache 絕對路徑；換機時需先調整這兩個工具路徑。調整後腳本會自行記錄新的雜湊與版本，產生的是新量測，不覆寫本次原始報告。完成後停掉自己的 harness 並保留完整 reports；不要把 Chrome 設定檔加入 Git。
+重跑輸出目錄必須尚未存在，已有目錄會在啟動 Chrome 前拒絕，保護既有報告。Chrome 設定檔永遠在 OS 暫存目錄；完成後停掉自己的 harness，保留 reports，設定檔不要加入 Git。工具為本機 Google Chrome 標準路徑；Lighthouse 預設使用本次 13.5.0 的 npm cache，可用 `LH_CLI_PATH` 指定同版本 CLI 的絕對路徑，重跑會記錄實際工具版本。
+
+瀏覽器隔離邊界的 `node --test docs/acceptance/91-assets/replay-browser.test.mjs` **5／5 通過**，包含不符的 UUID、無效的 profile 資料與 Chrome 提前退出。另以占用舊固定埠 19229 的無害 HTTP 服務，實際啟動 Chrome、自選埠、執行一頁 Lighthouse API smoke：[紀錄](91-assets/replay-isolation-verification.json) 確認舊埠 **0 次請求**，最後網址及 mobile／節流／保留 storage 設定符合預期。已有輸出目錄的保護也已驗證。這些是重跑工具驗證，不是重新挑選本次八頁的分數。
