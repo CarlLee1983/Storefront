@@ -1925,8 +1925,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "''"
+          "autoincrement": false
         },
         "amount_twd": {
           "name": "amount_twd",
@@ -2042,6 +2041,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "refunds_gateway_refund_check": {
+          "name": "refunds_gateway_refund_check",
+          "value": "\"refunds\".\"gateway_refund_id\" <> ''"
+        },
         "refunds_status_check": {
           "name": "refunds_status_check",
           "value": "\"refunds\".\"status\" IN ('pending', 'processing', 'unknown', 'failed', 'succeeded')"

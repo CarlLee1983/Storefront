@@ -34,8 +34,14 @@ function withinQuotaSql(amount: SQL): SQL {
   return sql`p.status = 'succeeded' AND (SELECT COALESCE(SUM(r.amount_twd), 0) FROM refunds r WHERE r.payment_id = p.id) + ${amount} <= p.amount_twd`;
 }
 
-/** 登記後補上閘道退款 ID：同一個 batch 內、INSERT 之後，只補還是空字串的列（只可能是這次寫入的那一列）。 */
-const assignGatewayRefundIdSql = sql`UPDATE refunds SET gateway_refund_id = 'rf_' || id WHERE gateway_refund_id = ''`;
+/**
+ * 新退款的閘道退款 ID（冪等鍵）：登記時由應用程式產生、隨 INSERT 一起寫入，之後沒有任何程式會改它，
+ * 所以同一筆退款的重送、重試與查證永遠帶同一個 ID。不用資料庫自增編號，是為了不必先寫空值占位再補。
+ */
+const newGatewayRefundId = (): string => `rf_${crypto.randomUUID()}`;
+
+/** 衝突目標：只針對付款層級原因的部分唯一索引（同一付款同一原因已有退款）；其他唯一衝突（例如閘道退款 ID）要丟錯，不靜默吞掉。 */
+const paymentReasonConflict = sql`ON CONFLICT (payment_id, reason) WHERE reason IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success') DO NOTHING`;
 
 export interface RefundCommitment {
   paymentId: number;
@@ -54,13 +60,12 @@ export async function commitRefund(d1: D1Database, commitment: RefundCommitment,
   const { paymentId, reason, amountTwd, goodsTwd, shippingTwd } = commitment;
   const [inserted] = await batchAtEffectiveNow(d1, now, [
     sql`
-      INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at)
-      SELECT p.order_id, p.id, ${reason}, ${amountTwd}, ${goodsTwd}, ${shippingTwd}, 'pending', ${effectiveNow}
+      INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at)
+      SELECT p.order_id, p.id, ${reason}, ${newGatewayRefundId()}, ${amountTwd}, ${goodsTwd}, ${shippingTwd}, 'pending', ${effectiveNow}
       FROM payments p
       WHERE p.id = ${paymentId} AND ${withinQuotaSql(sql`${amountTwd}`)}
-      ON CONFLICT DO NOTHING
+      ${paymentReasonConflict}
     `,
-    assignGatewayRefundIdSql,
   ]);
   return inserted!.meta.changes > 0 ? inserted!.meta.last_row_id : null;
 }
@@ -73,17 +78,16 @@ export async function commitRefund(d1: D1Database, commitment: RefundCommitment,
 export async function registerPaymentRefund(d1: D1Database, paymentId: number, reason: RefundReason, now: number): Promise<number | null> {
   const [inserted] = await batchAtEffectiveNow(d1, now, [
     sql`
-      INSERT INTO refunds (order_id, payment_id, reason, amount_twd, goods_twd, shipping_twd, status, created_at)
-      SELECT p.order_id, p.id, ${reason}, p.amount_twd,
+      INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at)
+      SELECT p.order_id, p.id, ${reason}, ${newGatewayRefundId()}, p.amount_twd,
         p.amount_twd - MIN(o.standard_shipping_fee_twd + o.large_shipping_fee_twd, p.amount_twd),
         MIN(o.standard_shipping_fee_twd + o.large_shipping_fee_twd, p.amount_twd),
         'pending', ${effectiveNow}
       FROM payments p JOIN orders o ON o.id = p.order_id
       WHERE p.id = ${paymentId} AND ${withinQuotaSql(sql`p.amount_twd`)}
         AND o.paid_by_payment_id IS NOT p.id
-      ON CONFLICT DO NOTHING
+      ${paymentReasonConflict}
     `,
-    assignGatewayRefundIdSql,
   ]);
   if (inserted!.meta.changes > 0) return inserted!.meta.last_row_id;
   const [existing] = await drizzle(d1).select({ id: refunds.id }).from(refunds).where(and(eq(refunds.paymentId, paymentId), eq(refunds.reason, reason)));

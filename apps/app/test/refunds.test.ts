@@ -41,6 +41,9 @@ const todos = async () => {
   return listed.data;
 };
 
+/** 退款紀錄的閘道退款 ID（冪等鍵，登記時產生、永不更改）。 */
+const gatewayRefundIdOf = async (refundId: number) => (await env.DB.prepare("SELECT gateway_refund_id AS g FROM refunds WHERE id = ?").bind(refundId).first<{ g: string }>())!.g;
+
 const retry = async (refundId: number) => app.retryRefund(await mintAccessJwt(), { refundId });
 
 beforeEach(resetDb);
@@ -64,7 +67,7 @@ describe("逐筆退款：金額、拆分與綁定的收款", () => {
     const order = await orderOf(alice, orderId);
     expect(order.payments[0]!.id).toBe(refund!.paymentId);
     expect(order.refunds).toEqual([{ id: refund!.id, paymentId: refund!.paymentId, reason: "cancelled_order", amountTwd: totalTwd, goodsTwd: totalTwd - DEFAULT_SHIPPING_TWD, shippingTwd: DEFAULT_SHIPPING_TWD, status: "succeeded", createdAt: expect.any(Number), settledAt: expect.any(Number) }]);
-    expect(gateway.refundRequests).toEqual([{ paymentId: first, refundId: `rf_${refund!.id}`, amountTwd: totalTwd }]);
+    expect(gateway.refundRequests).toEqual([{ paymentId: first, refundId: await gatewayRefundIdOf(refund!.id), amountTwd: totalTwd }]);
   });
 
   it("兩筆付款各退各自的實收，不跨收款：每筆退款對應自己的閘道付款", async () => {
@@ -134,7 +137,9 @@ describe("明確失敗：保留額度與待辦，後筆可前進，重試沿用�
       { actor: "system", action: "send", outcome: "failed" },
       { actor: ADMIN_EMAIL, action: "send", outcome: "succeeded" },
     ]);
-    expect(gateway.refundRequests.map(({ refundId }) => refundId)).toEqual([`rf_${failed!.id}`, `rf_${failed!.id}`]);
+    const gatewayId = await gatewayRefundIdOf(failed!.id);
+    expect(gatewayId).toMatch(/^rf_[0-9a-f-]{36}$/);
+    expect(gateway.refundRequests.map(({ refundId }) => refundId)).toEqual([gatewayId, gatewayId]);
     expect(gateway.refundedTwd(first)).toBe(totalTwd);
     expect((await todos()).refunds).toEqual([]);
   });
@@ -181,7 +186,7 @@ describe("結果不明：先查再決定，阻擋同單後筆", () => {
     const [refund] = await adminRefunds(orderId);
     expect(refund).toMatchObject({ status: "succeeded" });
     expect(refund!.attempts.map(({ action, outcome }) => `${action}:${outcome}`)).toEqual(["send:unknown", "verify:not_found", "send:succeeded"]);
-    expect(gateway.refundRequests.map(({ refundId }) => refundId)).toEqual([`rf_${unknown!.id}`]);
+    expect(gateway.refundRequests.map(({ refundId }) => refundId)).toEqual([await gatewayRefundIdOf(unknown!.id)]);
   });
 
   it("查證本身也失敗：仍是結果不明，沒有送出新的退款", async () => {
@@ -363,8 +368,10 @@ describe("承諾退款額度（#116、#121、#122 共用的單句條件寫入）
     const total = (await env.DB.prepare("SELECT SUM(amount_twd) AS total FROM refunds").first<{ total: number }>())!.total;
     expect(total).toBe(600);
     expect(total).toBeLessThanOrEqual(payment.amount_twd);
-    // 新紀錄的閘道退款 ID 在同一個 batch 寫入
-    expect((await env.DB.prepare("SELECT gateway_refund_id AS g, id FROM refunds").all<{ g: string; id: number }>()).results.every((row) => row.g === `rf_${row.id}`)).toBe(true);
+    // 新紀錄的閘道退款 ID 隨 INSERT 寫入、彼此不同
+    const ids = (await env.DB.prepare("SELECT gateway_refund_id AS g FROM refunds").all<{ g: string }>()).results.map((row) => row.g);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.every((id) => /^rf_[0-9a-f-]{36}$/.test(id))).toBe(true);
   });
 
   it("佔用額度含尚未成功的退款：失敗那筆仍占額度，不足的承諾回 null", async () => {
@@ -376,5 +383,31 @@ describe("承諾退款額度（#116、#121、#122 共用的單句條件寫入）
     const over = await commitRefund(env.DB, { paymentId: failed!.paymentId, reason: "duplicate_success", amountTwd: 1, goodsTwd: 1, shippingTwd: 0 }, Date.now());
 
     expect(over).toBeNull();
+  });
+});
+
+describe("登記時的衝突處理", () => {
+  it("同一付款同一原因已有退款（部分唯一索引）才靜默回既有那筆；其他唯一衝突（閘道退款 ID）要丟錯，不能靜默回 null", async () => {
+    const { orderId, gateway, settleFirst } = await twoLatePayments();
+    gateway.failNextRefundExplicitly();
+    await app.applyPaymentResult(settleFirst());
+    const [existing] = await adminRefunds(orderId);
+    expect(await registerPaymentRefund(env.DB, existing!.paymentId, "cancelled_order", Date.now())).toBe(existing!.id);
+
+    // 預先放一筆佔著閘道退款 ID 的列，並讓新退款產生同一個 ID：登記必須丟錯，不能靜默回 null
+    const other = await env.DB.prepare("SELECT id FROM payments WHERE order_id = ? AND id <> ?").bind(orderId, existing!.paymentId).first<{ id: number }>();
+    await env.DB.prepare("UPDATE refunds SET gateway_refund_id = 'rf_taken' WHERE id = ?").bind(existing!.id).run();
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("taken" as ReturnType<typeof crypto.randomUUID>);
+    await env.DB.prepare("UPDATE payments SET status = 'succeeded' WHERE id = ?").bind(other!.id).run();
+
+    await expect(registerPaymentRefund(env.DB, other!.id, "duplicate_success", Date.now())).rejects.toThrow(/UNIQUE/);
+  });
+
+  it("閘道退款 ID 不可為空字串", async () => {
+    const { orderId, settleFirst } = await twoLatePayments();
+    await app.applyPaymentResult(settleFirst());
+    const [refund] = await adminRefunds(orderId);
+
+    await expect(env.DB.prepare("UPDATE refunds SET gateway_refund_id = '' WHERE id = ?").bind(refund!.id).run()).rejects.toThrow(/CHECK/);
   });
 });

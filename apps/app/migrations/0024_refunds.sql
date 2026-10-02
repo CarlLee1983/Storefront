@@ -17,7 +17,7 @@ CREATE TABLE `refunds` (
 	`order_id` integer NOT NULL,
 	`payment_id` integer NOT NULL,
 	`reason` text NOT NULL,
-	`gateway_refund_id` text DEFAULT '' NOT NULL,
+	`gateway_refund_id` text NOT NULL,
 	`amount_twd` integer NOT NULL,
 	`goods_twd` integer NOT NULL,
 	`shipping_twd` integer NOT NULL,
@@ -27,6 +27,7 @@ CREATE TABLE `refunds` (
 	`settled_at` integer,
 	FOREIGN KEY (`order_id`) REFERENCES `orders`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "refunds_gateway_refund_check" CHECK("refunds"."gateway_refund_id" <> ''),
 	CONSTRAINT "refunds_status_check" CHECK("refunds"."status" IN ('pending', 'processing', 'unknown', 'failed', 'succeeded')),
 	CONSTRAINT "refunds_reason_check" CHECK("refunds"."reason" IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success')),
 	CONSTRAINT "refunds_amount_check" CHECK("refunds"."amount_twd" > 0 AND "refunds"."goods_twd" >= 0 AND "refunds"."shipping_twd" >= 0 AND "refunds"."goods_twd" + "refunds"."shipping_twd" = "refunds"."amount_twd")

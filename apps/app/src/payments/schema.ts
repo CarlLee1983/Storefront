@@ -94,7 +94,7 @@ const sqlList = (values: readonly string[]) => sql.raw(values.map((value) => `'$
 
 /**
  * 退款（Refund）：把一筆成功收款的部分或全部款項退回的獨立款項處理，每筆各自記金額與進度（ADR 0007）；重試沿用同一列。
- * 閘道的冪等鍵與查證用的退款 ID 存在 `gateway_refund_id`：新紀錄是 `rf_<id>`（登記的同一個 batch 寫入，不可為空字串），
+ * 閘道的冪等鍵與查證用的退款 ID 存在 `gateway_refund_id`：新紀錄是 `rf_<UUID>`（登記時由應用程式產生、隨 INSERT 寫入，之後永不更改，不可為空字串），
  * 0024 搬來的舊退款是 `legacy_<閘道付款 ID>`（對得上閘道 0002 搬來的退款），所以同一筆重送不會多退，舊退款也能向閘道查證。新增退款的程式一律走 `refunds.ts` 的承諾 helper。
  * 退款綁定一筆付款（`payment_id`，且該付款屬於 `order_id`）：金額上限是那筆付款的實收，不跨收款。
  * `goods_twd`、`shipping_twd` 是金額的拆分（商品款、原運費），讓後續的部分取消與發票折讓可以核對；兩者相加等於 `amount_twd`。
@@ -112,7 +112,7 @@ export const refunds = sqliteTable(
       .references(() => payments.id),
     reason: text("reason").$type<RefundReason>().notNull(),
     /** 向閘道送出與查證用的退款 ID（冪等鍵），見表說明。 */
-    gatewayRefundId: text("gateway_refund_id").notNull().default(""),
+    gatewayRefundId: text("gateway_refund_id").notNull(),
     /** 退款金額，新台幣整數元，大於 0。 */
     amountTwd: integer("amount_twd").notNull(),
     goodsTwd: integer("goods_twd").notNull(),
@@ -133,6 +133,7 @@ export const refunds = sqliteTable(
     uniqueIndex("refunds_payment_reason_uidx")
       .on(table.paymentId, table.reason)
       .where(sql`${table.reason} IN ('late_success_unreclaimable', 'cancelled_order', 'duplicate_success')`),
+    check("refunds_gateway_refund_check", sql`${table.gatewayRefundId} <> ''`),
     check("refunds_status_check", sql`${table.status} IN (${sqlList(REFUND_STATUSES)})`),
     check("refunds_reason_check", sql`${table.reason} IN (${sqlList(REFUND_REASONS)})`),
     check("refunds_amount_check", sql`${table.amountTwd} > 0 AND ${table.goodsTwd} >= 0 AND ${table.shippingTwd} >= 0 AND ${table.goodsTwd} + ${table.shippingTwd} = ${table.amountTwd}`),
