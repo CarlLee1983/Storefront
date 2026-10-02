@@ -258,7 +258,7 @@ test.describe("沒有 JavaScript", () => {
   });
 });
 
-for (const [width, height] of [[390, 844], [1280, 900]] as const) {
+for (const [width, height] of [[375, 844], [1280, 900]] as const) {
   test(`首頁（${width}px）：沒有橫向捲動、編輯式橫幅連到全部商品、axe 零違規`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height });
     await page.goto("/");

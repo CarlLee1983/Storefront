@@ -12,6 +12,7 @@ body.storefront-shell {
   --product-thumb-cart-size: 5.5rem;
 }
 
+body.storefront-shell h1 { font-size: var(--text-display-page); line-height: 1.1; }
 body.storefront-shell h1,
 body.storefront-shell h2,
 body.storefront-shell h3 { font-weight: 700; letter-spacing: normal; }
