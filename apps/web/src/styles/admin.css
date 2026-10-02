@@ -75,4 +75,29 @@
 .admin-shell #product-images .image-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 .admin-shell #product-images .drag-over { outline: 3px solid currentColor; }
 .admin-shell .order-products { list-style: none; padding: 0; margin: 0; }
-.admin-shell .order-products li, .admin-shell .order-product { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
+.admin-shell .order-products li, .admin-shell .order-product { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
+.admin-shell .order-products li > span:last-child, .admin-shell .order-product > span:last-child { min-width: 0; }
+.admin-shell .admin-order-cover, .admin-shell .admin-order-cover .order-cover { display: inline-flex; width: 44px; height: 44px; flex: 0 0 44px; }
+.admin-shell .admin-orders table, .admin-shell .admin-order-lines table, .admin-shell .admin-order-payments table { table-layout: auto; min-width: 0; }
+.admin-shell .admin-orders th, .admin-shell .admin-orders td, .admin-shell .admin-order-lines th, .admin-shell .admin-order-lines td, .admin-shell .admin-order-payments th, .admin-shell .admin-order-payments td { vertical-align: middle; }
+.admin-shell .admin-orders th, .admin-shell .admin-orders td:first-child, .admin-shell .admin-orders td:nth-child(n+4) { white-space: nowrap; }
+.admin-shell .admin-orders td:nth-child(2) { min-width: 14rem; }
+.admin-shell .admin-orders td:nth-child(3), .admin-shell .admin-order-email { white-space: normal; overflow-wrap: normal; word-break: normal; }
+.admin-shell .admin-orders td:nth-child(6), .admin-shell .admin-order-lines td:nth-child(n+2):nth-child(-n+4), .admin-shell .admin-order-payments td:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-shell .admin-order-payments td:nth-child(3) strong { display: block; white-space: normal; }
+
+@media (max-width: 47.999rem) {
+  .admin-shell .admin-orders, .admin-shell .admin-order-lines, .admin-shell .admin-order-payments { overflow-x: visible; }
+  .admin-shell .admin-orders table, .admin-shell .admin-order-lines table, .admin-shell .admin-order-payments table { display: block; width: 100%; }
+  .admin-shell .admin-orders thead, .admin-shell .admin-order-lines thead, .admin-shell .admin-order-payments thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .admin-shell .admin-orders tbody, .admin-shell .admin-order-lines tbody, .admin-shell .admin-order-payments tbody { display: grid; gap: var(--space-4); }
+  .admin-shell .admin-orders tbody tr, .admin-shell .admin-order-lines tbody tr, .admin-shell .admin-order-payments tbody tr { display: grid; min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .admin-shell .admin-orders td, .admin-shell .admin-order-lines td, .admin-shell .admin-order-payments td { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); min-width: 0; width: auto; border: 0; text-align: left; white-space: normal; }
+  .admin-shell .admin-orders td::before, .admin-shell .admin-order-lines td::before, .admin-shell .admin-order-payments td::before { content: attr(data-label); flex: 0 0 auto; font-weight: 700; }
+  .admin-shell .admin-orders td:first-child, .admin-shell .admin-order-lines td:first-child, .admin-shell .admin-order-payments td:first-child { border-bottom: 1px solid var(--color-border); }
+  .admin-shell .admin-orders td:nth-child(2), .admin-shell .admin-order-lines td:first-child { display: block; min-width: 0; }
+  .admin-shell .admin-orders td:nth-child(2)::before, .admin-shell .admin-order-lines td:first-child::before { display: block; margin-bottom: var(--space-2); }
+  .admin-shell .admin-orders td:nth-child(3) { overflow-wrap: normal; word-break: normal; }
+  .admin-shell .admin-order-payments td:nth-child(3) { display: block; }
+  .admin-shell .admin-order-payments td:nth-child(3)::before { display: block; }
+}
