@@ -336,6 +336,37 @@ describe("交運的保護邊界", () => {
     expect(await stockOf(variantId)).toEqual({ onHand: 9, available: 7 });
   });
 
+  it("同鍵重送已出完的訂單仍回原批次：不是 order_not_shippable，不重複扣庫", async () => {
+    const { orderId, variantId } = await paidOrder("alice", { onHand: 10, quantity: 2 });
+    const [line] = (await adminOrder(orderId)).lines;
+    const input = { orderId, dispatchKey: "replay-done-0001", items: [{ orderLineId: line!.id, quantity: 2 }] };
+    const jwt = await mintAccessJwt();
+    const first = await app.shipOrder(jwt, input);
+    expect(first).toMatchObject({ ok: true, data: { status: "shipped" } });
+
+    const again = await app.shipOrder(jwt, input);
+
+    expect(again).toMatchObject({ ok: true, data: { shipmentId: first.ok ? first.data.shipmentId : -1, status: "shipped", replayed: true } });
+    expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
+    expect((await adminOrder(orderId)).shipments).toHaveLength(1);
+  });
+
+  it("同一冪等鍵並行提交：只建一批、只扣一次庫、只寫一組流水", async () => {
+    const { orderId, variantId } = await paidOrder("alice", { onHand: 10, quantity: 3 });
+    const [line] = (await adminOrder(orderId)).lines;
+    const jwt = await mintAccessJwt();
+    const input = { orderId, dispatchKey: "parallel-same-key", items: [{ orderLineId: line!.id, quantity: 1 }] };
+
+    const results = await Promise.all([app.shipOrder(jwt, input), app.shipOrder(jwt, input), app.shipOrder(jwt, input)]);
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(results.filter((result) => result.ok && !result.data.replayed)).toHaveLength(1);
+    expect(await stockOf(variantId)).toEqual({ onHand: 9, available: 7 });
+    expect((await adminOrder(orderId)).shipments).toHaveLength(1);
+    const movements = await app.listStockMovements(jwt, { orderId });
+    expect(movements.ok && movements.data.items.filter((item) => item.kind === "dispatch")).toHaveLength(1);
+  });
+
   it("遷移補建的舊批次不會被重送扣庫或寄信：舊鍵 legacy 對已出完的舊單被擋，遷移鍵 legacy:0021 輸入驗證不接受", async () => {
     const { cookie, orderId, variantId } = await paidOrder("alice", { onHand: 10, quantity: 3 });
     const [line] = (await adminOrder(orderId)).lines;
