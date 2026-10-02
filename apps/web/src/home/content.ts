@@ -12,6 +12,8 @@ export interface HomeImage {
 
 export interface HeroSlide {
   image: HomeImage;
+  /** 圖片被裁切時保留主體的焦點位置。 */
+  focalPosition: string;
   title: string;
   description: string;
   href: string;
@@ -23,6 +25,7 @@ const heroImage = (n: number, alt: string): HomeImage => ({ name: `hero-${n}`, w
 export const HERO_SLIDES: HeroSlide[] = [
   {
     image: heroImage(1, "日光照進客廳，胡桃木單椅擺在右側。"),
+    focalPosition: "82% 60%",
     title: "留一個位置給自己",
     description: "一張單椅與留白的牆面，讓客廳也有慢下來的角落。",
     href: "/categories/living",
@@ -30,6 +33,7 @@ export const HERO_SLIDES: HeroSlide[] = [
   },
   {
     image: heroImage(2, "餐廳中的圓桌、餐椅與吊燈。"),
+    focalPosition: "70% 45%",
     title: "把時間留在餐桌上",
     description: "從餐桌、座椅到器皿，讓每日的相聚多一點從容。",
     href: "/categories/dining",
@@ -37,6 +41,7 @@ export const HERO_SLIDES: HeroSlide[] = [
   },
   {
     image: heroImage(3, "木書桌上有朱紅色檯燈與書本，左側是留白的牆面。"),
+    focalPosition: "82% 52%",
     title: "整理出專注的角落",
     description: "一張桌、一盞燈，替每天的想法留出空間。",
     href: "/categories/workspace",

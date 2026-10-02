@@ -123,3 +123,32 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   } finally { await context.close(); }
 });
+
+test("商品詳情圖庫在手機與桌機填滿正方形且沒有水平溢出", async ({ browser, page }, testInfo) => {
+  test.setTimeout(120_000);
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
+  const admin = await context.newPage();
+  const name = "圖庫方形版面商品";
+  try {
+    const { id } = await createGallery(admin, name);
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/products/${id}`);
+      const track = page.getByRole("group", { name: "商品圖片瀏覽", exact: true });
+      const image = track.getByRole("img").first();
+      await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+      const trackBox = (await track.boundingBox())!;
+      const imageBox = (await image.boundingBox())!;
+      expect(Math.abs(imageBox.width - imageBox.height)).toBeLessThan(2);
+      expect(Math.abs(imageBox.width - trackBox.width)).toBeLessThan(2);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      await testInfo.attach(`product-gallery-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    }
+  } finally {
+    const row = admin.getByRole("row").filter({ hasText: name });
+    await admin.goto("/admin");
+    if (await row.count()) await row.getByRole("button", { name: "下架" }).click();
+    await context.close();
+  }
+});
