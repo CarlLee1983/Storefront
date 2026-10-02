@@ -6,7 +6,8 @@ import Layout from "../../layouts/Layout.astro";
 import OrderStatus from "../../orders/OrderStatus.astro";
 import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
-import { customerShipmentSummary, formatDateTime } from "../../orders/labels";
+import ShipmentList from "../../orders/ShipmentList.astro";
+import { formatDateTime } from "../../orders/labels";
 
 export const prerender = false;
 
@@ -27,7 +28,7 @@ if (!orders.ok) return Astro.redirect(loginUrl(Astro.url), 303);
       <div class="heading"><h2><a href={`/orders/${order.id}`}>訂單 #{order.id}</a></h2><p>訂單狀態：<OrderStatus status={order.status} customer /></p></div>
       <p class="created">成立時間：{formatDateTime(order.createdAt)}</p>
       <OrderLines lines={order.lines} />
-      {order.status === "shipped" && <p>{customerShipmentSummary(null, order.trackingNumber)}</p>}
+      <ShipmentList shipments={order.shipments} customer />
       <OrderFees totalTwd={order.totalTwd} shippingFees={order.shippingFees} lines={order.lines} />
       {order.status === "pending_payment" && <div class="payment">
         <p>付款期限：<time datetime={new Date(order.paymentDeadline).toISOString()}>{formatDateTime(order.paymentDeadline)}</time>（台北時間）</p>

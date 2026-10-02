@@ -5,6 +5,7 @@ import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/querie
 import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
 import { createVariant, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
+import { deliverNoticeSafely } from "../contact/notify";
 import { resendMessage, selectMailForAdmin, setDeliveryFailure } from "../contact/admin";
 import { mailMessageIdInput, setMailDeliveryFailureInput } from "../contact/input";
 import { categoryIdInput, createCategoryInput, updateCategoryInput } from "../categories/input";
@@ -18,8 +19,8 @@ import { selectStockMovements } from "../stock/ledger";
 import { selectShippingRates, updateShippingRate } from "../shipping/queries";
 import { selectOrdersForAdmin } from "../orders/admin-queries";
 import { orderIdInput } from "../orders/input";
-import { markOrderShipped, orderExists, selectOrderForAdmin } from "../orders/queries";
-import { SHIPPED } from "../orders/schema";
+import { selectOrderForAdmin } from "../orders/queries";
+import { dispatchShipment } from "../shipments/dispatch";
 import { selectOrderPaymentSummaries } from "../payments/queries";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
@@ -273,16 +274,20 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     },
 
     /**
-     * 出貨（Shipment）：把已付款的訂單標為已出貨並扣實體在庫（寫庫存流水），物流單號可以不附；已出貨是終點，不能撤回。
-     * 不是已付款（待付款、已逾期、已取消、已出貨）回 `order_not_shippable`，不存在回 `order_not_found`。
+     * 交運一批（Shipment）：指定訂單明細與本批數量，扣這批的實體在庫並消耗對應的已付款保留，物流單號可以不附；
+     * 含大型配送明細的批次必須帶議定時段。訂單依各明細已交運數量轉為部分出貨或已出貨，分批不追加運費。
+     * 同一冪等鍵重送回原批次（`replayed: true`），不重複扣庫與通知。
+     * 訂單不是已付款或部分出貨回 `order_not_shippable`，不存在回 `order_not_found`，數量超過未交運數量回 `shipment_quantity_exceeded`。
      */
     shipOrder(jwt: unknown, input: unknown) {
-      return authorized(jwt, shipOrderInput, input, async (actor, { orderId, trackingNumber }) => {
-        if (await markOrderShipped(d1, orderId, trackingNumber, actor.email, clock.now())) {
-          console.log(JSON.stringify({ event: "order_shipped", orderId, actor: actor.email, hasTrackingNumber: trackingNumber !== null }));
-          return ok({ orderId, status: SHIPPED });
+      return authorized(jwt, shipOrderInput, input, async (actor, request) => {
+        const result = await dispatchShipment(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (result.ok) {
+          console.log(JSON.stringify({ event: "shipment_dispatched", orderId: request.orderId, shipmentId: result.data.shipmentId, actor: actor.email, replayed: result.data.replayed }));
+          // 信件本體已在交運 batch 內寫好；投遞出錯不影響交運，重送同一批時會補上首次投遞
+          await deliverNoticeSafely(db, `shipment:${result.data.shipmentId}`, clock.now());
         }
-        return fail((await orderExists(db, orderId)) ? "order_not_shippable" : "order_not_found");
+        return result;
       });
     },
 

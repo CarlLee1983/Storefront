@@ -1,6 +1,7 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { currentCover } from "../images/cover-query";
+import { dispatchedQuantity } from "../shipments/queries";
 import type { OrderView } from "./queries";
 import { user } from "../auth/schema";
 import { paymentNeedsAttentionSql } from "../payments/attention";
@@ -45,8 +46,8 @@ export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: Order
   if (summaries.length === 0) return [];
   // One bounded query for all returned orders, rather than one query per order or line.
   const lines = await db.select({
-    orderId: orderLines.orderId, productId: orderLines.productId, variantId: orderLines.variantId, productName: orderLines.productName, variantLabel: orderLines.variantLabel,
-    quantity: orderLines.quantity, unitPriceTwd: orderLines.unitPriceTwd, deliveryType: orderLines.deliveryType,
+    orderId: orderLines.orderId, id: orderLines.id, productId: orderLines.productId, variantId: orderLines.variantId, productName: orderLines.productName, variantLabel: orderLines.variantLabel,
+    quantity: orderLines.quantity, unitPriceTwd: orderLines.unitPriceTwd, deliveryType: orderLines.deliveryType, shippedQuantity: dispatchedQuantity(sql`${orderLines.id}`),
     cover: currentCover(sql`${orderLines.productId}`),
   }).from(orderLines).where(sql`${orderLines.orderId} IN (SELECT value FROM json_each(${JSON.stringify(summaries.map(order => order.id))}))`).orderBy(asc(orderLines.id));
   const grouped = new Map<number, OrderView["lines"]>();

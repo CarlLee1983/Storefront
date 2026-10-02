@@ -5,8 +5,9 @@ import { checkoutEntry } from "../../checkout/entry";
 import OrderStatus from "../../orders/OrderStatus.astro";
 import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
+import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
-import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary, formatDateTime, parseOrderId } from "../../orders/labels";
+import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
@@ -61,7 +62,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <h2 id="order-progress-title">訂單進度</h2>
             <p>訂單狀態：<OrderStatus status={order.status} customer /></p>
             {statusNote && <p>{statusNote}</p>}
-            {order.status === "shipped" && <p>{customerShipmentSummary(order.shippedAt, order.trackingNumber)}</p>}
+            <ShipmentList shipments={order.shipments} customer />
             {order.status === "pending_payment" && <div class="payment-callout" role="region" aria-label="完成付款">
               <div class="callout-header">
                 <span class="callout-badge">待付款</span>

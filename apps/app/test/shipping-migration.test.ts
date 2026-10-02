@@ -2,6 +2,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import rollbackSql from "../rollback/0019_shipping_fees.down.sql?raw";
+import rollback0021Sql from "../rollback/0021_shipments.down.sql?raw";
 
 const db = env.MIGRATION_DB;
 const THROUGH_0018 = 19;
@@ -54,7 +55,7 @@ it("沒有使用任何新功能時，回復程序移除新欄位與費率表並�
   await seedThrough0018();
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
-  for (const statement of rollbackSql.split("--> statement-breakpoint")) await db.prepare(statement).run();
+  await db.batch([...rollback0021Sql.split("--> statement-breakpoint"), ...rollbackSql.split("--> statement-breakpoint")].map((statement) => db.prepare(statement)));
 
   expect(await columns("product_variants")).not.toContain("delivery_type");
   expect(await columns("order_lines")).not.toContain("delivery_type");

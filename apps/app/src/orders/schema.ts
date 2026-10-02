@@ -4,8 +4,8 @@ import { user } from "../auth/schema";
 import { productVariants, products } from "../catalog/schema";
 import type { DeliveryType } from "../shipping/types";
 
-/** 訂單狀態（CONTEXT.md 的五種）；存英文代碼，畫面顯示的中文名稱在 Web。 */
-export const ORDER_STATUSES = ["pending_payment", "paid", "shipped", "expired", "cancelled"] as const;
+/** 訂單狀態（CONTEXT.md 的六種）；存英文代碼，畫面顯示的中文名稱在 Web。 */
+export const ORDER_STATUSES = ["pending_payment", "paid", "partially_shipped", "shipped", "expired", "cancelled"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 /** 待付款：訂單的訂單明細在此狀態時，其數量就是「待付款保留」（見 `catalog/stock.ts`）。 */
@@ -20,7 +20,10 @@ export const EXPIRED = "expired" satisfies OrderStatus;
 /** 已取消：顧客在付款前主動終止，是終點。 */
 export const CANCELLED = "cancelled" satisfies OrderStatus;
 
-/** 已出貨：管理員標記出貨，是終點，不能撤回。 */
+/** 部分出貨：至少交運過一批、但仍有明細數量未交運；未交運的數量仍是「已付款待出貨保留」（ADR 0006）。 */
+export const PARTIALLY_SHIPPED = "partially_shipped" satisfies OrderStatus;
+
+/** 已出貨：每筆明細的數量都已交運，是終點，不能撤回。 */
 export const SHIPPED = "shipped" satisfies OrderStatus;
 
 export const orders = sqliteTable(
@@ -57,15 +60,11 @@ export const orders = sqliteTable(
      * 「訂單是由哪一筆付款支付」以它為準：扣庫存與「需要處理」的判定都看它（沒有外鍵：orders 與 payments 互相參照）。
      */
     paidByPaymentId: integer("paid_by_payment_id"),
-    /** 出貨時管理員填的物流單號；可空（出貨時可以不附）。 */
-    trackingNumber: text("tracking_number"),
-    /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
-    shippedAt: integer("shipped_at"),
   },
   (table) => [
     uniqueIndex("orders_customer_idempotency_uidx").on(table.customerId, table.idempotencyKey),
     index("orders_customer_idx").on(table.customerId),
-    check("orders_status_check", sql`${table.status} IN ('pending_payment', 'paid', 'shipped', 'expired', 'cancelled')`),
+    check("orders_status_check", sql`${table.status} IN ('pending_payment', 'paid', 'partially_shipped', 'shipped', 'expired', 'cancelled')`),
   ],
 );
 

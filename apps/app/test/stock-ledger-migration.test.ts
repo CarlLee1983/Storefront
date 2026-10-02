@@ -2,6 +2,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import rollbackSql from "../rollback/0020_stock_ledger.down.sql?raw";
+import rollback0021Sql from "../rollback/0021_shipments.down.sql?raw";
 import verifySql from "../scripts/verify-0020-stock.sql?raw";
 
 const db = env.MIGRATION_DB;
@@ -104,7 +105,7 @@ it("回復程序把已付款訂單的數量扣回在庫數（回到付款扣庫�
   await seedLegacy();
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
-  for (const statement of rollbackSql.split("--> statement-breakpoint")) await db.prepare(statement).run();
+  await db.batch([...rollback0021Sql.split("--> statement-breakpoint"), ...rollbackSql.split("--> statement-breakpoint")].map((statement) => db.prepare(statement)));
 
   expect(await onHandOf(1)).toBe(7);
   expect(await onHandOf(2)).toBe(6);
@@ -119,7 +120,7 @@ it("遷移後才付款（未交運）的訂單，回復時也一併扣回", asyn
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
   await db.prepare("UPDATE orders SET status = 'paid' WHERE id = 4").run(); // 新語意下付款不扣庫
 
-  for (const statement of rollbackSql.split("--> statement-breakpoint")) await db.prepare(statement).run();
+  await db.batch([...rollback0021Sql.split("--> statement-breakpoint"), ...rollbackSql.split("--> statement-breakpoint")].map((statement) => db.prepare(statement)));
 
   expect(await onHandOf(1)).toBe(3); // 12 − 2 − 3 − 4
 });

@@ -7,7 +7,8 @@ describe("訂單狀態轉換表（CONTEXT.md 與 ADR 0001）", () => {
     expect(ALLOWED_TRANSITIONS).toEqual({
       pending_payment: ["paid", "expired", "cancelled"],
       expired: ["paid"],
-      paid: ["shipped"],
+      paid: ["partially_shipped", "shipped"],
+      partially_shipped: ["partially_shipped", "shipped"],
       shipped: [],
       cancelled: [],
     });
@@ -23,7 +24,8 @@ describe("訂單狀態轉換表（CONTEXT.md 與 ADR 0001）", () => {
     expect(allowedSources("cancelled")).toEqual(["pending_payment"]);
     expect(allowedSources("expired")).toEqual(["pending_payment"]);
     expect(allowedSources("paid").sort()).toEqual(["expired", "pending_payment"]);
-    expect(allowedSources("shipped")).toEqual(["paid"]);
+    expect(allowedSources("shipped").sort()).toEqual(["paid", "partially_shipped"]);
+    expect(allowedSources("partially_shipped").sort()).toEqual(["paid", "partially_shipped"]);
     expect(allowedSources("pending_payment")).toEqual([]);
   });
 });

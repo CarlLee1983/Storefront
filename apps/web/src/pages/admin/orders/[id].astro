@@ -5,10 +5,11 @@ import { describeShipFailure, shipFormToInput } from "../../../admin/order-form"
 import { DELIVERY_TYPE_LABELS } from "@storefront/app/shipping-types";
 import OrderFees from "../../../orders/OrderFees.astro";
 import OrderStatus from "../../../orders/OrderStatus.astro";
+import ShipmentList from "../../../orders/ShipmentList.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { formToRecord } from "../../../shared/form-values";
-import { formatDateTime, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../../orders/labels";
+import { formatDateTime, parseOrderId, paymentStatusLabel, refundReasonLabel } from "../../../orders/labels";
 
 export const prerender = false;
 
@@ -19,7 +20,7 @@ let failure: ReturnType<typeof describeShipFailure> | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
 
-// 出貨（POST）：成功後 303 回到本頁；訂單已不是已付款（例如另一位管理員剛出貨）會顯示原因與最新狀態
+// 交運一批（POST）：成功後 303 回到本頁；訂單已不能交運（例如另一位管理員剛出完）會顯示原因與最新狀態
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   submitted = formToRecord(form);
@@ -37,6 +38,10 @@ const view: "forbidden" | "not_found" | "ok" = Astro.response.status === 403 ? "
 if (view === "not_found") Astro.response.status = 404;
 const shipped = Astro.url.searchParams.get("saved") === "shipped";
 const priceFormat = new Intl.NumberFormat("zh-TW");
+// 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一批
+const dispatchKey = submitted.dispatchKey || crypto.randomUUID();
+const canShip = order?.status === "paid" || order?.status === "partially_shipped";
+const fieldErrors = (name: string) => failure?.fields[name] ?? [];
 ---
 
 <AdminLayout title={order ? `訂單 #${order.id}` : "訂單"}>
@@ -47,7 +52,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <p class="error" role="alert">找不到這張訂單。<a href="/admin/orders">回訂單管理</a></p>
     ) : (
       <>
-        {shipped && <p role="status">已標為已出貨。</p>}
+        {shipped && <p role="status">已記錄這一批出貨。</p>}
         <div class="admin-card-section">
           <h2>訂單狀態與基本資訊</h2>
           <div class="admin-form-grid">
@@ -57,31 +62,53 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </div>
             <div>
               <p class="admin-order-email"><strong>顧客：</strong>{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</p>
-              {order.status === "shipped" && <p><strong>物流進度：</strong>{shipmentSummary(order.shippedAt, order.trackingNumber)}（<a href={`/admin/stock-movements?orderId=${order.id}`}>庫存流水</a>）</p>}
+              <p><a href={`/admin/stock-movements?orderId=${order.id}`}>庫存流水</a></p>
             </div>
           </div>
           {
-            order.status === "paid" && (
+            canShip && (
               <div class="admin-ship-panel">
-                <h3>出貨處理</h3>
+                <h3>交運一批</h3>
                 {failure && <p class="error" role="alert">{failure.message}</p>}
-                <form method="post" onsubmit="return confirm('確定要標為已出貨嗎？出貨後會扣除實體在庫，無法撤回。')">
+                <form method="post" onsubmit="return confirm('確定要交運這一批嗎？會扣除這批的實體在庫，無法撤回。')">
+                  <input type="hidden" name="dispatchKey" value={dispatchKey} />
+                  <fieldset class="admin-ship-lines">
+                    <legend>本批數量（0 或留空表示這批不含該明細）</legend>
+                    {order.lines.filter((line) => line.quantity > line.shippedQuantity).map((line) => {
+                      const remaining = line.quantity - line.shippedQuantity;
+                      return (
+                        <label>
+                          <span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`}・{DELIVERY_TYPE_LABELS[line.deliveryType]}・未交運 {remaining}</span>
+                          <input type="number" inputmode="numeric" name={`quantity-${line.id}`} min="0" max={remaining} step="1" value={submitted[`quantity-${line.id}`] ?? String(remaining)} />
+                        </label>
+                      );
+                    })}
+                    {fieldErrors("items").map((m) => <span class="error">{m}</span>)}
+                  </fieldset>
                   <label>
                     物流單號（可留空）
                     <input name="trackingNumber" value={submitted.trackingNumber ?? ""} maxlength="100" placeholder="例如：SF12345678" />
-                    {failure?.fields.trackingNumber?.map((m) => <span class="error">{m}</span>)}
+                    {fieldErrors("trackingNumber").map((m) => <span class="error">{m}</span>)}
                   </label>
-                  <p><small>出貨後狀態將變更為已出貨並扣除實體在庫，無法撤回。</small></p>
-                  <button type="submit" class="button-primary">確認出貨</button>
+                  <fieldset class="admin-ship-appointment">
+                    <legend>大型配送議定時段（台北時間；本批含大型配送商品時必填，否則留空）</legend>
+                    <label>開始<input type="datetime-local" name="appointmentStart" value={submitted.appointmentStart ?? ""} /></label>
+                    <label>結束<input type="datetime-local" name="appointmentEnd" value={submitted.appointmentEnd ?? ""} /></label>
+                    {fieldErrors("appointment").map((m) => <span class="error">{m}</span>)}
+                  </fieldset>
+                  <p><small>分批交運不會追加運費；每批只扣這批的實體在庫，無法撤回。</small></p>
+                  <button type="submit" class="button-primary">確認交運這一批</button>
                 </form>
               </div>
             )
           }
-          {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
+          {!canShip && failure && <p class="error" role="alert">{failure.message}</p>}
         </div>
+        <h2>出貨批次</h2>
+        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
-            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>配送類型</th><th>小計</th></tr>
+            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>配送類型</th><th>小計</th></tr>
           </thead>
           <tbody>
             {order.lines.map((line) => (
@@ -89,6 +116,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                 <td data-label="商品"><div class="order-product"><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName}{line.variantLabel && <small>（{line.variantLabel}）</small>}</span></div></td>
                 <td data-label="單價（下單當時）">NT$ {priceFormat.format(line.unitPriceTwd)}</td>
                 <td data-label="數量">{line.quantity}</td>
+                <td data-label="已交運">{line.shippedQuantity}</td>
                 <td data-label="配送類型">{DELIVERY_TYPE_LABELS[line.deliveryType]}</td>
                 <td data-label="小計">NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
               </tr>

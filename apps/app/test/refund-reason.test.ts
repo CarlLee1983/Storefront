@@ -6,6 +6,7 @@ describe("refundReasonFor：付款成功沒讓訂單轉已付款時的退款原�
     ["expired", "late_success_unreclaimable"],
     ["cancelled", "cancelled_order"],
     ["paid", "duplicate_success"],
+    ["partially_shipped", "duplicate_success"],
     ["shipped", "duplicate_success"],
   ] as const)("訂單 %s → %s", (status, reason) => {
     expect(refundReasonFor(status)).toBe(reason);

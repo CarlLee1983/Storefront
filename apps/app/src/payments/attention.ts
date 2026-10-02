@@ -18,7 +18,7 @@ export function paymentNeedsAttentionSql(): SQL {
     ${payments.status} = 'refund_failed'
     OR (
       ${payments.status} = 'succeeded' AND ${payments.refundReason} IS NULL
-      AND NOT (${orders.status} IN ('paid', 'shipped') AND ${orders.paidByPaymentId} = ${payments.id})
+      AND NOT (${orders.status} IN ('paid', 'partially_shipped', 'shipped') AND ${orders.paidByPaymentId} = ${payments.id})
     )
   )`;
 }

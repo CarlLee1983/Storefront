@@ -4,6 +4,7 @@ import { mintAccessJwt } from "./access";
 import { signInCustomer } from "./customers";
 import { forceOrderStatus, forcePaymentStatus, resetDb, seedPayment } from "./db";
 import { installFakeGateway } from "./fake-gateway";
+import { shipRemaining } from "./shipment-helpers";
 import { orderOf, placeMugOrder, startPaymentFor, stockOf } from "./payment-helpers";
 
 const app = exports.default;
@@ -55,7 +56,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
     expect(await adminPayments(orderId)).toMatchObject([{ status: "succeeded", needsAttention: false }]);
     expect(await listedNeedsAttention(orderId)).toBe(false);
 
-    await app.shipOrder(await mintAccessJwt(), { orderId });
+    await shipRemaining(orderId);
     expect(await adminPayments(orderId)).toMatchObject([{ needsAttention: false }]);
   });
 
@@ -136,7 +137,7 @@ describe("付款成功但未處理：需要處理的旗標（由查詢推導）"
     const gateway = installFakeGateway();
     const first = await startPaymentFor(alice, orderId, gateway);
     await app.applyPaymentResult(gateway.settle(first, "succeeded"));
-    await app.shipOrder(await mintAccessJwt(), { orderId });
+    await shipRemaining(orderId);
     const second = await seedPayment(orderId, "pending", "pay_dup");
     gateway.adopt(second, { amountTwd: totalTwd, merchantReference: String(orderId) });
 

@@ -60,12 +60,11 @@ describe("結帳成功", () => {
         paymentDeadline: now + PAYMENT_WINDOW_MS,
         createdAt: now,
         lines: [
-          { productId: mug.productId, variantId: mug.variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
-          { productId: pen.productId, variantId: pen.variantId, productName: "原子筆", variantLabel: "", quantity: 3, unitPriceTwd: 45, deliveryType: "standard", cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
+          { id: expect.any(Number), productId: mug.productId, variantId: mug.variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", shippedQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
+          { id: expect.any(Number), productId: pen.productId, variantId: pen.variantId, productName: "原子筆", variantLabel: "", quantity: 3, unitPriceTwd: 45, deliveryType: "standard", shippedQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) },
         ],
         payments: [],
-        trackingNumber: null,
-        shippedAt: null,
+        shipments: [],
       },
     });
   });
@@ -98,7 +97,7 @@ describe("訂單明細的單價快照", () => {
 
     expect(await app.getMyOrder(cookie, { orderId: placed.data.orderId })).toMatchObject({
       ok: true,
-      data: { totalTwd: 740, lines: [{ productId: mug.productId, variantId: mug.variantId, unitPriceTwd: 320, quantity: 2 }] },
+      data: { totalTwd: 740, lines: [{ id: expect.any(Number), productId: mug.productId, variantId: mug.variantId, unitPriceTwd: 320, quantity: 2 }] },
     });
   });
 });
@@ -117,7 +116,7 @@ describe("訂單明細的商品名稱快照", () => {
 
     expect(await app.getMyOrder(cookie, { orderId: placed.data.orderId })).toMatchObject({
       ok: true,
-      data: { lines: [{ productId: mug.productId, variantId: mug.variantId, productName: "馬克杯" }] },
+      data: { lines: [{ id: expect.any(Number), productId: mug.productId, variantId: mug.variantId, productName: "馬克杯" }] },
     });
     expect(await app.listMyOrders(cookie)).toMatchObject({ ok: true, data: [{ lines: [{ productName: "馬克杯" }] }] });
   });

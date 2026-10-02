@@ -1,15 +1,16 @@
 import type { PaymentStatus } from "@storefront/app/payments-shared";
 
-/** 訂單狀態（CONTEXT.md 的五種）的顯示名稱；App 回傳的是英文代碼。不認得的原樣顯示。 */
+/** 訂單狀態（CONTEXT.md 的六種）的顯示名稱；App 回傳的是英文代碼。不認得的原樣顯示。 */
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "待付款",
   paid: "已付款",
+  partially_shipped: "部分出貨",
   shipped: "已出貨",
   expired: "已逾期",
   cancelled: "已取消",
 };
 
-/** 五種訂單狀態的代碼（後台篩選用），順序即顯示順序。唯一來源是 App 端的 `ORDER_STATUSES`（apps/app/src/orders/schema.ts），新增狀態要兩邊一起改。 */
+/** 六種訂單狀態的代碼（後台篩選用），順序即顯示順序。唯一來源是 App 端的 `ORDER_STATUSES`（apps/app/src/orders/schema.ts），新增狀態要兩邊一起改。 */
 export const ORDER_STATUS_CODES = Object.keys(STATUS_LABELS);
 
 export function orderStatusLabel(status: string): string {
@@ -23,7 +24,8 @@ export function customerOrderStatusLabel(status: string): string {
 const CUSTOMER_ORDER_NOTES: Record<string, string> = {
   pending_payment: "請在 {付款期限} 前完成付款。",
   paid: "已收到付款，將於付款後 3 個工作天內出貨。",
-  shipped: "商品已出貨；若有物流單號，請查看出貨資訊。",
+  partially_shipped: "部分商品已出貨，其餘商品出貨時會另行通知；各批的明細、物流單號請見下方出貨批次。",
+  shipped: "商品已全數出貨；各批的物流單號請見下方出貨批次。",
   expired: "已超過付款期限，原先保留的商品已釋放。若稍後收到付款，訂單狀態可能更新；請以此頁顯示為準。",
   cancelled: "這張訂單已取消，無法恢復。",
 };
@@ -112,10 +114,15 @@ export function formatDateTime(epochMs: number): string {
   return dateTimeFormat.format(epochMs);
 }
 
-/** 已出貨訂單的出貨資訊一行文字（後台與顧客頁共用）；沒附物流單號顯示「（未附）」。 */
+/** 一個出貨批次的出貨資訊一行文字（後台與顧客頁共用）；沒附物流單號顯示「（未附）」。 */
 export function shipmentSummary(shippedAt: number | null, trackingNumber: string | null): string {
   const time = shippedAt === null ? "" : `出貨時間：${formatDateTime(shippedAt)}；`;
   return `${time}物流單號：${trackingNumber ?? "（未附）"}`;
+}
+
+/** 大型配送議定的時段一行文字（台北時間）。 */
+export function appointmentSummary(appointment: { start: number; end: number }): string {
+  return `議定配送時段：${formatDateTime(appointment.start)} 至 ${formatDateTime(appointment.end)}（台北時間）`;
 }
 
 export function customerShipmentSummary(shippedAt: number | null, trackingNumber: string | null): string {

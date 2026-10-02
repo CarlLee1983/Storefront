@@ -344,8 +344,8 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   await expect(admin).toHaveURL(`${BASE_URL}/admin/orders/${orderId}`);
   await admin.getByLabel("物流單號（可留空）").fill(TRACKING_NUMBER);
-  await admin.getByRole("button", { name: "標為已出貨" }).click();
-  await expect(admin.getByRole("status")).toHaveText("已標為已出貨。");
+  await admin.getByRole("button", { name: "確認交運這一批" }).click();
+  await expect(admin.getByRole("status")).toHaveText("已記錄這一批出貨。");
   await expect(admin.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
 
   // 11. 顧客訂單列表與詳情都顯示目前封面、已出貨狀態及物流單號

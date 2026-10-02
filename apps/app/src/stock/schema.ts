@@ -1,6 +1,7 @@
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { productVariants } from "../catalog/schema";
 import { orders } from "../orders/schema";
+import { shipments } from "../shipments/schema";
 
 /** 庫存流水的來源：管理員調整、交運扣庫、遷移加回（ADR 0006）。後續票（退貨入倉、報廢）再加新來源。 */
 export const STOCK_MOVEMENT_KINDS = ["adjustment", "dispatch", "migration"] as const;
@@ -20,8 +21,10 @@ export const stockMovements = sqliteTable("stock_movements", {
   delta: integer("delta").notNull(),
   /** 這筆變動之後的在庫數，供逐筆核對。 */
   onHandAfter: integer("on_hand_after").notNull(),
-  /** 交運扣庫時對應的訂單；調整為 null；遷移加回記舊已付款訂單。 */
+  /** 交運扣庫時對應的訂單（每批都記）；調整為 null；遷移加回記舊已付款訂單。 */
   orderId: integer("order_id").references(() => orders.id),
+  /** 交運扣庫時對應的出貨批次；其他來源與 #112 之前的舊流水為 null。 */
+  shipmentId: integer("shipment_id").references(() => shipments.id),
   /** 操作人：管理員 email；系統動作（遷移）為 `system:<名稱>`。 */
   actor: text("actor").notNull(),
   /** 原因：調整由管理員填寫，交運與遷移為固定說明。 */
@@ -31,4 +34,5 @@ export const stockMovements = sqliteTable("stock_movements", {
 }, (table) => [
   index("stock_movements_variant_idx").on(table.variantId, table.id),
   index("stock_movements_order_idx").on(table.orderId),
+  index("stock_movements_shipment_idx").on(table.shipmentId),
 ]);

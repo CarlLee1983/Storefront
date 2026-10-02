@@ -47,7 +47,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 交易通知（Migration `0018_transaction_notifications.sql`，沿用上述信箱與投遞紀錄）：下單寄 `order_placed`；付款有結果寄 `payment_succeeded`、`payment_failed`，或付款到得太晚而無法使訂單成立時寄 `payment_unsettled`。信件本體採 outbox：與業務變化寫在同一個 batch（下單的 `placeOrderIfAvailable`、付款的 `applyPaymentEvent`），訂單或付款結果成立，信就一定存在；`mail_messages.event_key`（`order_placed:<訂單>`、`payment:<付款>`，唯一索引）讓冪等重送、webhook 重送與導回查詢重複套用都不產生第二封。首次投遞在交易之外：收件地址是當下已驗證的聯絡 email；投遞階段的任何例外只記 log，不影響下單或付款，缺投遞的信在管理端待處理，並在同一冪等鍵的結帳重送或同一付款事件的重送時自動補上首次投遞。顧客沒有已驗證地址時只有信件沒有投遞，驗證後可重送。
 - 待辦與處理紀錄：`/admin/mail` 把「還沒有任何一次送達、且還能處理」的信標為「待處理」（被取代或過期的驗證信不算），超過最新 200 封的舊待辦仍會列出（最多再列 500 封，更舊的只顯示「另有 N 封」）；管理員重送會在新的投遞上記下處理人（`mail_deliveries.handled_by`，系統首次投遞為空）。
 - 0018 只新增兩個可為空的欄位與一個唯一索引，部署順序同樣先 migration、再 App、再 Web；新 App 的下單與付款 batch 會寫 `event_key`，0018 缺欄位時下單與付款會整批失敗，所以 migration 必須先套用。回復：先停止寫入，再執行 `apps/app/rollback/0018_transaction_notifications.down.sql`（已有交易通知或處理紀錄時守門檢查讓回復失敗，須先確認這些資料可以捨棄）；回復順序是 0018 → 0017 → 0016，且回復前須一併回復會呼叫這些 RPC 的 Web 與 App。測試見 `apps/app/test/order-notifications.test.ts`、`transaction-migration.test.ts`；手機與桌機的操作併在 `e2e/tests/contact-mailbox.spec.ts`（投遞失敗演練是全域狀態，會開關它的情境必須留在同一檔序列執行）。
-- 尚未涵蓋（後續票）：取消審核、出貨與配送異常、退貨審核、退款結果、發票完成等通知。
+- 出貨通知（#112）：每個出貨批次寫一封 `shipment_dispatched`（商品數量、物流單號、議定時段），見下方「分批出貨與大型配送預約」。
+- 尚未涵蓋（後續票）：取消審核、配送異常、退貨審核、退款結果、發票完成等通知。
 
 ## 地址簿
 
@@ -70,23 +71,37 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 ## 庫存保留與庫存流水
 
-依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)：可售 = 在庫數 − 不可售 − 待付款保留 − 已付款待出貨保留（不可售目前恆為 0，由退貨入倉檢查票（#117／#120）加入；`apps/app/src/catalog/stock.ts`），保留由訂單狀態推導（待付款＋已付款訂單的明細數量，沒有另外的保留表）。
+依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)：可售 = 在庫數 − 不可售 − 待付款保留 − 已付款待出貨保留（不可售目前恆為 0，由退貨入倉檢查票（#117／#120）加入；`apps/app/src/catalog/stock.ts`），保留由訂單狀態推導（待付款、已付款與部分出貨訂單中「尚未交運」的明細數量，即明細數量減各批已交運數量，沒有另外的保留表）。
 
 | 事件 | 在庫數 | 保留 | 可售 |
 | --- | --- | --- | --- |
 | 下單 | 不變 | + 待付款保留 | − |
 | 付款成功（含遲到付款重新保留，ADR 0001） | 不變 | 待付款轉已付款，總量不變 | 不變 |
 | 逾期、取消 | 不變 | 釋放 | + |
-| 出貨（整單，`shipOrder`） | − 明細數量 | 消耗已付款保留 | 不變 |
+| 交運一批（`shipOrder`） | − 該批數量 | 消耗該批的已付款保留 | 不變 |
 | 庫存調整 | ± | 不變 | ± |
 
-- 付款 batch（`payments/queries.ts` 的 `applyPaymentEvent`）不再扣庫，原本的第 3 句（扣在庫數）已移除，結果索引由尾端倒數取值所以不受影響；出貨（`orders/queries.ts` 的 `markOrderShipped`）是三句 batch：寫流水、扣在庫、轉已出貨，前兩句與第三句用同一個「訂單此刻仍是已付款」條件，並行或重複出貨只會成功一次。
-- 庫存流水（`stock_movements`，Migration `0020_stock_ledger.sql`）：在庫數的每一次變動，只增不改不刪，記來源（`adjustment` 調整、`dispatch` 交運、`migration` 遷移加回）、增減量、調整後在庫數、訂單、操作人（管理員 email）、原因與有效時間。流水與改動在庫數的那句同一個 batch、同一個條件寫入，被拒絕的調整不留紀錄。保留的變化（下單、付款、逾期、取消）可由訂單推導，不重複寫入流水。後續票（#112 分批出貨、#124 低庫存提醒）讀這張表，新增來源（退貨入倉、報廢）時加新的 `kind`；`kind` 沒有 CHECK，合法值由寫入端限定。
+- 付款 batch（`payments/queries.ts` 的 `applyPaymentEvent`）不再扣庫，原本的第 3 句（扣在庫數）已移除，結果索引由尾端倒數取值所以不受影響；交運（`shipments/dispatch.ts` 的 `dispatchShipment`）每批一個 batch：建立批次、寫批次明細、扣在庫、寫流水、轉訂單狀態、寫出貨通知，細節見下一節。
+- 庫存流水（`stock_movements`，Migration `0020_stock_ledger.sql`）：在庫數的每一次變動，只增不改不刪，記來源（`adjustment` 調整、`dispatch` 交運、`migration` 遷移加回）、增減量、調整後在庫數、訂單、操作人（管理員 email）、原因與有效時間。流水與改動在庫數的那句同一個 batch、同一個條件寫入，被拒絕的調整不留紀錄。保留的變化（下單、付款、逾期、取消）可由訂單推導，不重複寫入流水。後續票（#124 低庫存提醒）讀這張表，新增來源（退貨入倉、報廢）時加新的 `kind`；`kind` 沒有 CHECK，合法值由寫入端限定。
 - 庫存調整現在必填原因（`adjustStock` 的 `reason`，trim 後 1–200 字）；後台商品列表與變體表單都有原因欄位。唯讀 RPC `listStockMovements`（可依變體或訂單篩選，以 `nextBeforeId` 游標翻頁）與後台「庫存流水」頁（`/admin/stock-movements`，訂單明細頁有連結）供核對。
 - 舊資料遷移（Q22 保留式遷移）：舊系統在付款時就扣了在庫數，`0020` 對每張狀態為「已付款」的舊單，逐單逐變體把數量加回在庫數並寫一筆 `migration` 流水；已出貨的不加回；因為已付款本身就是保留，可售量不變。遷移只信訂單狀態、不編造物流證據。套用後執行 `wrangler d1 execute <DB> --file apps/app/scripts/verify-0020-stock.sql`（加 `--local`／`--remote`／`--env`）核對例外，每個查詢回傳的列都需要人工處理，全為空才算通過：已付款卻沒有成功付款紀錄、可售為負、流水與在庫數對不上。
 - 部署順序：**先停止寫入（結帳、付款、出貨、庫存調整）**，再 migration、再 App、再 Web。舊 App 搭配新 migration 會多出可售量（舊 App 不把已付款算進保留，加回的數量變成可售）；新 App 搭配舊資料則會在出貨時再扣一次，所以兩者之間不要放行流量。
 - 回復：先停止寫入並先回復 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0020_stock_ledger.down.sql`。它把目前每張已付款訂單的數量從在庫數扣回（回到付款扣庫語意，涵蓋遷移前的舊單與遷移後才付款的新單），移除流水與遷移紀錄。守門檢查讓回復失敗的情況：流水裡有遷移以外的紀錄（調整與交運紀錄一旦移除就無法稽核），或扣回後在庫數會小於 0；須先確認這些資料可以捨棄或人工處理。回復順序是 0020 → 0019 → …。
 - 測試見 `apps/app/test/stock-ledger.test.ts`（付款不扣庫、交運扣庫與流水、重複與並行出貨、已付款保留擋住調整、原因必填、查詢與權限）、`stock-ledger-migration.test.ts`（遷移、核對腳本、回復與守門檢查），遲到付款與逾期釋放沿用 `payment-late-success.test.ts`、`expiry.test.ts`；Web 的篩選解析在 `apps/web/src/admin/stock-form.test.ts`，手機與桌機的操作（含顧客不能進入）由 `e2e/tests/stock-ledger.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
+
+## 分批出貨與大型配送預約
+
+依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)，管理員按明細數量交運多個**出貨批次**（Migration `0021_shipments.sql`；`apps/app/src/shipments/`）。
+
+- 資料：`shipments`（訂單、冪等鍵 `dispatch_key`、物流單號、議定時段 `appointment_start`／`appointment_end`、交運時間、操作人，只增不改）與 `shipment_items`（批次明細：訂單明細、數量）。批次沒有自己的進度欄位，#113（送達與再次配送）、#116（部分取消）、#118（依各批送達日退貨）以批次為單位延伸；配送類型取自明細快照（`order_lines.delivery_type`），不在批次上重複。`orders.tracking_number`、`shipped_at` 已移除，一律讀批次。庫存流水新增 `shipment_id`（每批交運的流水指向該批；0021 之前的舊流水為空）。
+- 訂單狀態新增「部分出貨」（`partially_shipped`）：至少交運過一批、仍有明細未出完；每筆明細都出完才轉「已出貨」。轉換表見 `orders/transitions.ts`。未交運的數量仍是已付款保留（`catalog/stock.ts`），所以交運只減在庫與保留各一次，可售數量不變；並行的庫存調整不能把可售壓到負數。
+- 交運（`shipOrder`，輸入 `orderId`、`dispatchKey`、`items: [{ orderLineId, quantity }]`、選填 `trackingNumber`、`appointment: { start, end }`）是單一 batch：建立批次的條件是訂單此刻為已付款或部分出貨、同一冪等鍵還沒有批次、且每筆明細「已交運＋本批」不超過明細數量；其後的批次明細、扣在庫、流水、狀態轉換、出貨通知都只在批次存在且還沒扣過庫時執行。並行的兩次交運，先落地者贏，後者回 `shipment_quantity_exceeded`（或訂單已出完時 `order_not_shippable`）；同一冪等鍵重送回原批次（`replayed: true`），不重複扣庫、不寫第二筆流水、不寄第二封信。取消申請（#116）要與交運競爭同一數量，就用同一個條件（明細數量減已交運數量）在自己的 batch 裡落地，以落地順序為準。
+- 大型配送：批次含大型配送明細時必填議定時段（`appointment_required`），只含一般宅配時不可填（`appointment_not_applicable`）；時段只是記錄（UTC epoch 毫秒，網頁表單以台北時間輸入），不做司機容量排程。分批不追加運費，`orders.total_twd` 與兩類運費快照不變。
+- 舊資料：0021 為每張舊的已出貨訂單補一批整單批次（`dispatch_key = 'legacy'`），物流單號與出貨時間照搬舊欄位，舊單沒有的出貨時間、預約留空，不編造；那些訂單在 0020 之前就已扣庫，補建批次不動庫存也不寫流水。orders 為了放寬狀態 CHECK 與移除舊欄位而重建（D1 不能關外鍵，改用備份、砍表、建表、寫回，並還原 AUTOINCREMENT 計數）。
+- 通知：每批在同一個 batch 寫一封 `shipment_dispatched`（`event_key = shipment:<批次編號>`），交運後立即投遞，投遞失敗不影響交運，出現在 `/admin/mail` 待處理，重送同一批時補首次投遞。
+- 畫面：管理員訂單頁「交運一批」表單（每筆未交運明細一個數量欄，預設為全部未交運數量；物流單號；大型配送議定時段）與「出貨批次」清單；顧客訂單頁與我的訂單列出各批的商品數量、物流單號與議定時段。
+- 部署順序：先停止寫入（交運），再 migration、再 App、再 Web；舊 App 不認得 `partially_shipped` 與批次。回復：先停止寫入並先回復 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0021_shipments.down.sql`（會把整單批次搬回舊欄位；有部分出貨的訂單或遷移之後才建立的批次時守門檢查讓回復失敗，須先確認這些資料可以捨棄）。回復順序是 0021 → 0020 → …。
+- 測試見 `apps/app/test/admin-ship.test.ts`（整批與分批交運、超量、冪等重送、並行、預約、通知、可見範圍與權限）、`shipments-migration.test.ts`（補建舊批次、重建 orders、回復與守門檢查）；Web 的表單解析在 `apps/web/src/admin/order-form.test.ts`，手機與桌機的操作由 `e2e/tests/shipments.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
 
 ## 付款
 

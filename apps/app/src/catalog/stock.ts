@@ -1,13 +1,14 @@
 import { sql, type SQL } from "drizzle-orm";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
-import { PAID, PENDING_PAYMENT } from "../orders/schema";
+import { PAID, PARTIALLY_SHIPPED, PENDING_PAYMENT } from "../orders/schema";
 import { fail, ok, type InsufficientStock, type VariantNotFound } from "../shared/result";
+import { dispatchedQuantity } from "../shipments/queries";
 import { productVariants } from "./schema";
 
 /**
- * 保留（Reservation）= 待付款與已付款（待出貨）訂單的訂單明細數量（以變體加總），沒有另外的保留表（ADR 0006）：
- * 訂單成立即保留；付款只把待付款保留轉為已付款保留（兩者都在這裡，所以付款前後保留量不變、不重複扣也不釋放）；
- * 逾期、取消離開這兩個狀態而釋放；交運時訂單轉為已出貨，保留消耗，同一個 batch 扣實體在庫（`stock/ledger.ts`）。
+ * 保留（Reservation）= 待付款、已付款與部分出貨訂單中「尚未交運」的明細數量（明細數量減各批已交運數量，以變體加總），
+ * 沒有另外的保留表（ADR 0006）：訂單成立即保留；付款只把待付款保留轉為已付款保留（兩者都在這裡，所以付款前後保留量不變、
+ * 不重複扣也不釋放）；逾期、取消離開這些狀態而釋放；每批交運時該批數量計入已交運而消耗保留，同一個 batch 扣實體在庫（`shipments/dispatch.ts`）。
  * `variantId` 是外層查詢裡變體編號的 SQL 表達式。
  *
  * 保留只看訂單狀態，不看付款期限：付款期限到 Cron 釋放之間（至多約 1 分鐘）會多保留，
@@ -18,10 +19,10 @@ import { productVariants } from "./schema";
  */
 export function reservedQuantity(variantId: SQL): SQL<number> {
   return sql<number>`(
-    SELECT COALESCE(SUM(reserved_line.quantity), 0)
+    SELECT COALESCE(SUM(reserved_line.quantity - ${dispatchedQuantity(sql`reserved_line.id`)}), 0)
     FROM order_lines reserved_line
     JOIN orders reserved_order ON reserved_order.id = reserved_line.order_id
-    WHERE reserved_line.variant_id = ${variantId} AND reserved_order.status IN (${PENDING_PAYMENT}, ${PAID})
+    WHERE reserved_line.variant_id = ${variantId} AND reserved_order.status IN (${PENDING_PAYMENT}, ${PAID}, ${PARTIALLY_SHIPPED})
   )`;
 }
 

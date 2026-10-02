@@ -1,0 +1,32 @@
+---
+import { DELIVERY_TYPE_LABELS, type DeliveryType } from "@storefront/app/shipping-types";
+import { appointmentSummary, customerShipmentSummary, shipmentSummary } from "./labels";
+interface Props {
+  shipments: Array<{
+    id: number;
+    trackingNumber: string | null;
+    shippedAt: number | null;
+    appointment: { start: number; end: number } | null;
+    items: Array<{ productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }>;
+  }>;
+  /** 顧客頁用較口語的物流單號說明；後台顯示「（未附）」。 */
+  customer?: boolean;
+}
+const { shipments, customer = false } = Astro.props;
+---
+{shipments.length > 0 && <ol class="shipment-list" aria-label="出貨批次">
+  {shipments.map((shipment, index) => <li>
+    <p class="shipment-title"><strong>第 {index + 1} 批</strong></p>
+    <ul class="shipment-items">
+      {shipment.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}（{DELIVERY_TYPE_LABELS[item.deliveryType]}）</li>)}
+    </ul>
+    <p>{customer ? customerShipmentSummary(shipment.shippedAt, shipment.trackingNumber) : shipmentSummary(shipment.shippedAt, shipment.trackingNumber)}</p>
+    {shipment.appointment && <p>{appointmentSummary(shipment.appointment)}</p>}
+  </li>)}
+</ol>}
+<style>
+  .shipment-list { list-style: none; padding: 0; margin-block: var(--space-4); display: grid; gap: var(--space-3); }
+  .shipment-list > li { padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-xs); overflow-wrap: anywhere; }
+  .shipment-list p { margin: var(--space-1) 0; }
+  .shipment-items { padding-left: var(--space-5); margin: var(--space-1) 0; }
+</style>

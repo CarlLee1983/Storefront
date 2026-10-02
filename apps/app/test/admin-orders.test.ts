@@ -46,7 +46,7 @@ describe("管理員訂單清單", () => {
     if (!result.ok) return;
     expect(result.data.map(order => order.id)).toEqual(ids.slice(1).reverse());
     for (const order of result.data) {
-      expect(order.lines).toEqual([{ productId, variantId, productName: "大量訂單商品", variantLabel: "", quantity: 1, unitPriceTwd: 100, deliveryType: "standard",
+      expect(order.lines).toEqual([{ id: expect.any(Number), productId, variantId, productName: "大量訂單商品", variantLabel: "", quantity: 1, unitPriceTwd: 100, deliveryType: "standard", shippedQuantity: 0,
         cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }]);
     }
   }, 30_000);
@@ -72,7 +72,7 @@ describe("管理員訂單清單", () => {
 describe("管理員訂單明細", () => {
   beforeEach(resetDb);
 
-  it("含訂單明細快照、收件資訊、顧客 email、所有付款嘗試，尚未出貨時物流單號與出貨時間為 null", async () => {
+  it("含訂單明細快照、收件資訊、顧客 email、所有付款嘗試，尚未出貨時沒有出貨批次", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, productId, variantId } = await placeMugOrder(alice, { quantity: 2 });
     await seedPayment(orderId, "failed", "seed_failed");
@@ -91,14 +91,13 @@ describe("管理員訂單明細", () => {
         shippingInfo: SHIPPING_INFO,
         paymentDeadline: expect.any(Number),
         createdAt: expect.any(Number),
-        lines: [{ productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
+        lines: [{ id: expect.any(Number), productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", shippedQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
         payments: [
           { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, refundReason: null, refundAt: null, needsAttention: false },
           // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄
           { id: expect.any(Number), amountTwd: 1, status: "succeeded", createdAt: 0, refundReason: null, refundAt: null, needsAttention: true },
         ],
-        trackingNumber: null,
-        shippedAt: null,
+        shipments: [],
       },
     });
   });

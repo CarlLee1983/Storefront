@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { categoryId } from "../categories/input";
-import { orderIdInput } from "../orders/input";
+import { MAX_LINE_QUANTITY, MAX_ORDER_LINES, orderIdInput } from "../orders/input";
 import { ORDER_STATUSES } from "../orders/schema";
 import { wholeNumber } from "../shared/input";
 import { DELIVERY_TYPES } from "../shipping/types";
@@ -133,7 +133,37 @@ const trackingNumber = z
   .optional()
   .transform((value) => value ?? null);
 
-export const shipOrderInput = z.object({ orderId: orderIdInput.shape.orderId, trackingNumber });
+const MAX_DISPATCH_KEY_LENGTH = 64;
+
+/** 一次提交的冪等鍵：管理員表單渲染時產生一個，重送同一次提交帶同一個，不會重複建立批次。 */
+const dispatchKey = z
+  .string({ error: "提交識別碼必須是文字" })
+  .regex(/^[A-Za-z0-9_-]+$/, "提交識別碼只能包含英數字、底線與連字號")
+  .max(MAX_DISPATCH_KEY_LENGTH, `提交識別碼不可超過 ${MAX_DISPATCH_KEY_LENGTH} 個字`);
+
+/** 本批交運的一筆明細：數量不可超過明細的未交運數量，由寫入端的條件保證。 */
+const dispatchItem = z.object({
+  orderLineId: wholeNumber("訂單明細編號").positive("訂單明細編號無效"),
+  quantity: wholeNumber("數量").min(1, "數量必須是 1 以上的整數").max(MAX_LINE_QUANTITY, `數量不可超過 ${MAX_LINE_QUANTITY}`),
+});
+
+const dispatchItems = z
+  .array(dispatchItem, { error: "交運明細必須是清單" })
+  .min(1, "至少要交運一筆明細")
+  .max(MAX_ORDER_LINES, `交運明細不可超過 ${MAX_ORDER_LINES} 筆`)
+  .refine((items) => new Set(items.map((item) => item.orderLineId)).size === items.length, "同一筆訂單明細不可重複出現");
+
+/** 大型配送議定的時段（UTC epoch 毫秒，起訖成對且訖在起之後）；只含一般宅配的批次不帶。 */
+const appointment = z
+  .object({
+    start: wholeNumber("預約開始時間").positive("預約開始時間無效"),
+    end: wholeNumber("預約結束時間").positive("預約結束時間無效"),
+  })
+  .refine(({ start, end }) => end > start, { message: "預約結束時間必須晚於開始時間", path: ["end"] })
+  .nullish()
+  .transform((value) => value ?? null);
+
+export const shipOrderInput = z.object({ orderId: orderIdInput.shape.orderId, dispatchKey, items: dispatchItems, trackingNumber, appointment });
 
 export const listOrdersInput = z.object({ status: z.enum(ORDER_STATUSES, { error: "訂單狀態無效" }).optional() });
 

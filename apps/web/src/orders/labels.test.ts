@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
+import { appointmentSummary, formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
 import { customerOrderStatusLabel, customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary } from "./labels";
 
 describe("顧客訂單與付款文案", () => {
@@ -39,6 +39,7 @@ describe("orderStatusLabel", () => {
   it.each([
     ["pending_payment", "待付款"],
     ["paid", "已付款"],
+    ["partially_shipped", "部分出貨"],
     ["shipped", "已出貨"],
     ["expired", "已逾期"],
     ["cancelled", "已取消"],
@@ -99,6 +100,15 @@ describe("parseOrderId", () => {
 
   it.each([[undefined], [""], ["0"], ["-1"], ["1.5"], ["abc"], ["01"]])("%s 不是訂單編號", (value) => {
     expect(parseOrderId(value)).toBeNull();
+  });
+});
+
+describe("appointmentSummary", () => {
+  it("顯示議定時段起訖（台北時間）", () => {
+    const start = Date.UTC(2026, 9, 10, 1, 0);
+    const end = Date.UTC(2026, 9, 10, 4, 0);
+
+    expect(appointmentSummary({ start, end })).toBe(`議定配送時段：${formatDateTime(start)} 至 ${formatDateTime(end)}（台北時間）`);
   });
 });
 

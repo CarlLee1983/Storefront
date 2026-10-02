@@ -57,8 +57,8 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       admin.on("dialog", (dialog) => void dialog.accept());
       await admin.goto(`/admin/orders/${orderId}`);
-      await admin.getByRole("button", { name: "確認出貨" }).click();
-      await expect(admin.getByText("已標為已出貨。")).toBeVisible();
+      await admin.getByRole("button", { name: "確認交運這一批" }).click();
+      await expect(admin.getByRole("status")).toHaveText("已記錄這一批出貨。");
 
       await admin.goto(`/admin/stock-movements?orderId=${orderId}`);
       const dispatchRow = admin.getByRole("row").filter({ hasText: "交運扣庫" });

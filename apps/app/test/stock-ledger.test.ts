@@ -6,6 +6,7 @@ import { signInCustomer } from "./customers";
 import { forceOrderStatus, resetDb } from "./db";
 import { installFakeGateway } from "./fake-gateway";
 import { orderOf, placeMugOrder, startPaymentFor, stockOf } from "./payment-helpers";
+import { adminOrder, shipRemaining } from "./shipment-helpers";
 
 const app = exports.default;
 
@@ -38,7 +39,7 @@ describe("付款保留、交運才扣庫（ADR 0006）", () => {
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     await forceOrderStatus(orderId, "paid");
 
-    const shipped = await app.shipOrder(await mintAccessJwt(), { orderId });
+    const shipped = await shipRemaining(orderId);
 
     expect(shipped).toMatchObject({ ok: true });
     expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
@@ -50,12 +51,11 @@ describe("付款保留、交運才扣庫（ADR 0006）", () => {
   it("重複出貨與不是已付款的訂單都不再扣庫、不寫流水", async () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
-    const jwt = await mintAccessJwt();
-    expect(await app.shipOrder(jwt, { orderId })).toEqual({ ok: false, reason: "order_not_shippable" });
+    expect(await shipRemaining(orderId, { items: [{ orderLineId: (await adminOrder(orderId)).lines[0]!.id, quantity: 1 }] })).toEqual({ ok: false, reason: "order_not_shippable" });
     await forceOrderStatus(orderId, "paid");
-    await app.shipOrder(jwt, { orderId });
+    await shipRemaining(orderId);
 
-    expect(await app.shipOrder(jwt, { orderId })).toEqual({ ok: false, reason: "order_not_shippable" });
+    expect(await shipRemaining(orderId, { items: [{ orderLineId: (await adminOrder(orderId)).lines[0]!.id, quantity: 1 }] })).toEqual({ ok: false, reason: "order_not_shippable" });
 
     expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
     expect((await movements({ variantId })).items.filter((item) => item.kind === "dispatch")).toHaveLength(1);
@@ -65,9 +65,7 @@ describe("付款保留、交運才扣庫（ADR 0006）", () => {
     const alice = await signInCustomer("alice");
     const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     await forceOrderStatus(orderId, "paid");
-    const jwt = await mintAccessJwt();
-
-    const results = await Promise.all([app.shipOrder(jwt, { orderId }), app.shipOrder(jwt, { orderId }), app.shipOrder(jwt, { orderId })]);
+    const results = await Promise.all([shipRemaining(orderId), shipRemaining(orderId), shipRemaining(orderId)]);
 
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(await stockOf(variantId)).toEqual({ onHand: 8, available: 8 });
@@ -98,7 +96,7 @@ describe("付款保留、交運才扣庫（ADR 0006）", () => {
     await forceOrderStatus(order.data.orderId, "paid");
     await forceOrderStatus(orderId, "cancelled");
 
-    await app.shipOrder(await mintAccessJwt(), { orderId: order.data.orderId });
+    await shipRemaining(order.data.orderId);
 
     expect(await stockOf(mug)).toEqual({ onHand: 4, available: 4 });
     expect(await stockOf(plate)).toEqual({ onHand: 2, available: 2 });

@@ -31,6 +31,7 @@ const MAIL_KIND_LABELS: Record<string, string> = {
   payment_succeeded: "付款成功通知",
   payment_failed: "付款失敗通知",
   payment_unsettled: "付款未能生效通知",
+  shipment_dispatched: "出貨通知",
 };
 
 /** 信件種類的顯示名稱；不認得的種類不顯示原始代碼。 */

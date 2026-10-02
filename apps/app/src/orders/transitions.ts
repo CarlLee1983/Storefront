@@ -3,13 +3,15 @@ import type { OrderStatus } from "./schema";
 
 /**
  * 訂單狀態轉換的唯一來源（CONTEXT.md 與 ADR 0001）：鍵是來源狀態，值是能轉去的狀態。
- * 已逾期還能轉為已付款（遲到的付款成功）；已取消與已出貨是終點。
+ * 已逾期還能轉為已付款（遲到的付款成功）；已付款交運第一批轉為部分出貨或（一次出完）已出貨，部分出貨每多一批仍是部分出貨，
+ * 最後一批出完轉為已出貨；已取消與已出貨是終點。
  * 所有改訂單狀態的 UPDATE 都必須用 `canTransitionTo` 產生來源條件，不各自手寫狀態判斷。
  */
 export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   pending_payment: ["paid", "expired", "cancelled"],
   expired: ["paid"],
-  paid: ["shipped"],
+  paid: ["partially_shipped", "shipped"],
+  partially_shipped: ["partially_shipped", "shipped"],
   shipped: [],
   cancelled: [],
 };

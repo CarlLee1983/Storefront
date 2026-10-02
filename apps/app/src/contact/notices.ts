@@ -53,3 +53,26 @@ export function insertPaymentResultNotice(gatewayPaymentId: string): SQL {
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
+
+/**
+ * 出貨通知：一個出貨批次一封，事件鍵 `shipment:<批次編號>`，同一批的重送（同一冪等鍵）只會有一封。
+ * 信件描述這一批的商品數量、物流單號與議定時段（台灣時間）；批次不存在（被擋下）時不寫。
+ */
+export function insertShipmentNotice(orderId: number, dispatchKey: string): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'shipment_dispatched', '訂單 #' || orders.id || ' 有一批商品已出貨',
+      '訂單 #' || orders.id || ' 有一批商品已交運：' ||
+      (SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || item.quantity, '、')
+         FROM shipment_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.shipment_id = shipments.id) || '。' ||
+      CASE WHEN shipments.tracking_number IS NOT NULL THEN '物流單號：' || shipments.tracking_number || '。' ELSE '' END ||
+      CASE WHEN shipments.appointment_start IS NOT NULL
+        THEN '議定配送時段：' || strftime('%Y-%m-%d %H:%M', shipments.appointment_start / 1000, 'unixepoch', '+8 hours') || ' 至 ' || strftime('%Y-%m-%d %H:%M', shipments.appointment_end / 1000, 'unixepoch', '+8 hours') || '（台灣時間）。'
+        ELSE '' END ||
+      '各批出貨進度請至訂單頁查看。',
+      'shipment:' || shipments.id, ${effectiveNow}
+    FROM shipments JOIN orders ON orders.id = shipments.order_id
+    WHERE shipments.order_id = ${orderId} AND shipments.dispatch_key = ${dispatchKey}
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
