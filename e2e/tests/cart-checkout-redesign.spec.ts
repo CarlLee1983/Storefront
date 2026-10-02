@@ -46,7 +46,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.context().addCookies([memberSessionCookie()]);
   await page.goto("/products");
   const product = page.getByRole("listitem").filter({ hasText: name });
-  const source = await product.getByRole("img").getAttribute("src");
+  const source = await product.getByAltText(name, { exact: true }).getAttribute("src");
   await product.getByRole("button", { name: "加入購物車" }).click();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await page.goto("/cart");
@@ -69,7 +69,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   }
   await page.route("**/images/**", route => route.fulfill({ status: 404 }));
   await page.reload();
-  await expect(row.getByText("暫無圖片")).toBeVisible();
+  await expect(row.getByText("暫無商品圖片")).toBeVisible();
   await expect(row.getByRole("img")).toHaveCount(0);
   await page.getByRole("link", { name: "前往結帳" }).click();
   await expect(page.getByRole("heading", { name: "訂單摘要" })).toBeVisible();
@@ -87,8 +87,8 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.getByLabel("收件人電話").fill("0912345678");
   await page.getByLabel("收件地址").fill("台北市中正區測試地址");
   await page.getByRole("button", { name: "送出訂單" }).click();
-  await expect(page.locator("#shipping-errors")).toBeVisible();
-  await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-describedby", "shipping-errors");
+  await expect(page.locator("#name-error")).toContainText("請填寫收件人姓名。");
+  await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-describedby", "name-error");
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-invalid", "true");
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.getByLabel("收件人姓名").fill("購物車測試");
@@ -99,13 +99,13 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await page.waitForLoadState("load");
   await expect(page.locator("#cart-count")).toHaveText("0");
   await page.goto("/cart");
-  await expect(page.getByText("購物車是空的。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "去逛逛商品" })).toBeVisible();
+  await expect(page.getByText("購物車目前是空的。")).toBeVisible();
+  await expect(page.locator("#cart-empty").getByRole("link", { name: "全部商品" })).toBeVisible();
   await page.goto("/products");
   await product.getByRole("button", { name: "加入購物車" }).click();
   await expect(page.locator("#cart-count")).toHaveText("1");
   await page.goto("/cart");
   await row.getByRole("button", { name: "移除" }).click();
-  await expect(page.getByText("購物車是空的。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "去逛逛商品" })).toBeFocused();
+  await expect(page.getByText("購物車目前是空的。")).toBeVisible();
+  await expect(page.locator("#cart-empty").getByRole("link", { name: "全部商品" })).toBeFocused();
 });

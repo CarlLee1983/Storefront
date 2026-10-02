@@ -1,9 +1,9 @@
 import { isValidQuantity, type Cart } from "./cart";
 
-export const INVALID_QUANTITY_MESSAGE = "數量必須是 1 以上的整數。";
+export const INVALID_QUANTITY_MESSAGE = "請輸入 1 以上的整數。";
 
 /** 購物車的變更沒能寫進瀏覽器（容量滿、被禁用）；加入與改數量共用。 */
-export const SAVE_FAILED_MESSAGE = "無法儲存購物車，這次的變更未保存，請檢查瀏覽器的儲存設定。";
+export const SAVE_FAILED_MESSAGE = "購物車的變更未能儲存，請檢查瀏覽器的儲存設定後再試。";
 
 /**
  * 「加入購物車」後給顧客看的提示。數量無效時直接回錯誤，不執行 `add`（不碰購物車）；
@@ -18,5 +18,5 @@ export function addFeedback(
   const { cart, saved } = add();
   if (!saved) return SAVE_FAILED_MESSAGE;
   const line = cart.lines.find((l) => l.productId === productId);
-  return line ? `已加入購物車（目前 ${line.quantity} 件）` : "商品資料有誤，無法加入購物車。";
+  return line ? `已加入購物車，目前 ${line.quantity} 件。` : "目前無法加入這件商品，請重新整理後再試。";
 }

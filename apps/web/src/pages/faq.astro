@@ -4,5 +4,20 @@ export const prerender = false;
 ---
 
 <Layout title="常見問題">
-  <h2>如何購買商品？</h2><p>使用 LINE 或 Google 登入後，將商品加入購物車，填寫收件資訊並送出訂單，再於付款期限內完成付款。</p><h2>在哪裡查看訂單？</h2><p>登入後前往「我的訂單」，即可查看付款與出貨狀態。</p><h2>購物車會保存在哪裡？</h2><p>購物車只保存在目前使用的瀏覽器，換裝置時不會同步。</p>
+  <div class="content">
+    <section><h2>需要登入才能挑商品嗎？</h2><p>不需要。你可以先瀏覽商品、加入購物車；結帳前須用 LINE 或 Google 登入。兩種登入方式各自獨立，訂單請用下單時的登入方式查看。購物車只保存在目前的瀏覽器，換裝置不會同步。</p></section>
+    <section><h2>可以怎麼付款？</h2><p>使用信用卡付款。訂單成立後，請在訂單頁顯示的付款期限內完成付款；超過期限，訂單可能轉為已逾期。付款結果可在「我的訂單」查看。</p></section>
+    <section><h2>何時出貨？配送到哪裡？</h2><p>付款後 3 個工作天內出貨，宅配範圍為台灣本島。全館免運，售價已含稅。</p></section>
+    <section><h2>大型家具如何配送？</h2><p>物流會先電話聯絡，約定配送時間；目前不提供組裝與安裝。</p></section>
+    <section><h2>發票如何取得？</h2><p>電子發票會寄到你登入時使用的 email。</p></section>
+    <section><h2>可以退換貨嗎？</h2><p>到貨隔日起有 7 天猶豫期。商品須保持完整並保留原包裝；請先寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>，並提供訂單編號，我們會安排到府收回並負擔運費。詳細方式請見<a href="/returns">退換貨說明</a>。</p></section>
+    <section><h2>如何聯絡靜物？</h2><p>請寄信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。來信請附上訂單編號，方便我們查詢。</p></section>
+  </div>
 </Layout>
+
+<style>
+  .content { max-width: 44rem; line-height: 1.8; }
+  .content section + section { margin-top: var(--space-8); }
+  .content h2 { margin-bottom: var(--space-2); }
+  .content p { margin-top: 0; }
+</style>

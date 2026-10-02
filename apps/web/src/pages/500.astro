@@ -4,6 +4,7 @@ export const prerender = false;
 Astro.response.status = 500;
 ---
 
-<Layout title="暫時無法顯示頁面">
-  <p>伺服器暫時發生問題，請稍後再試。</p><p><a href="/">回首頁</a></p>
+<Layout title="頁面暫時無法顯示" headTitle="暫時無法顯示頁面｜靜物">
+  <p>目前無法載入這個頁面，請稍後重新整理。如果仍無法開啟，可以先瀏覽全部商品。</p>
+  <p><a href="/products">全部商品</a></p>
 </Layout>

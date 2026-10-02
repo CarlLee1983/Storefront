@@ -46,7 +46,7 @@
     {
       "key": "luma-lounge-chair",
       "name": "Luma 弧形單椅",
-      "description": "Luma 弧形單椅。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "胡桃木色的弧形椅身圍出獨立座位，黑色坐墊與斜腳收起厚重感。適合放在客廳一角，搭配邊几與閱讀燈。\n\n尺寸：寬 68 × 深 72 × 高 76 公分\n材質：胡桃木、皮革",
       "category": "living",
       "priceTwd": 21800,
       "onHand": 6,
@@ -69,7 +69,7 @@
     {
       "key": "fold-sofa",
       "name": "Fold 三人座沙發",
-      "description": "Fold 三人座沙發。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "淺灰布面與低背線條，讓三人座沙發在客廳裡保持俐落。細黑腳架把座面輕輕抬起，適合搭配矮茶几。\n\n尺寸：寬 198 × 深 82 × 高 75 公分\n材質：布料、金屬",
       "category": "living",
       "priceTwd": 48800,
       "onHand": 3,
@@ -88,7 +88,7 @@
     {
       "key": "slab-coffee-table",
       "name": "Slab 茶几",
-      "description": "Slab 茶几。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "長方形桌面以厚實線條呈現，低矮比例適合擺在沙發前。淺色木紋讓書本、杯子與日常小物有安放的位置。\n\n尺寸：寬 110 × 深 60 × 高 38 公分\n材質：橡木",
       "category": "living",
       "priceTwd": 9800,
       "compareAtPriceTwd": 12800,
@@ -104,7 +104,7 @@
     {
       "key": "halo-mirror",
       "name": "Halo 圓鏡",
-      "description": "Halo 圓鏡。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "一圈細黑框勾勒出圓鏡輪廓，靠牆擺放就能讓客廳多一處映照光線的角落。\n\n尺寸：直徑 80 × 厚 3 公分\n材質：玻璃、金屬",
       "category": "living",
       "priceTwd": 5800,
       "compareAtPriceTwd": 7200,
@@ -120,7 +120,7 @@
     {
       "key": "twin-cabinet",
       "name": "Twin 收納櫃",
-      "description": "Twin 收納櫃。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "雙門櫃體用胡桃木色與細長黑色把手組合出安靜的正面。低矮比例適合擺放書本與常用器物。\n\n尺寸：寬 120 × 深 42 × 高 68 公分\n材質：胡桃木、金屬",
       "category": "living",
       "priceTwd": 18800,
       "onHand": 2,
@@ -139,7 +139,7 @@
     {
       "key": "stone-vase",
       "name": "Stone 陶土花器",
-      "description": "Stone 陶土花器。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "米白陶土表面保留細微顆粒感，略鼓的瓶身讓單枝植物也有舒展的空間。放在桌面或層架，都能為角落添一點自然的形狀。\n\n尺寸：直徑 18 × 高 26 公分\n材質：陶土",
       "category": "living",
       "priceTwd": 1680,
       "compareAtPriceTwd": 2280,
@@ -159,7 +159,7 @@
     {
       "key": "ash-bowl",
       "name": "Ash 木質淺缽",
-      "description": "Ash 木質淺缽。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "淺缽的弧線讓木紋自然展開。放在玄關或茶几上，可以集中收放每天隨手拿起的小物。\n\n尺寸：直徑 24 × 高 6 公分\n材質：白蠟木",
       "category": "living",
       "priceTwd": 980,
       "onHand": 0,
@@ -174,7 +174,7 @@
     {
       "key": "peg-stool",
       "name": "Peg 圓凳",
-      "description": "Peg 圓凳。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "圓形座面與三支木腳構成簡單的輪廓。需要多一個座位時，能在客廳或餐桌邊輕鬆安排。\n\n尺寸：直徑 36 × 高 45 公分\n材質：橡木",
       "category": "living",
       "priceTwd": 3280,
       "onHand": 18,
@@ -189,7 +189,7 @@
     {
       "key": "nora-dining-table",
       "name": "Nora 圓形餐桌",
-      "description": "Nora 圓形餐桌。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "圓形橡木桌面讓座位自然圍在一起，三支錐形桌腳留出舒展的下方空間。適合把每一餐都當成坐下來的片刻。\n\n尺寸：直徑 110 × 高 74 公分\n材質：橡木",
       "category": "dining",
       "priceTwd": 26800,
       "onHand": 2,
@@ -212,7 +212,7 @@
     {
       "key": "kei-dining-chair",
       "name": "Kei 曲木餐椅",
-      "description": "Kei 曲木餐椅。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "胡桃木色的弧形椅背與編織座面彼此呼應，讓餐桌旁多一點輕巧的線條。\n\n尺寸：寬 50 × 深 52 × 高 78 公分\n材質：胡桃木、紙繩",
       "category": "dining",
       "priceTwd": 6800,
       "onHand": 12,
@@ -231,7 +231,7 @@
     {
       "key": "bench-oak",
       "name": "Oak 長凳",
-      "description": "Oak 長凳。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "直線構成的橡木長凳，放在餐桌一側，也能移到玄關作為臨時座位。淺色木紋讓整體保持簡潔。\n\n尺寸：寬 120 × 深 35 × 高 45 公分\n材質：橡木",
       "category": "dining",
       "priceTwd": 8600,
       "compareAtPriceTwd": 10800,
@@ -247,7 +247,7 @@
     {
       "key": "dome-pendant",
       "name": "Dome 吊燈",
-      "description": "Dome 吊燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "黑色半球燈罩把視線帶向桌面，細線條讓燈具在餐廳裡不顯擁擠。\n\n尺寸：燈罩直徑 38 × 高 20 公分\n材質：鋁、金屬",
       "category": "dining",
       "priceTwd": 5600,
       "onHand": 9,
@@ -262,7 +262,7 @@
     {
       "key": "rin-bowl-set",
       "name": "Rin 陶碗組",
-      "description": "Rin 陶碗組。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "三只米白陶碗大小相近，疊放時呈現自然的邊緣起伏。無論擺在餐桌或開放層架，都帶來柔和的色調。\n\n尺寸：每只直徑 14 × 高 6 公分；一組 3 只\n材質：陶",
       "category": "dining",
       "priceTwd": 1480,
       "onHand": 25,
@@ -281,7 +281,7 @@
     {
       "key": "clear-carafe",
       "name": "Clear 玻璃水瓶",
-      "description": "Clear 玻璃水瓶。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "透明瓶身和倒扣杯子形成一組乾淨的線條，放在餐桌上讓水與光成為畫面的一部分。\n\n尺寸：瓶身直徑 9 × 高 25 公分；杯高 8 公分\n材質：玻璃",
       "category": "dining",
       "priceTwd": 880,
       "compareAtPriceTwd": 1180,
@@ -297,7 +297,7 @@
     {
       "key": "linen-runner",
       "name": "Linen 亞麻桌巾",
-      "description": "Linen 亞麻桌巾。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "淺灰色亞麻織紋為餐桌加上一層柔和質地。長條比例可沿桌面中央鋪放，搭配陶器與木質餐具。\n\n尺寸：長 180 × 寬 35 公分\n材質：亞麻",
       "category": "dining",
       "priceTwd": 1280,
       "onHand": 20,
@@ -312,7 +312,7 @@
     {
       "key": "serve-tray",
       "name": "Serve 木托盤",
-      "description": "Serve 木托盤。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "胡桃木色托盤以長方形輪廓收納杯具與小碟，兩端挖空把手融入整體造型。\n\n尺寸：長 42 × 寬 28 × 高 4 公分\n材質：胡桃木",
       "category": "dining",
       "priceTwd": 1580,
       "onHand": 14,
@@ -327,7 +327,7 @@
     {
       "key": "low-bed-frame",
       "name": "Low 床架",
-      "description": "Low 床架。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "低矮床架與簡潔床頭板，讓臥室留下更多留白。淺色橡木輪廓適合搭配素色寢具。\n\n尺寸：寬 165 × 長 205 × 高 80 公分\n材質：橡木",
       "category": "bedroom",
       "priceTwd": 32800,
       "onHand": 2,
@@ -350,7 +350,7 @@
     {
       "key": "nest-nightstand",
       "name": "Nest 床邊几",
-      "description": "Nest 床邊几。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "小巧的床邊几保留一只抽屜，讓睡前讀物與零碎物件各有位置。淺色木紋與低矮床架容易相配。\n\n尺寸：寬 42 × 深 38 × 高 48 公分\n材質：橡木",
       "category": "bedroom",
       "priceTwd": 5200,
       "onHand": 8,
@@ -365,7 +365,7 @@
     {
       "key": "calm-bedding",
       "name": "Calm 亞麻寢具組",
-      "description": "Calm 亞麻寢具組。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "淺灰亞麻被套與枕套堆疊出柔和的布料層次。為臥室保留安靜的色彩，也方便與不同床邊物件搭配。\n\n尺寸：被套 210 × 210 公分；枕套 45 × 75 公分，一組 2 件\n材質：亞麻",
       "category": "bedroom",
       "priceTwd": 4980,
       "compareAtPriceTwd": 5980,
@@ -385,7 +385,7 @@
     {
       "key": "mini-lamp",
       "name": "Mini 床頭燈",
-      "description": "Mini 床頭燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "圓潤的白色陶瓷燈身與小燈罩，適合放在床邊几上，為夜晚留一處簡單的光。\n\n尺寸：直徑 22 × 高 32 公分\n材質：陶瓷、金屬",
       "category": "bedroom",
       "priceTwd": 2480,
       "onHand": 16,
@@ -400,7 +400,7 @@
     {
       "key": "wool-throw",
       "name": "Wool 羊毛毯",
-      "description": "Wool 羊毛毯。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "米白色粗織紋理與邊緣流蘇，替床尾或單椅加上一層柔軟的視覺。\n\n尺寸：長 180 × 寬 130 公分\n材質：羊毛",
       "category": "bedroom",
       "priceTwd": 3600,
       "onHand": 0,
@@ -415,7 +415,7 @@
     {
       "key": "hang-rack",
       "name": "Hang 掛衣架",
-      "description": "Hang 掛衣架。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "黑色細鋼管構成立式輪廓，讓常穿的外套與襯衫有一處掛放的位置。\n\n尺寸：寬 90 × 深 42 × 高 160 公分\n材質：鋼",
       "category": "bedroom",
       "priceTwd": 4200,
       "compareAtPriceTwd": 5200,
@@ -431,7 +431,7 @@
     {
       "key": "mirror-oval",
       "name": "Oval 立鏡",
-      "description": "Oval 立鏡。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "胡桃木色的橢圓外框帶出柔和曲線。立在臥室角落，讓穿衣前的整理變得方便。\n\n尺寸：寬 55 × 高 160 × 厚 4 公分\n材質：玻璃、胡桃木",
       "category": "bedroom",
       "priceTwd": 6900,
       "onHand": 3,
@@ -446,7 +446,7 @@
     {
       "key": "cube-ottoman",
       "name": "Cube 腳凳",
-      "description": "Cube 腳凳。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "方形布面腳凳以柔和的淺灰色接住臥室的留白。可搭配床邊或單椅，作為腳邊的小座位。\n\n尺寸：寬 45 × 深 45 × 高 40 公分\n材質：布料、木材",
       "category": "bedroom",
       "priceTwd": 3980,
       "onHand": 7,
@@ -461,7 +461,7 @@
     {
       "key": "astra-desk-lamp",
       "name": "Astra 半球檯燈",
-      "description": "Astra 半球檯燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "黑色半球燈罩與圓形底座相互呼應，放在書桌一側，讓工作區多一道清楚的輪廓。\n\n尺寸：燈罩直徑 18 × 高 42 公分\n材質：金屬、鑄鐵",
       "category": "workspace",
       "priceTwd": 3980,
       "compareAtPriceTwd": 4980,
@@ -485,7 +485,7 @@
     {
       "key": "frame-desk",
       "name": "Frame 書桌",
-      "description": "Frame 書桌。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "淺色木桌面搭配細黑鋼框，讓工作桌保持開闊。桌面可擺放電腦、燈與日常筆記。\n\n尺寸：寬 120 × 深 60 × 高 74 公分\n材質：橡木、鋼",
       "category": "workspace",
       "priceTwd": 16800,
       "onHand": 4,
@@ -504,7 +504,7 @@
     {
       "key": "task-chair",
       "name": "Task 木椅",
-      "description": "Task 木椅。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "微弧椅背和淺色木紋，使這張工作椅有簡潔的側面線條。放在書桌旁，也適合移到家裡其他角落。\n\n尺寸：寬 48 × 深 50 × 高 78 公分\n材質：橡木",
       "category": "workspace",
       "priceTwd": 7800,
       "onHand": 6,
@@ -519,7 +519,7 @@
     {
       "key": "open-shelf",
       "name": "Open 開放層架",
-      "description": "Open 開放層架。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "黑色框架與橡木色層板組成四層開放空間。書本、盒子與器物都能依使用習慣分層擺放。\n\n尺寸：寬 80 × 深 32 × 高 150 公分\n材質：鋼、橡木",
       "category": "workspace",
       "priceTwd": 12800,
       "compareAtPriceTwd": 15800,
@@ -535,7 +535,7 @@
     {
       "key": "arc-floor-lamp",
       "name": "Arc 落地燈",
-      "description": "Arc 落地燈。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "弧形燈桿從角落伸向座位，朱紅色燈罩為工作區添一個明確的色點。\n\n尺寸：寬 90 × 深 35 × 高 165 公分\n材質：金屬",
       "category": "workspace",
       "priceTwd": 8900,
       "compareAtPriceTwd": 10800,
@@ -551,7 +551,7 @@
     {
       "key": "file-box",
       "name": "File 收納盒",
-      "description": "File 收納盒。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "兩只淺灰收納盒可疊放，金屬標籤框讓分類一眼可見。適合整理桌面旁的紙張與小物。\n\n尺寸：每只寬 32 × 深 24 × 高 12 公分；一組 2 只\n材質：硬紙板、金屬",
       "category": "workspace",
       "priceTwd": 1280,
       "onHand": 22,
@@ -566,7 +566,7 @@
     {
       "key": "pen-tray",
       "name": "Pen 筆盤",
-      "description": "Pen 筆盤。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "細長的胡桃木色筆盤加上一點黃銅色澤，讓筆與桌面上的小物有固定的位置。\n\n尺寸：長 26 × 寬 8 × 高 2 公分\n材質：胡桃木、黃銅",
       "category": "workspace",
       "priceTwd": 680,
       "onHand": 40,
@@ -581,7 +581,7 @@
     {
       "key": "clock-wall",
       "name": "Tick 掛鐘",
-      "description": "Tick 掛鐘。為日常挑選的家居選物，材質與比例都經過反覆調整，適合長時間使用的空間。",
+      "description": "白色鐘面與黑色細指針，拿掉數字後只留下清楚的時間輪廓。掛在工作區，能和不同色彩的牆面相處。\n\n尺寸：直徑 30 × 厚 4 公分\n材質：金屬、玻璃",
       "category": "workspace",
       "priceTwd": 2380,
       "onHand": 0,

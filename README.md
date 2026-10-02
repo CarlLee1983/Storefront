@@ -16,6 +16,14 @@
 
 Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為總規格，逐張工單實作。
 
+## 靜物 / Still Life
+
+前台採用「靜物 / Still Life」品牌，文案依 #83 審閱稿落地。頁首顯示 Still Life，瀏覽器標題、描述與分享預覽使用靜物；商品與分類頁分別以商品封面、分類圖片作分享圖片，沒有圖片時使用品牌圖。共用版面提供 canonical、OG、Twitter 卡片、SVG 與 PNG favicon、apple-touch-icon 和 theme-color。
+
+關於、常見問題、退換貨說明與錯誤頁提供購物說明和恢復出口；頁尾提供分類、全部商品、我的訂單與 `hello@gravito.dev` 聯絡方式，並明示「示範網站，不實際出貨」。示範商品的尺寸、材質是核可的展示資料，並非實體商品的量測或驗證結果；仍放在既有說明欄位，重跑本機或 preview seed 即會對齊 catalog。
+
+#85–#88 的檢查結果、32 件商品重新植入驗證與手機／桌機截圖見[驗收紀錄](docs/acceptance/still-life-85-88.md)。
+
 ## 顧客登入
 
 顧客用 LINE 或 Google 登入（Better Auth，放在 App Worker；Web 只把 `/api/auth/*` 轉給 App）。設定分兩處：

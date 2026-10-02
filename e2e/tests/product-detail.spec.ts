@@ -79,6 +79,9 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await session.detach();
     await expect(thumbs.first()).not.toHaveAttribute("aria-current", "true");
+    // 等原生觸控捲動停在圖片邊界，再測下一個獨立的圖片按鈕操作。
+    await expect.poll(() => track.evaluate(element =>
+      Math.abs(element.scrollLeft - Math.round(element.scrollLeft / element.clientWidth) * element.clientWidth))).toBeLessThan(2);
     await thumbs.nth(1).click();
     await expect(thumbs.nth(1)).toHaveAttribute("aria-current", "true");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -95,26 +98,26 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await page.getByLabel("數量", { exact: true }).fill("2");
     const add = page.getByRole("region", { name: "商品資訊" }).getByRole("button", { name: "加入購物車", exact: true });
     await add.focus(); await page.keyboard.press("Enter");
-    await expect(page.locator(".buy-form .cart-status")).toHaveText("已加入購物車（目前 2 件）");
+    await expect(page.locator(".buy-form .cart-status")).toHaveText("已加入購物車，目前 2 件。");
     await expect(add).toBeFocused();
     await expect(page.locator("#cart-count")).toHaveText("2");
     await expect(page.locator("#cart-count")).toHaveClass("count-bump");
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.keyboard.press("Enter");
-    await expect(page.locator(".buy-form .cart-status")).toHaveText("已加入購物車（目前 4 件）");
+    await expect(page.locator(".buy-form .cart-status")).toHaveText("已加入購物車，目前 4 件。");
     expect(await page.locator(".buy-form .cart-status").evaluate(el => getComputedStyle(el).animationName)).toBe("none");
     await page.setViewportSize({ width: 1440, height: 1000 });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach("product-detail-desktop-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await page.getByRole("link", { name: /購物車（\s*4\s*）/ }).click();
-    await expect(page.getByRole("img", { name: `${name}的封面`, exact: true })).toHaveAttribute("src", coverSrc!);
+    await expect(page.getByRole("img", { name: name, exact: true })).toHaveAttribute("src", coverSrc!);
     await page.goBack();
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     await row.getByRole("button", { name: "下架", exact: true }).click();
     await expect(row).toContainText("下架");
     for (const path of [detailPath, "/products/999999", "/products/not-a-number"]) {
       expect((await page.goto(path))!.status()).toBe(404);
-      await expect(page.getByRole("heading", { name: "找不到頁面" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "找不到這個頁面" })).toBeVisible();
       await expect(page.getByRole("button", { name: "加入購物車" })).toHaveCount(0);
     }
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);

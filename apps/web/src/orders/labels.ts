@@ -16,6 +16,23 @@ export function orderStatusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+export function customerOrderStatusLabel(status: string): string {
+  return Object.hasOwn(STATUS_LABELS, status) ? STATUS_LABELS[status]! : "訂單狀態待確認";
+}
+
+const CUSTOMER_ORDER_NOTES: Record<string, string> = {
+  pending_payment: "請在 {付款期限} 前完成付款。",
+  paid: "已收到付款，將於付款後 3 個工作天內出貨。",
+  shipped: "商品已出貨；若有物流單號，請查看出貨資訊。",
+  expired: "已超過付款期限，原先保留的商品已釋放。若稍後收到付款，訂單狀態可能更新；請以此頁顯示為準。",
+  cancelled: "這張訂單已取消，無法恢復。",
+};
+
+export function customerOrderStatusNote(status: string, paymentDeadline: number): string {
+  return (Object.hasOwn(CUSTOMER_ORDER_NOTES, status) ? CUSTOMER_ORDER_NOTES[status]! : "目前無法確認訂單狀態，請稍後重新整理；仍有疑問請聯絡 hello@gravito.dev。")
+    .replace("{付款期限}", formatDateTime(paymentDeadline));
+}
+
 const STATUS_NOTES: Record<string, string> = {
   expired: "已超過付款期限，保留的商品已釋放。",
   cancelled: "你已取消這張訂單，保留的商品已釋放，訂單不會再變更。",
@@ -38,6 +55,37 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
 
 export function paymentStatusLabel(status: string): string {
   return Object.hasOwn(PAYMENT_STATUS_LABELS, status) ? PAYMENT_STATUS_LABELS[status as PaymentStatus] : status;
+}
+
+const CUSTOMER_PAYMENT_LABELS: Record<string, string> = {
+  pending: "等待付款", succeeded: "付款成功", failed: "付款未完成", expired: "付款已失效", refunded: "已退款", refund_failed: "退款尚未完成",
+};
+
+const CUSTOMER_PAYMENT_NOTES: Record<string, string> = {
+  pending: "請依付款頁指示完成付款。",
+  succeeded: "這筆付款已成功；請以訂單狀態確認後續處理。",
+  failed: "這筆付款未完成，若訂單仍可付款，可再試一次。",
+  expired: "這筆付款已失效，請查看訂單是否仍可付款。",
+  refunded: "這筆款項已退回原付款方式。",
+  refund_failed: "退款尚未完成，我們會查明處理；如需協助，請聯絡 hello@gravito.dev。",
+};
+
+export function customerPaymentStatusLabel(status: string): string {
+  return Object.hasOwn(CUSTOMER_PAYMENT_LABELS, status) ? CUSTOMER_PAYMENT_LABELS[status]! : "付款狀態待確認";
+}
+
+export function customerPaymentStatusNote(status: string): string {
+  return Object.hasOwn(CUSTOMER_PAYMENT_NOTES, status) ? CUSTOMER_PAYMENT_NOTES[status]! : "目前無法確認這筆付款的狀態，請稍後重新整理；仍有疑問請聯絡 hello@gravito.dev。";
+}
+
+const CUSTOMER_REFUND_REASONS: Record<string, string> = {
+  late_success_unreclaimable: "付款期限後才收到付款，商品已無法保留",
+  cancelled_order: "付款時訂單已取消",
+  duplicate_success: "同一張訂單有另一筆成功付款",
+};
+
+export function customerRefundReasonLabel(reason: string | null): string | null {
+  return reason === null ? null : Object.hasOwn(CUSTOMER_REFUND_REASONS, reason) ? CUSTOMER_REFUND_REASONS[reason]! : "退款原因待確認";
 }
 
 /** 退款觸發原因（`RefundReason`）的顯示說明；沒有退款回 null，不認得的原樣顯示。 */
@@ -68,6 +116,11 @@ export function formatDateTime(epochMs: number): string {
 export function shipmentSummary(shippedAt: number | null, trackingNumber: string | null): string {
   const time = shippedAt === null ? "" : `出貨時間：${formatDateTime(shippedAt)}；`;
   return `${time}物流單號：${trackingNumber ?? "（未附）"}`;
+}
+
+export function customerShipmentSummary(shippedAt: number | null, trackingNumber: string | null): string {
+  const time = shippedAt === null ? "" : `出貨時間：${formatDateTime(shippedAt)}；`;
+  return `${time}${trackingNumber ? `物流單號：${trackingNumber}` : "尚未提供物流單號。"}`;
 }
 
 /** 網址上的訂單編號；不是正整數就回傳 null（頁面顯示找不到）。 */

@@ -6,14 +6,22 @@ import CategoryLinks from "../components/CategoryLinks.astro";
 import SearchDialog from "../components/SearchDialog.astro";
 import SearchForm from "../components/SearchForm.astro";
 import { categorySlugFromPath, loadStorefrontNav } from "../categories/nav";
+import { pageDescriptions } from "../metadata";
 
 interface Props {
   title: string;
+  headTitle?: string;
+  description?: string;
+  image?: string;
   noindex?: boolean;
   /** 頁面自己在版面中放置 h1（`title` 仍用於 <title>）。 */
   hideTitle?: boolean;
 }
-const { title, noindex = false, hideTitle = false } = Astro.props;
+const { title, headTitle, description, image, noindex = false, hideTitle = false } = Astro.props;
+const pageTitle = headTitle ?? (Astro.url.pathname === "/" ? title : `${title}｜靜物`);
+const pageDescription = description || pageDescriptions[Astro.url.pathname] || pageDescriptions["/404"]!;
+const canonical = new URL(Astro.url.pathname, Astro.url.origin).href;
+const shareImage = new URL(image || "/brand/share.png", Astro.url.origin).href;
 const customer = Astro.locals.customer;
 // 顧客頁一次 RPC 取得，失敗時當作沒有分類、沒有特價
 const { categories, hasSale } = await loadStorefrontNav(env.APP);
@@ -26,13 +34,29 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {noindex && <meta name="robots" content="noindex" />}
-    <title>{title}｜Storefront</title>
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="靜物 / Still Life" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={shareImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDescription} />
+    <meta name="twitter:image" content={shareImage} />
+    <meta name="theme-color" content="#141414" />
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-icon.png" />
 
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要內容</a>
     <header class="site-header">
-      <a class="brand" href="/">Storefront</a>
+      <a class="brand" href="/">Still Life</a>
       <nav class="desktop-only" aria-label="主要導覽">
         <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
         <CategoryLinks categories={categories} current={currentCategory} />
@@ -53,7 +77,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
     </header>
     <dialog id="menu-drawer" class="menu-drawer" aria-label="選單">
       <div class="drawer-head">
-        <span class="brand">Storefront</span>
+        <span class="brand">Still Life</span>
         <button type="button" class="icon-button" id="menu-close" aria-label="關閉選單" autofocus>
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none" /></svg>
         </button>
@@ -77,13 +101,22 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
     </main>
     <footer class="site-footer">
       <div class="site-footer-inner">
-        <p class="brand">Storefront</p>
+        <p class="brand">靜物 / Still Life</p>
         <p>為日常挑選的家具與器物。</p>
         <nav aria-label="頁尾導覽">
+          <a href="/products">全部商品</a>
+          <a href="/categories/living">客廳</a>
+          <a href="/categories/dining">餐廳</a>
+          <a href="/categories/bedroom">臥室</a>
+          <a href="/categories/workspace">工作區</a>
+          <a href="/orders">我的訂單</a>
           <a href="/about">關於</a>
           <a href="/faq">常見問題</a>
           <a href="/returns">退換貨說明</a>
         </nav>
+        <p>寫信給我們：<a href="mailto:hello@gravito.dev">hello@gravito.dev</a></p>
+        <p>© {new Date().getFullYear()} 靜物 Still Life</p>
+        <p>示範網站，不實際出貨</p>
       </div>
     </footer>
     <script>
@@ -130,7 +163,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
           }
           for (const button of signOutButtons) button.disabled = false;
           const error = document.querySelector<HTMLElement>("#sign-out-error")!;
-          error.textContent = "登出失敗，請稍後再試。";
+          error.textContent = "目前無法登出，請稍後再試。";
           error.hidden = false;
         });
       }

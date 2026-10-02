@@ -3,6 +3,15 @@ import Layout from "../layouts/Layout.astro";
 export const prerender = false;
 ---
 
-<Layout title="關於">
-  <p>歡迎來到 Storefront。你可以瀏覽商品，登入後將商品加入購物車並結帳。</p><p>商品價格以新台幣整數元計算，含稅、免運。</p>
+<Layout title="關於靜物">
+  <div class="content">
+    <p>我們喜歡能安靜融入生活的物件：一張坐得住的椅子、一盞照亮桌面的燈，或一只願意天天使用的器皿。靜物從家具、燈具與器物中挑選比例與材質耐看的商品，讓每個角落都保留自己的節奏。</p>
+    <p>你可以先瀏覽商品並加入購物車，結帳前再登入。售價以新台幣標示，已含稅，全館免運；付款後 3 個工作天內出貨，以宅配送達台灣本島。大型家具會先由物流電話約定配送時間，不提供組裝與安裝。</p>
+    <p>有關商品或訂單的問題，請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。這是示範網站，不實際出貨。</p>
+  </div>
 </Layout>
+
+<style>
+  .content { max-width: 44rem; line-height: 1.8; }
+  .content p + p { margin-top: var(--space-6); }
+</style>

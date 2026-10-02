@@ -50,7 +50,7 @@ test("gallery multi-upload, keyboard/drag reorder, cover and last-image safety",
     await testInfo.attach("admin-gallery-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await page.goto("/admin");
     const row = page.getByRole("row").filter({ hasText: name });
-    await expect(row.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", coverSrc!);
+    await expect(row.getByRole("img", { name: name })).toHaveAttribute("src", coverSrc!);
     await row.getByRole("button", { name: "重新上架" }).click();
     await page.goto(editPath);
     for (let n = 0; n < 2; n++) {

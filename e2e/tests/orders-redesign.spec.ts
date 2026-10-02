@@ -52,7 +52,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     const id = path.split("/").pop()!;
     await expect(page.getByText("訂單狀態：待付款")).toBeVisible();
     await expect(page.getByRole("region", { name: "完成付款" }).getByText(/付款期限：/)).toBeVisible();
-    const cover = page.getByRole("img", { name: `${name}的封面` });
+    const cover = page.getByRole("img", { name: name });
     await expect(cover).toHaveAttribute("srcset", /320w.*640w.*1280w/);
     await expect.poll(() => cover.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     const source = await cover.getAttribute("src");
@@ -63,7 +63,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
       await testInfo.attach(`order-detail-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
       await page.goto("/orders");
       const card = page.locator(".order-card").filter({ has: page.getByRole("link", { name: `訂單 #${id}`, exact: true }) });
-      await expect(card.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", source!);
+      await expect(card.getByRole("img", { name: name })).toHaveAttribute("src", source!);
       await expect(card.getByRole("button", { name: `訂單 #${id} 前往付款` })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);

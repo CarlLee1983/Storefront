@@ -1,7 +1,9 @@
 ---
 import { env } from "cloudflare:workers";
 import ProductListing from "../../components/ProductListing.astro";
+import NotFoundContent from "../../components/NotFoundContent.astro";
 import Layout from "../../layouts/Layout.astro";
+import { notFoundDescription, previewText } from "../../metadata";
 
 export const prerender = false;
 
@@ -11,7 +13,7 @@ const category = result.ok ? result.data : null;
 if (!category) Astro.response.status = 404;
 ---
 
-<Layout title={category?.name ?? "找不到頁面"} noindex={!category}>
+<Layout title={category?.name ?? "找不到這個頁面"} headTitle={category ? undefined : "找不到頁面｜靜物"} description={category ? previewText(category.description, "") ? `在靜物探索${category.name}商品。${previewText(category.description, "")}` : `在靜物探索${category.name}的家具與器物。` : notFoundDescription} image={category?.image?.variants.at(-1)?.key ? `/images/${category.image.variants.at(-1)!.key}` : undefined} noindex={!category}>
   {
     category ? (
       <>
@@ -19,12 +21,7 @@ if (!category) Astro.response.status = 404;
         <p class="category-count">共 {category.listedProductCount} 件商品</p>
         <ProductListing category={category.slug} />
       </>
-    ) : (
-      <>
-        <p>這個分類不存在，或目前沒有上架的商品。</p>
-        <p><a href="/">回首頁</a></p>
-      </>
-    )
+    ) : <NotFoundContent />
   }
 </Layout>
 

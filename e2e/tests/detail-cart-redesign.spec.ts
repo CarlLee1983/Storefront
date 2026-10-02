@@ -78,7 +78,7 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   await expect(information).toContainText(CATEGORY.name);
   await expect(information).toContainText("NT$ 680");
   await expect(information).toContainText("現貨，可售 10 件");
-  await expect(information).toContainText("含稅、免運。付款後無法自行取消，商品問題請聯繫客服。");
+  await expect(information).toContainText("售價含稅、免運。付款後無法自行取消訂單；商品或訂單問題請寫信至 hello@gravito.dev。");
 
   // 鍵盤：焦點在「增加數量」按鈕上按 Enter 加一、在「減少數量」上按空白鍵減一，再 Tab 到加入購物車
   const quantity = information.getByLabel("數量", { exact: true });
@@ -100,7 +100,7 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   const add = information.getByRole("button", { name: "加入購物車", exact: true });
   await expect(add).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(information.getByRole("status")).toHaveText("已加入購物車（目前 2 件）");
+  await expect(information.getByRole("status")).toHaveText("已加入購物車，目前 2 件。");
   await expect(page.locator("#cart-count")).toHaveText("2");
 
   await noAxeViolations(page);
@@ -130,7 +130,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await page.goto("/cart");
   await expect(page.getByRole("heading", { level: 1, name: "購物車" })).toBeVisible();
   const line = page.getByRole("listitem").filter({ hasText: MAIN.name });
-  await expect(line.getByRole("img", { name: `${MAIN.name}的封面` })).toBeVisible();
+  await expect(line.getByRole("img", { name: MAIN.name })).toBeVisible();
   await expect(line).toContainText("單價 NT$ 680");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   const summary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
@@ -157,7 +157,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(quantity).toHaveValue("2");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   await line.getByRole("button", { name: "移除" }).click();
-  await expect(page.getByText("購物車是空的。")).toBeVisible();
+  await expect(page.getByText("購物車目前是空的。")).toBeVisible();
   await expect(page.locator("#cart-count")).toHaveText("0");
   await noAxeViolations(page);
 });
