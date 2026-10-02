@@ -1,0 +1,12 @@
+{
+  "fixedPortPreoccupied": 19229,
+  "ownedChromeEphemeralPort": 58417,
+  "foreignRequests": 0,
+  "exactWebSocketFromFreshProfile": true,
+  "expectedFinalUrl": true,
+  "formFactor": "mobile",
+  "throttlingMethod": "simulate",
+  "disableStorageReset": true,
+  "lighthouseVersion": "13.5.0",
+  "historicalReportsUnchanged": true
+}

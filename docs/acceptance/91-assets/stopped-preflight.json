@@ -1,0 +1,29 @@
+{
+  "gitSha": "0f3aa241e1fd391c674c1fa66e6759fa3fc3f735",
+  "gitStatus": "",
+  "scriptSha256": "3b073a3b6d6b94338fd2ae62c527d6c7f502e9ab70773454254fbbe52b53c785",
+  "tools": {
+    "node": "v24.21.0",
+    "bun": "1.4.2",
+    "lighthouse": "13.5.0"
+  },
+  "browserVersion": "Chrome/154.0.8037.93",
+  "lighthouse": {
+    "categories": [
+      "performance",
+      "accessibility"
+    ],
+    "mode": "Navigation",
+    "formFactor": "mobile",
+    "throttlingMethod": "simulate",
+    "disableStorageReset": true
+  },
+  "startedAt": "2026-10-02T07:10:09.094Z",
+  "finishedAt": "2026-10-02T07:10:15.285Z",
+  "seed": "Expected fresh local E2E D1/R2 with demo catalog: 4 categories, 32 listed products; fake E2E identities only",
+  "seedVerified": false,
+  "pages": [],
+  "reports": [],
+  "issueCount": 1,
+  "failureReason": "Outdated acceptance-script seed text expectation; corrected from 共32件商品 to 已顯示24/32件. Stopped before cart/order mutation, screenshots, or Lighthouse."
+}
