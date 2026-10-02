@@ -55,48 +55,55 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
         {paymentUnconfirmed && <p role="status">目前無法確認付款結果，請稍後重新整理訂單頁。</p>}
         {order.status === "paid" && <p role="status">已收到付款，訂單目前為已付款。</p>}
-        <p>訂單狀態：<OrderStatus status={order.status} customer /></p>
-        {statusNote && <p>{statusNote}</p>}
-        {
-          order.status === "shipped" && <p>{customerShipmentSummary(order.shippedAt, order.trackingNumber)}</p>
-        }
-        {order.status === "pending_payment" && <section class="payment-callout" aria-label="完成付款">
-          <h2>完成付款，準備迎接你的商品</h2>
-          <p>付款期限：<time datetime={new Date(order.paymentDeadline).toISOString()}>{formatDateTime(order.paymentDeadline)}</time>（台北時間）</p>
-          <p>逾期未付，保留的商品會釋放。付款期限前 2 分鐘內無法再發起付款，請儘早完成。</p>
-          <form method="post" action={`/orders/${order.id}/pay`}><button class="pay" type="submit">前往付款</button></form>
-        </section>}
-        <p>成立時間：{formatDateTime(order.createdAt)}</p>
-        <h2>訂單明細</h2>
-        <OrderLines lines={order.lines} />
-        <p>總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+        <div class="order-overview">
+          <section aria-labelledby="order-progress-title">
+            <h2 id="order-progress-title">訂單進度</h2>
+            <p>訂單狀態：<OrderStatus status={order.status} customer /></p>
+            {statusNote && <p>{statusNote}</p>}
+            {order.status === "shipped" && <p>{customerShipmentSummary(order.shippedAt, order.trackingNumber)}</p>}
+            {order.status === "pending_payment" && <section class="payment-callout" aria-label="完成付款">
+              <h3>完成付款，準備迎接你的商品</h3>
+              <p>付款期限：<time datetime={new Date(order.paymentDeadline).toISOString()}>{formatDateTime(order.paymentDeadline)}</time>（台北時間）</p>
+              <p>逾期未付，保留的商品會釋放。付款期限前 2 分鐘內無法再發起付款，請儘早完成。</p>
+              <form method="post" action={`/orders/${order.id}/pay`}><button class="pay" type="submit">前往付款</button></form>
+            </section>}
+            <p>成立時間：{formatDateTime(order.createdAt)}</p>
+          </section>
+          <section aria-labelledby="shipping-title">
+            <h2 id="shipping-title">收件資訊</h2>
+            <dl class="shipping-details"><dt>收件人姓名</dt><dd>{order.shippingInfo.name}</dd><dt>收件人電話</dt><dd>{order.shippingInfo.phone}</dd><dt>收件地址</dt><dd>{order.shippingInfo.address}</dd></dl>
+          </section>
+        </div>
+        <section class="order-detail-section" aria-labelledby="order-lines-title">
+          <h2 id="order-lines-title">訂單明細</h2>
+          <OrderLines lines={order.lines} />
+          <p class="order-total">總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+        </section>
         {
           order.payments.length > 0 && (
-            <>
-              <h2>付款資訊</h2>
-              <table>
+            <section class="order-detail-section" aria-labelledby="payment-info-title">
+              <h2 id="payment-info-title">付款資訊</h2>
+              <table class="payment-history">
                 <thead>
                   <tr><th>付款時間</th><th>金額</th><th>付款狀態</th></tr>
                 </thead>
                 <tbody>
                   {order.payments.map((payment) => (
                     <tr>
-                      <td>{formatDateTime(payment.createdAt)}</td>
-                      <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
-                      <td>
+                      <td data-label="付款時間">{formatDateTime(payment.createdAt)}</td>
+                      <td data-label="金額">NT$ {priceFormat.format(payment.amountTwd)}</td>
+                      <td data-label="付款狀態"><span class="payment-state">
                         {customerPaymentStatusLabel(payment.status)}
                         <small>（{customerPaymentStatusNote(payment.status)}）</small>
                         {customerRefundReasonLabel(payment.refundReason) && <small>（{customerRefundReasonLabel(payment.refundReason)}）</small>}
-                      </td>
+                      </span></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </>
+            </section>
           )
         }
-        <h2>收件資訊</h2>
-        <dl><dt>收件人姓名</dt><dd>{order.shippingInfo.name}</dd><dt>收件人電話</dt><dd>{order.shippingInfo.phone}</dd><dt>收件地址</dt><dd>{order.shippingInfo.address}</dd></dl>
         {order.status === "pending_payment" && <form class="cancel" method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
           <p>取消後無法恢復。</p><button type="submit" class="button-secondary">取消訂單</button>
         </form>}
@@ -126,9 +133,31 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 </script>
 
 <style>
-  .payment-callout { padding: var(--space-6); border: 2px solid var(--color-primary); border-radius: var(--radius-lg); background: var(--color-surface); margin-block: var(--space-6); box-shadow: var(--shadow-card); }
-  .payment-callout h2 { margin-top: 0; }
+  .order-overview { display: grid; gap: var(--space-6); }
+  .order-overview > section { min-width: 0; border-top: 2px solid var(--color-text); padding-top: var(--space-4); }
+  .order-overview h2 { margin-top: 0; }
+  .shipping-details { display: grid; grid-template-columns: minmax(6rem, auto) minmax(0, 1fr); gap: 0 var(--space-4); margin: 0; }
+  .shipping-details dt, .shipping-details dd { padding-block: var(--space-2); border-bottom: 1px solid var(--color-border); }
+  .shipping-details dt { color: var(--color-muted); }
+  .shipping-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+  .order-detail-section { min-width: 0; margin-top: var(--section-gap); border-top: 1px solid var(--color-border); padding-top: var(--space-6); }
+  .order-detail-section h2 { margin-top: 0; }
+  .order-total { text-align: right; font-variant-numeric: tabular-nums; }
+  .payment-callout { border-top: 1px solid var(--color-border); padding-block: var(--space-4); margin-block: var(--space-4); }
+  .payment-callout h3 { margin-top: 0; }
+  .payment-history { table-layout: auto; min-width: 0; }
+  .payment-history td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .payment-state small { display: block; }
   .pay { width: 100%; padding: var(--space-2) var(--space-6); font-weight: 700; font-size: var(--text-lg); }
   .cancel { margin-block: var(--space-8); border-top: 1px solid var(--color-border); }
   @media(min-width: 40rem) { .pay { width: auto; min-width: 16rem; } }
+  @media(min-width: 64rem) { .order-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media(max-width: 39.999rem) {
+    .payment-history, .payment-history tbody, .payment-history tr { display: block; width: 100%; }
+    .payment-history thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .payment-history tr { border-bottom: 1px solid var(--color-border); padding-block: var(--space-3); }
+    .payment-history td { display: flex; justify-content: space-between; gap: var(--space-3); width: 100%; border: 0; padding-inline: 0; overflow-wrap: anywhere; }
+    .payment-history td::before { content: attr(data-label); flex: 0 0 auto; color: var(--color-muted); }
+    .payment-state { min-width: 0; text-align: right; }
+  }
 </style>

@@ -356,7 +356,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await expect(page.getByText("訂單狀態：已出貨")).toBeVisible();
   await expect(page.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
   await expect(page.getByRole("img", { name: PRODUCT.name, exact: true })).toHaveAttribute("srcset", coverSrcset);
-  for (const width of [320, 768, 1280]) {
+  for (const width of [320, 375, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
