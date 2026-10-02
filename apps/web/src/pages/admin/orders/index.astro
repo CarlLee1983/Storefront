@@ -39,20 +39,20 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {orders.data.length === 0 && <p>沒有符合的訂單。</p>}
         {
           orders.data.length > 0 && (
-            <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
+            <div class="table-scroll admin-orders" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
                 <tr><th>訂單</th><th>商品</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th><th>付款</th></tr>
               </thead>
               <tbody>
                 {orders.data.map((order) => (
                   <tr>
-                    <td><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
-                    <td><ul class="order-products">{order.lines.map(line => <li><OrderCover cover={line.cover} name={line.productName} /><span>{line.productName} × {line.quantity}</span></li>)}</ul></td>
-                    <td>{order.customerEmail}</td>
-                    <td>{formatDateTime(order.createdAt)}</td>
-                    <td><OrderStatus status={order.status} /></td>
-                    <td>NT$ {priceFormat.format(order.totalTwd)}</td>
-                    <td>{order.needsAttention ? <strong class="error">需要處理</strong> : ""}</td>
+                    <td data-label="訂單"><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
+                    <td data-label="商品"><ul class="order-products">{order.lines.map(line => <li><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName} × {line.quantity}</span></li>)}</ul></td>
+                    <td data-label="顧客" class="admin-order-email"><span>{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</span></td>
+                    <td data-label="成立時間">{formatDateTime(order.createdAt)}</td>
+                    <td data-label="訂單狀態"><OrderStatus status={order.status} /></td>
+                    <td data-label="總金額">NT$ {priceFormat.format(order.totalTwd)}</td>
+                    <td data-label="付款">{order.needsAttention ? <strong class="error">需要處理</strong> : "—"}</td>
                   </tr>
                 ))}
               </tbody>

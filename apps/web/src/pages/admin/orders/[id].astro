@@ -47,7 +47,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <>
         {shipped && <p role="status">已標為已出貨。</p>}
         <p>訂單狀態：<OrderStatus status={order.status} /></p>
-        <p>顧客：{order.customerEmail}</p>
+        <p class="admin-order-email">顧客：{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</p>
         <p>成立時間：{formatDateTime(order.createdAt)}</p>
         {
           order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
@@ -69,17 +69,17 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           )
         }
         {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
-        <div class="table-scroll" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
+        <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
           </thead>
           <tbody>
             {order.lines.map((line) => (
               <tr>
-                <td><div class="order-product"><OrderCover cover={line.cover} name={line.productName} /><span>{line.productName}</span></div></td>
-                <td>NT$ {priceFormat.format(line.unitPriceTwd)}</td>
-                <td>{line.quantity}</td>
-                <td>NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
+                <td data-label="商品"><div class="order-product"><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName}</span></div></td>
+                <td data-label="單價（下單當時）">NT$ {priceFormat.format(line.unitPriceTwd)}</td>
+                <td data-label="數量">{line.quantity}</td>
+                <td data-label="小計">NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
               </tr>
             ))}
           </tbody>
@@ -89,21 +89,21 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
         {
           order.payments.length > 0 && (
-            <div class="table-scroll" tabindex="0" role="region" aria-label="付款嘗試資料表"><table>
+            <div class="table-scroll admin-order-payments" tabindex="0" role="region" aria-label="付款嘗試資料表"><table>
               <thead>
                 <tr><th>發起時間</th><th>金額</th><th>狀態</th><th>退款原因</th><th>退款時間</th></tr>
               </thead>
               <tbody>
                 {order.payments.map((payment) => (
                   <tr>
-                    <td>{formatDateTime(payment.createdAt)}</td>
-                    <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
-                    <td>
+                    <td data-label="發起時間">{formatDateTime(payment.createdAt)}</td>
+                    <td data-label="金額">NT$ {priceFormat.format(payment.amountTwd)}</td>
+                    <td data-label="狀態">
                       {paymentStatusLabel(payment.status)}
                       {payment.needsAttention && <strong class="error">（需要處理：付款成功但訂單不是由這筆支付，也沒有退款紀錄）</strong>}
                     </td>
-                    <td>{refundReasonLabel(payment.refundReason) ?? "—"}</td>
-                    <td>{payment.refundAt === null ? "—" : formatDateTime(payment.refundAt)}</td>
+                    <td data-label="退款原因">{refundReasonLabel(payment.refundReason) ?? "—"}</td>
+                    <td data-label="退款時間">{payment.refundAt === null ? "—" : formatDateTime(payment.refundAt)}</td>
                   </tr>
                 ))}
               </tbody>
