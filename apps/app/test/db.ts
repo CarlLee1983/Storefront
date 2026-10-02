@@ -20,8 +20,8 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM categories"),
     env.DB.prepare('DELETE FROM "user"'),
     env.DB.prepare("DELETE FROM verification"),
-    // 費率由遷移寫入、每類型恰一列：不刪，只還原成初始演練值（一般 100、大型 600）
-    env.DB.prepare("UPDATE shipping_rates SET fee_twd = CASE delivery_type WHEN 'large' THEN 600 ELSE 100 END"),
+    // 費率由遷移寫入、每類型恰一列：不清空，只還原（含被測試刪掉的列）成初始演練值（一般 100、大型 600）
+    env.DB.prepare("INSERT OR REPLACE INTO shipping_rates (delivery_type, fee_twd) VALUES ('standard', 100), ('large', 600)"),
     env.DB.prepare("DELETE FROM rate_limit"),
     // 高水位只增不減；測試之間時間會倒退，所以要清空（Holdfast ADR 0011）
     env.DB.prepare("DELETE FROM clock"),

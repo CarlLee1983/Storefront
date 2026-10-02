@@ -302,7 +302,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     const key = getOrCreateIdempotencyKey(
       sessionStorageOf(window),
       () => crypto.randomUUID(),
-      checkoutFingerprint(lines, { name: value("name"), phone: value("phone"), address: value("address") }, seenShippingTwd),
+      checkoutFingerprint(lines, { name: value("name"), phone: value("phone"), address: value("address") }),
     );
     form.querySelector<HTMLInputElement>("input[name=seenShippingTwd]")!.value = String(seenShippingTwd);
     form.querySelector<HTMLInputElement>("input[name=lines]")!.value = JSON.stringify(lines);

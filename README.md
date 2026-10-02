@@ -64,7 +64,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 快照：訂單把成立當下各類實收運費寫進 `orders.standard_shipping_fee_twd`、`large_shipping_fee_twd`（沒有該類型為 0），明細把配送類型寫進 `order_lines.delivery_type`，連同商品名、選項、實付單價與收件資訊都不隨之後的改價、改費率或改類型而變。#112（分批出貨）、#115（異常退款）、#116（部分取消退運費）從這幾個欄位讀取。
 - 顧客確認：購物車只在瀏覽器，結帳頁向 `GET /api/shipping-quote?variants=…`（App 的公開 RPC `getShippingQuote`）取得現行費率與各變體的配送類型，列出兩類運費與總額、說明限台灣本島並要求勾選確認；送出時帶 `seenShippingTwd`（顧客確認的運費合計），App 在下單 batch 內以當下的費率與類型重算並比對，不符就整批不成立並回 `shipping_fee_changed`（與價格變動同樣由重新載入的結帳頁讓顧客再確認）。查不到運費時結帳頁停用送出鈕。
 - 下單 batch 的語句數與順序不變（#109 的通知信仍是第 4 句）：運費由訂單本體那句用 `json_each` 子查詢算出並寫入，明細那句的 WHERE 加上「運費合計 = 顧客確認的金額」；兩句在同一個 batch 讀同一份資料。冪等鍵的內容指紋含 `seenShippingTwd`。
-- 舊單：Migration `0019_shipping_fees.sql` 對既有訂單的兩個運費欄位預設 0、明細預設一般宅配，所以歷史訂單的總額與免運結果不變；寫入初始費率兩列。新增欄位未加 CHECK（否則要重建資料表），合法值由管理 RPC 的輸入驗證限定；`shipping_rates` 有 CHECK。
+- 舊單：Migration `0019_shipping_fees.sql` 對既有訂單的兩個運費欄位預設 0、明細預設一般宅配，所以歷史訂單的總額與免運結果不變；寫入初始費率兩列。新增欄位未加 CHECK（drizzle-kit 的 `check()` 是表層級約束，產生的遷移會重建資料表），合法值由管理 RPC 的輸入驗證限定；`shipping_rates` 有 CHECK。
 - 部署順序沿用先 migration、再 App、再 Web。舊 App 搭配新 migration 仍可運作（欄位都有預設），但新 App 的結帳要求 `seenShippingTwd`，所以舊 Web 的結帳頁在新 App 上會被拒（回 `invalid_input`），Web 與 App 應壓短窗口一起部署。回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0019_shipping_fees.down.sql`；已有訂單收過運費、或有大型配送的變體／明細時守門檢查讓回復失敗（總額含運費卻會失去拆分），須先確認可以捨棄。回復前須一併回復 Web 與 App；順序是 0019 → 0018 → …。
 - 測試見 `apps/app/test/shipping-fees.test.ts`（計費、快照、金額一致、權限、輸入驗證）、`shipping-migration.test.ts`；Web 的試算與表單轉換在 `apps/web/src/checkout/shipping.test.ts`；手機與桌機操作由 `e2e/tests/shipping-fees.spec.ts`（混合結帳與後台）與 `shipping-rates.spec.ts`（調整費率不改舊單、非管理員 403；費率是全域狀態，獨立成最後執行的 project）驗證。
 

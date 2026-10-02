@@ -54,6 +54,7 @@ export interface AdminVariant {
   available: number;
   discontinued: boolean;
   /** 選取此變體時顯示的商品圖片編號；null 表示不指定。 */
-  imageId: string | null;  /** 配送類型；改它只影響之後的訂單。 */
+  imageId: string | null;
+  /** 配送類型；改它只影響之後的訂單。 */
   deliveryType: DeliveryType;
 }

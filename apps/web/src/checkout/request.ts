@@ -35,17 +35,16 @@ export function checkoutFormToInput(form: FormData) {
 }
 
 /**
- * 這一次結帳的內容指紋（明細、確認的運費與收件資訊；收件資訊 trim，與 App 一致）：內容變了就要換一把冪等鍵，
+ * 這一次結帳的內容指紋（明細與收件資訊；收件資訊 trim，與 App 一致）。不含顧客確認的運費：回應遺失後重新載入、運費自動更新時仍要沿用同一把鍵，
+ * 已成立的訂單才會原樣回傳而不重複下單：內容變了就要換一把冪等鍵，
  * 因為 App 對「同一個鍵、不同內容」回 `idempotency_key_reused`。
  */
 export function checkoutFingerprint(
   lines: ReturnType<typeof cartToCheckoutLines>,
   shipping: { name: string; phone: string; address: string },
-  seenShippingTwd: number,
 ): string {
   return JSON.stringify({
     lines: lines.map((line) => [line.variantId, line.quantity, line.seenUnitPriceTwd]),
-    seenShippingTwd,
     shipping: [shipping.name.trim(), shipping.phone.trim(), shipping.address.trim()],
   });
 }

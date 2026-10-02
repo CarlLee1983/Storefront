@@ -68,19 +68,18 @@ describe("checkoutFingerprint（結帳內容指紋）", () => {
   const shipping = { name: "王小明", phone: "0912", address: "台北" };
 
   it("同樣的明細與收件資訊得到同樣的指紋", () => {
-    expect(checkoutFingerprint(lines, shipping, 100)).toBe(checkoutFingerprint([...lines], { ...shipping }, 100));
+    expect(checkoutFingerprint(lines, shipping)).toBe(checkoutFingerprint([...lines], { ...shipping }));
   });
 
   it.each([
-    ["數量", [{ ...lines[0]!, quantity: 3 }], shipping, 100],
-    ["單價", [{ ...lines[0]!, seenUnitPriceTwd: 350 }], shipping, 100],
-    ["地址", lines, { ...shipping, address: "高雄" }, 100],
-    ["確認的運費", lines, shipping, 700],
-  ])("%s不同，指紋就不同", (_label, otherLines, otherShipping, otherFee) => {
-    expect(checkoutFingerprint(otherLines, otherShipping, otherFee)).not.toBe(checkoutFingerprint(lines, shipping, 100));
+    ["數量", [{ ...lines[0]!, quantity: 3 }], shipping],
+    ["單價", [{ ...lines[0]!, seenUnitPriceTwd: 350 }], shipping],
+    ["地址", lines, { ...shipping, address: "高雄" }],
+  ])("%s不同，指紋就不同", (_label, otherLines, otherShipping) => {
+    expect(checkoutFingerprint(otherLines, otherShipping)).not.toBe(checkoutFingerprint(lines, shipping));
   });
 
   it("收件資訊前後空白不影響（App 會 trim）", () => {
-    expect(checkoutFingerprint(lines, { ...shipping, name: " 王小明 " }, 100)).toBe(checkoutFingerprint(lines, shipping, 100));
+    expect(checkoutFingerprint(lines, { ...shipping, name: " 王小明 " })).toBe(checkoutFingerprint(lines, shipping));
   });
 });

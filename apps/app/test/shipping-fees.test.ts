@@ -184,18 +184,44 @@ describe("下單、金流與通知金額一致", () => {
     expect(results).toEqual([{ total_twd: 6600 }]);
   });
 
-  it("運費不同的同冪等鍵重送是誤用", async () => {
+  it("運費變動後同冪等鍵重送：回傳原訂單，不產生第二張", async () => {
     const alice = await signInCustomer("alice");
     const big = await table();
     const key = newKey();
     const lines = [{ variantId: big.variantId, quantity: 1, seenUnitPriceTwd: 6000 }];
-    await checkout(alice, lines, 600, key);
+    const first = await checkout(alice, lines, 600, key);
+    await app.setShippingRate(await mintAccessJwt(), { deliveryType: "large", feeTwd: 900 });
 
-    expect(await checkout(alice, lines, 100, key)).toEqual({ ok: false, reason: "idempotency_key_reused" });
+    expect(await checkout(alice, lines, 900, key)).toEqual(first);
+    const { results } = await env.DB.prepare("SELECT total_twd, large_shipping_fee_twd FROM orders").all();
+    expect(results).toEqual([{ total_twd: 6600, large_shipping_fee_twd: 600 }]);
   });
 });
 
 describe("試算運費與管理", () => {
+  it("費率列缺少時不靜默免運：讀取費率拋錯、含該類型的結帳整批失敗且不留訂單", async () => {
+    const alice = await signInCustomer("alice");
+    const big = await table();
+    await env.DB.prepare("DELETE FROM shipping_rates WHERE delivery_type = 'large'").run();
+    try {
+      await expect(app.getShippingRates(await mintAccessJwt())).rejects.toThrow();
+      await expect(checkout(alice, [{ variantId: big.variantId, quantity: 1, seenUnitPriceTwd: 6000 }], 0)).rejects.toThrow();
+      expect((await env.DB.prepare("SELECT count(*) AS n FROM orders").first<{ n: number }>())!.n).toBe(0);
+    } finally {
+      await env.DB.prepare("INSERT INTO shipping_rates (delivery_type, fee_twd) VALUES ('large', 600)").run();
+    }
+  });
+
+  it("getShippingQuote 不含下架商品與停賣的變體", async () => {
+    const jwt = await mintAccessJwt();
+    const small = await lamp();
+    const big = await table();
+    await app.unlistProduct(jwt, { id: small.productId });
+    await app.setVariantDiscontinued(jwt, { variantId: big.variantId, discontinued: true });
+
+    expect(await app.getShippingQuote({ variantIds: [small.variantId, big.variantId] })).toMatchObject({ ok: true, data: { variants: [] } });
+  });
+
   it("getShippingQuote 回現行費率與各變體的配送類型，不存在的變體不出現，不需登入", async () => {
     const small = await lamp();
     const big = await table();
