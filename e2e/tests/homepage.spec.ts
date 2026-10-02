@@ -125,6 +125,9 @@ test("沒有上架商品的分類不出現在首頁分類方塊與導覽列，�
   const nav = page.getByRole("navigation", { name: "主要導覽" });
   await expect(nav.getByRole("link", { name: HOME.name })).toBeVisible();
   await expect(nav.getByRole("link", { name: EMPTY.name, exact: true })).toHaveCount(0);
+  const footer = page.getByRole("navigation", { name: "頁尾導覽" });
+  await expect(footer.getByRole("link", { name: HOME.name })).toHaveAttribute("href", `/categories/${HOME.slug}`);
+  await expect(footer.getByRole("link", { name: EMPTY.name, exact: true })).toHaveCount(0);
 });
 
 test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；可用鍵盤切換與暫停", async ({ page }) => {
@@ -146,8 +149,8 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await expect(images.first()).toHaveAttribute("sizes", /.+/);
   await expect(images.first()).toHaveAttribute("width", "1600");
   await expect(images.first()).toHaveAttribute("height", "914");
-  for (const [index, label, href] of [[0, "逛客廳選物", "/categories/living"], [1, "逛餐廳選物", "/categories/dining"], [2, "逛工作區選物", "/categories/workspace"]] as const) {
-    await expect(slides.nth(index).getByRole("link", { name: label, includeHidden: true })).toHaveAttribute("href", href);
+  for (const slide of await slides.all()) {
+    await expect(slide.getByRole("link", { name: "全部商品", includeHidden: true })).toHaveAttribute("href", "/products");
   }
 
   await expect(heroStatus(page)).toHaveText("1 / 3");
@@ -199,6 +202,26 @@ test("主視覺：焦點或滑鼠在輪播內時暫停自動輪播", async ({ pa
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
   await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("1 / 3");
+});
+
+test("主視覺有上架商品的示範分類保留核可連結，其餘投影片仍指向全部商品", async ({ browser, page }) => {
+  test.setTimeout(120_000);
+  const LIVING = { slug: "living", name: "首頁示範客廳", description: "客廳選物" };
+  const product = { name: "首頁客廳連結測試", priceTwd: 620, stock: 1 };
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
+  try {
+    await seedListedProducts(context, LIVING, [product]);
+    await page.goto("/");
+    const slides = hero(page).locator("[aria-roledescription=slide]");
+    await expect(slides.nth(0).getByRole("link", { name: "逛客廳選物", includeHidden: true })).toHaveAttribute("href", "/categories/living");
+    for (const slide of [slides.nth(1), slides.nth(2)]) {
+      await expect(slide.getByRole("link", { name: "全部商品", includeHidden: true })).toHaveAttribute("href", "/products");
+    }
+    await expect(page.getByRole("navigation", { name: "頁尾導覽" }).getByRole("link", { name: LIVING.name })).toHaveAttribute("href", "/categories/living");
+  } finally {
+    await unlistProductsByPrefix(context.request, product.name);
+    await context.close();
+  }
 });
 
 test("減少動態效果時主視覺不自動輪播、不顯示暫停按鈕", async ({ page }) => {

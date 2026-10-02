@@ -13,6 +13,9 @@
 
 `README.md` 補充品牌、分享資訊與示範規格說明；既有 E2E 文案斷言同步更新，新增 `e2e/tests/content-pages.spec.ts`。共用商品連結與結帳商品欄已提供名稱，因此其中的重複封面設為裝飾語意；購物車獨立封面保留無障礙名稱。未排除任何 axe 規則。
 
+後續審查補正：頁尾分類連結使用目前有上架商品的分類名稱與代稱，空分類不顯示。首頁三張主視覺只有在對應示範分類有上架商品時保留核可的分類 CTA；否則顯示「全部商品」並連到 `/products`，避免空店或自訂分類店面出現失效分類連結。以空店面、自訂分類及單一示範分類的 E2E 情境覆蓋此行為。
+補正後 `bun run typecheck`、聚焦 E2E 20 tests、完整 E2E 83 tests 與 `git diff --check` 均通過。
+
 結帳僅在 App 回傳 `invalid_input` 時於伺服器重用既有 `checkoutInput` 驗證，保留欄位路徑並映射固定顧客訊息；`apps/app/package.json` 新增私有 workspace 的 `orders-input` 子路徑。RPC 回傳結構、付款與訂單狀態邏輯維持既有契約。沒有新依賴或 migration；管理後台繼續使用原有狀態文案。
 
 ## 檢查結果

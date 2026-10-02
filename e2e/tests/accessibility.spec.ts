@@ -66,7 +66,7 @@ test("頁尾：店名、介紹、頁尾導覽連結與深色底", async ({ page 
   await expect(footer).toContainText("靜物 / Still Life");
   await expect(footer).toContainText("為日常挑選的家具與器物。");
   const nav = footer.getByRole("navigation", { name: "頁尾導覽" });
-  for (const [name, href] of [["全部商品", "/products"], ["客廳", "/categories/living"], ["餐廳", "/categories/dining"], ["臥室", "/categories/bedroom"], ["工作區", "/categories/workspace"], ["我的訂單", "/orders"]] as const) {
+  for (const [name, href] of [["全部商品", "/products"], ["我的訂單", "/orders"]] as const) {
     await expect(nav.getByRole("link", { name })).toHaveAttribute("href", href);
   }
   await expect(nav.getByRole("link", { name: "關於" })).toHaveAttribute("href", "/about");

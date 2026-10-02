@@ -1,10 +1,16 @@
 ---
 import { HERO_SLIDES, imageSrc, imageSrcset } from "../home/content";
+import type { NavCategory } from "../categories/nav";
 
 // 主視覺輪播（WAI-ARIA carousel 模式）。沒有 JS 時是一條可捲動的橫向軌道，顯示第一張；
 // 控制列（上一張、下一張、暫停、張數）由腳本啟用後才出現；沒有 JS 時軌道本身可聚焦，用方向鍵捲動，
 // 啟用後改由按鈕切換，軌道就不再是 tab stop。
 const count = HERO_SLIDES.length;
+const availableCategoryHrefs = new Set(Astro.props.categories.map((category) => `/categories/${category.slug}`));
+
+interface Props {
+  categories: Pick<NavCategory, "slug">[];
+}
 ---
 
 <section class="hero" id="hero" aria-roledescription="carousel" aria-label="主視覺">
@@ -14,7 +20,9 @@ const count = HERO_SLIDES.length;
         <div class="hero-copy">
           <h2>{slide.title}</h2>
           <p>{slide.description}</p>
-          <a class="button-link" href={slide.href}>{slide.linkText}</a>
+          <a class="button-link" href={availableCategoryHrefs.has(slide.href) ? slide.href : "/products"}>
+            {availableCategoryHrefs.has(slide.href) ? slide.linkText : "全部商品"}
+          </a>
         </div>
         <div class="hero-media">
           <img
