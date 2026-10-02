@@ -1,9 +1,9 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { orders } from "../orders/schema";
-import { PAYMENT_STATUSES, type PaymentOutcome, type PaymentStatus, type RefundReason } from "./shared";
+import { PAYMENT_STATUSES, RECONCILE_ISSUE_REASONS, type PaymentOutcome, type PaymentStatus, type ReconcileIssueReason, type RefundReason } from "./shared";
 
-export type { PaymentOutcome, PaymentStatus, RefundReason };
+export type { PaymentOutcome, PaymentStatus, ReconcileIssueReason, RefundReason };
 
 /** 付款（Payment）：針對某張訂單向金流閘道發起的一次收款嘗試；一張訂單可以有多筆。 */
 export const payments = sqliteTable(
@@ -46,3 +46,34 @@ export const paymentEvents = sqliteTable("payment_events", {
   /** 套用時間，UTC epoch 毫秒。 */
   appliedAt: integer("applied_at").notNull(),
 });
+
+/**
+ * 付款補查的待辦：補查（Cron 或管理員觸發）向閘道查證一筆仍是 pending 的付款卻沒能確認結果時，每筆付款一列（upsert）。
+ * 待辦是否還開著由查詢推導：`resolved_at` 為 null 而且付款仍是 pending（付款已被 webhook、導回查詢或後續補查套用就不再需要處理）。
+ * 保留已解決的列，讓之前出過什麼問題、試過幾次仍可追溯。
+ */
+export const paymentReconcileIssues = sqliteTable(
+  "payment_reconcile_issues",
+  {
+    paymentId: integer("payment_id")
+      .primaryKey()
+      .references(() => payments.id),
+    reason: text("reason").$type<ReconcileIssueReason>().notNull(),
+    /** 這一輪待辦（從出現到解決）失敗的補查次數。 */
+    attempts: integer("attempts").notNull(),
+    /** 這一輪待辦第一次出現的時間，UTC epoch 毫秒。 */
+    firstAt: integer("first_at").notNull(),
+    /** 最近一次補查失敗的時間，UTC epoch 毫秒。 */
+    lastAt: integer("last_at").notNull(),
+    /** 最近一次補查的觸發者：`cron` 或管理員 email。 */
+    lastSource: text("last_source").notNull(),
+    /** 補查成功確認結果（含閘道說仍在等待）的時間；仍開著為 null。 */
+    resolvedAt: integer("resolved_at"),
+  },
+  (table) => [
+    check(
+      "payment_reconcile_issues_reason_check",
+      sql`${table.reason} IN (${sql.raw(RECONCILE_ISSUE_REASONS.map((reason) => `'${reason}'`).join(", "))})`,
+    ),
+  ],
+);

@@ -4,6 +4,7 @@ import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { orderIdInput } from "../orders/input";
 import type { OrderStatus } from "../orders/schema";
+import type { PaymentStatus } from "./schema";
 import { applyPaymentResultInput, confirmPaymentInput } from "./input";
 import { diagnoseStart } from "./diagnosis";
 import { GatewayError, type GatewayPayment, type PaymentGateway } from "./gateway";
@@ -22,7 +23,15 @@ import {
 import { deliverNoticeSafely } from "../contact/notify";
 import { paymentExpiresAt } from "../orders/payment-deadline";
 import { refundReasonFor } from "./refund";
-import type { PaymentEvent } from "./shared";
+import { paymentExists, recordReconcileIssue, resolveReconcileIssue, selectDuePayments, selectPendingPaymentById, type PaymentToReconcile } from "./reconcile";
+import type { PaymentEvent, ReconcileIssueReason } from "./shared";
+
+/** 一筆付款補查的結果：套用了閘道的終局結果、閘道端已失效、閘道說還在等待，或沒能確認結果（記為待辦）。 */
+export type ReconcileOutcome =
+  | { outcome: "settled"; paymentStatus: PaymentStatus; orderStatus: OrderStatus }
+  | { outcome: "expired" }
+  | { outcome: "waiting" }
+  | { outcome: "issue"; reason: ReconcileIssueReason };
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
 export type AuthenticateCustomer = (cookie: string) => Promise<string | null>;
@@ -175,8 +184,80 @@ export function createPaymentService(
     }
   }
 
+  /**
+   * 補查一筆本地仍是 pending 的付款（Cron 與管理員觸發共用；不依賴顧客返回頁面）：向閘道查證，
+   * 終局結果一律交給 `applyEvent`（與 webhook、導回查詢同一條套用路徑與事件 ID 去重），這裡不另寫第二條。
+   * 查不到、金額或商家參照不符、結果無法套用（成功或失敗卻沒有事件 ID，或本地還在等待時閘道已退款）都不偽造成功，
+   * 只記成待辦（`payment_reconcile_issues`）並記一行 log；確認了結果（含閘道說仍在等待）就把開著的待辦記為已解決。
+   * `source` 是觸發者（`cron` 或管理員 email），記在待辦上供追溯。呼叫端必須已確認閘道設定存在。
+   */
+  async function reconcileOne(payment: PaymentToReconcile, source: string): Promise<ReconcileOutcome> {
+    const { id, orderId, gatewayPaymentId } = payment;
+    const issue = async (reason: ReconcileIssueReason): Promise<ReconcileOutcome> => {
+      await recordReconcileIssue(d1, id, reason, source, clock.now());
+      console.error(JSON.stringify({ event: "payment_reconcile_issue", paymentId: id, orderId, reason, source }));
+      return { outcome: "issue", reason };
+    };
+    const confirmed = async (outcome: ReconcileOutcome): Promise<ReconcileOutcome> => {
+      await resolveReconcileIssue(db, id, clock.now());
+      return outcome;
+    };
+
+    let queried;
+    try {
+      queried = await gateway!.getPayment(gatewayPaymentId);
+    } catch (error) {
+      logGatewayError("getPayment", error);
+      return issue("gateway_unavailable");
+    }
+    if (!gatewayResultMatches(queried, payment, orderId)) return issue("gateway_mismatch");
+
+    if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
+      const applied = await applyEvent({ eventId: queried.eventId, gatewayPaymentId, outcome: queried.status });
+      if (!applied.ok) return issue("result_unclear");
+      return confirmed({ outcome: "settled", ...applied.data });
+    }
+    if (queried.status === "expired") {
+      await expirePayment(db, id);
+      return confirmed({ outcome: "expired" });
+    }
+    if (queried.status === "pending") return confirmed({ outcome: "waiting" });
+    return issue("result_unclear");
+  }
+
   return {
     invalidatePendingPayments,
+
+    /**
+     * 管理員補查一筆付款（`paymentId` 是本站付款編號）：只有本地仍是 pending 的付款需要補查，已有結果回 `payment_not_pending`。
+     * 呼叫端（管理 RPC）已驗過 Access 身分，`actor` 是管理員 email。
+     */
+    async reconcilePayment(paymentId: number, actor: string) {
+      if (!gateway) return fail("payment_unavailable");
+      const payment = await selectPendingPaymentById(db, paymentId);
+      if (!payment) return (await paymentExists(db, paymentId)) ? fail("payment_not_pending") : fail("payment_not_found");
+      return ok(await reconcileOne(payment, actor));
+    },
+
+    /**
+     * Cron 入口：補查建立超過寬限時間、本地仍是 pending 的付款（一次有名額上限，見 `selectDuePayments`），冪等。
+     * 付款設定不全時不查（log 一行），回傳這次補查的筆數與各結果的筆數。
+     */
+    async reconcileDuePayments() {
+      const tally = { checked: 0, settled: 0, expired: 0, waiting: 0, issues: 0 };
+      if (!gateway) {
+        console.error(JSON.stringify({ event: "payment_reconcile_skipped", reason: "payment_unavailable" }));
+        return tally;
+      }
+      for (const payment of await selectDuePayments(db, clock.now())) {
+        const result = await reconcileOne(payment, "cron");
+        tally.checked += 1;
+        if (result.outcome === "issue") tally.issues += 1;
+        else tally[result.outcome === "settled" ? "settled" : result.outcome] += 1;
+      }
+      console.log(JSON.stringify({ event: "payments_reconciled", ...tally }));
+      return tally;
+    },
 
     /**
      * 由 Web Worker 在驗過閘道 webhook 的簽章之後呼叫；App 沒有 HTTP 入口，Service Binding 是唯一的來路，所以這裡沒有顧客身分。

@@ -29,7 +29,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       teamDomain: this.env.ACCESS_TEAM_DOMAIN,
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
-    }, this.env.PRODUCT_IMAGES);
+    }, this.env.PRODUCT_IMAGES, (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor));
   }
 
   /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */
@@ -112,8 +112,16 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return readCustomerSession(this.#auth(), cookie);
   }
 
-  /** 每分鐘的 Cron（wrangler.jsonc 的 triggers）：把超過付款期限的待付款訂單轉為已逾期，釋放保留。冪等。 */
+  /**
+   * 每分鐘的 Cron（wrangler.jsonc 的 triggers）：先補查漏掉通知的待付款付款，再把超過付款期限的待付款訂單轉為已逾期，釋放保留。冪等。
+   * 補查在逾期之前：期限內已付款的訂單先轉為已付款，不必走遲到付款；補查出錯只記 log，不擋逾期與圖片清理。
+   */
   async scheduled(_controller: ScheduledController): Promise<void> {
+    try {
+      await this.#payments().reconcileDuePayments();
+    } catch (error) {
+      console.error(JSON.stringify({ event: "payment_reconcile_failed", error: error instanceof Error ? error.message : String(error) }));
+    }
     await this.#orders().expireOverdueOrders();
     await cleanupDeletedProductImages(this.env.DB, this.env.PRODUCT_IMAGES);
   }
@@ -316,6 +324,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   getOrderForAdmin(jwt: string, input: unknown) {
     return this.#admin().getOrderForAdmin(jwt, input);
+  }
+
+  listPaymentsToReconcile(jwt: string) {
+    return this.#admin().listPaymentsToReconcile(jwt);
+  }
+
+  reconcilePayment(jwt: string, input: unknown) {
+    return this.#admin().reconcilePayment(jwt, input);
   }
 
   listMailForAdmin(jwt: string) {

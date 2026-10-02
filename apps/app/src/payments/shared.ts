@@ -18,6 +18,13 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const REFUND_REASONS = ["late_success_unreclaimable", "cancelled_order", "duplicate_success"] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
 
+/**
+ * 補查（不依賴顧客返回頁面的付款查證）沒能確認付款結果的原因，也是待辦的種類：
+ * 閘道查不到（連不上、回錯、格式不符）、閘道回的金額或商家參照與本站不符、閘道回的狀態無法套用（成功或失敗卻沒有事件 ID，或本地還在等待時閘道已退款）。
+ */
+export const RECONCILE_ISSUE_REASONS = ["gateway_unavailable", "gateway_mismatch", "result_unclear"] as const;
+export type ReconcileIssueReason = (typeof RECONCILE_ISSUE_REASONS)[number];
+
 /** 讓訂單上進行中的付款失效（發起新付款、顧客取消訂單共用）被拒絕的原因。 */
 export type InvalidatePaymentsRefusal = "payment_unavailable" | "payment_gateway_unavailable" | "payment_in_progress" | "payment_already_succeeded";
 

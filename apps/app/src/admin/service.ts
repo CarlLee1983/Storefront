@@ -23,13 +23,19 @@ import { selectOrderForAdmin } from "../orders/queries";
 import { dispatchShipment } from "../shipments/dispatch";
 import { recordShipmentEvent } from "../shipments/events";
 import { selectOrderPaymentSummaries } from "../payments/queries";
+import type { createPaymentService } from "../payments/service";
+import { reconcilePaymentInput } from "../payments/input";
+import { selectReconcileListing } from "../payments/reconcile";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { adjustStockInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
-export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
+/** 補查一筆付款（見 `createPaymentService().reconcilePayment`）；由 entrypoint 接上，管理服務自己不碰金流閘道。 */
+export type ReconcilePayment = ReturnType<typeof createPaymentService>["reconcilePayment"];
+
+export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket, reconcilePayment?: ReconcilePayment) {
   const db = drizzle(d1);
   const verifier = createAccessVerifier(access, clock);
 
@@ -325,6 +331,20 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     /** 開關模擬信箱的「投遞失敗」演練：開啟後之後的每次投遞都失敗，直到關閉。 */
     setMailDeliveryFailure(jwt: unknown, input: unknown) {
       return authorized(jwt, setMailDeliveryFailureInput, input, (actor, { enabled }) => setDeliveryFailure(db, clock, actor.email, enabled));
+    },
+
+    /** 本地仍是 pending 的付款與它們開著的補查待辦（Cron 或管理員補查沒能確認結果）。 */
+    async listPaymentsToReconcile(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectReconcileListing(db));
+    },
+
+    /** 補查一筆付款：向閘道查證並套用結果（與 webhook 同一條套用路徑）；沒有接上付款服務時等同付款設定不全。 */
+    reconcilePayment(jwt: unknown, input: unknown) {
+      return authorized(jwt, reconcilePaymentInput, input, async (actor, { paymentId }) =>
+        reconcilePayment ? reconcilePayment(paymentId, actor.email) : fail("payment_unavailable"),
+      );
     },
 
     /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */

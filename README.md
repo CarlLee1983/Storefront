@@ -123,9 +123,20 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 顧客取消待付款訂單時，先讓進行中的付款全部失效（向閘道取消；回 409 就查詢並套用閘道結果，其實已成功則訂單轉已付款、取消被拒），閘道連不上則不取消訂單。
 
+### 漏通知後補查與復原
+
+顧客付款後關窗、webhook 也沒送到時，不能只靠顧客返回頁面（設計文件 A9；Migration `0023_payment_reconcile.sql`；`apps/app/src/payments/reconcile.ts`、`service.ts` 的 `reconcileOne`）。補查對本地仍是 `pending` 的付款向閘道查詢，終局結果（成功／失敗，帶事件 ID）一律交給同一個 `applyEvent`（與 webhook、導回查詢同一條路徑與事件 ID 去重），不另寫第二條套用路徑，所以重複補查、補查與 webhook 先後順序改變都不會重複入帳或重複保留；遲到的成功仍依 ADR 0001 重新保留或退款，付款結果通知與付款同一個 batch 寫入。
+
+- 觸發：每分鐘 Cron（`scheduled`）在逾期處理之前先補查建立超過 5 分鐘（`RECONCILE_GRACE_MS`）的 pending 付款，一次最多 20 筆（`RECONCILE_BATCH_SIZE`），最久沒補查過的在前，一直失敗的付款不會擠掉其他付款；補查出錯只記 log，不擋逾期與圖片清理。管理員也可在 `/admin/payments`（導覽「付款補查」）對任一筆 pending 付款按「補查」（RPC `reconcilePayment`，輸入 `paymentId`；清單 RPC `listPaymentsToReconcile`）。付款設定不全時回 `payment_unavailable`，Cron 只記一行 log。
+- 查證：閘道回的金額與商家參照必須與本站記錄一致；連不上、回錯、格式不符、金額或參照不符、成功或失敗卻沒有事件 ID、本地等待時閘道已退款，都不套用也不偽造成功。閘道說已失效 → 本地付款轉 `expired`；說仍在等待 → 不動、不算問題。
+- 待辦：沒能確認結果時，每筆付款一列寫進 `payment_reconcile_issues`（原因 `gateway_unavailable`／`gateway_mismatch`／`result_unclear`、失敗次數、第一次與最近一次時間、最近一次的觸發者 `cron` 或管理員 email）並記 `payment_reconcile_issue` log。待辦是否開著由查詢推導（未解決且付款仍是 pending）：後續補查確認結果會標記已解決，付款被 webhook 或導回查詢套用則不再列出；已解決的列保留供追溯，再出問題時重新計次。`/admin/payments` 把有待辦的付款排最前面，顯示原因、次數、時間與建議處理。
+- 不變：退款失敗（`refund_failed`）與「需要處理」旗標的行為不動（見上），#115 會延伸這裡的待辦做異常退款的安全重試。
+- 回復：先回復 App 與 Web，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0023_payment_reconcile.down.sql`（還有開著的待辦時守門檢查讓回復失敗，須先處理或確認可以捨棄）。
+- 測試見 `apps/app/test/payment-reconcile.test.ts`（管理員補查、冪等與先後順序、遲到付款、待辦、權限、Cron）、`payment-reconcile-migration.test.ts`；Web 提示文字在 `apps/web/src/admin/payment-reconcile.test.ts`，手機與桌機操作（含閘道延遲回呼加關窗、補查後顧客進度與通知一致、顧客不能進補查頁）由 `e2e/tests/payment-reconcile.spec.ts` 驗證。
+
 設定（缺少時只有付款不可用，其餘頁面照常；部署前檢查同上，見 `apps/app/scripts/check-auth-deploy.ts`）：
 
-- App：`GATEWAY_BASE_URL`（`apps/app/wrangler.jsonc` 各環境的 vars，閘道 Worker 的網址）與 secret `GATEWAY_API_KEY`（= 閘道的 `GATEWAY_API_KEY`）。閘道導回與 webhook 的網址由 `BETTER_AUTH_URL`（Web 的公開 origin）組成。缺少時 `startPayment`、`confirmPayment` 回 `payment_unavailable`。
+- App：`GATEWAY_BASE_URL`（`apps/app/wrangler.jsonc` 各環境的 vars，閘道 Worker 的網址）與 secret `GATEWAY_API_KEY`（= 閘道的 `GATEWAY_API_KEY`）。閘道導回與 webhook 的網址由 `BETTER_AUTH_URL`（Web 的公開 origin）組成。缺少時 `startPayment`、`confirmPayment`、`reconcilePayment` 回 `payment_unavailable`。
 - Web：secret `GATEWAY_WEBHOOK_SECRET`（= 閘道的 `GATEWAY_WEBHOOK_SECRET`），於 `apps/web` 執行 `bunx wrangler secret put GATEWAY_WEBHOOK_SECRET --env <preview|production>`。缺少時 webhook 端點回 503，導回查詢仍可讓顧客看到最新狀態。
 
 本機開發見 `apps/app/.dev.vars.example` 與 `apps/web/.dev.vars.example`。
