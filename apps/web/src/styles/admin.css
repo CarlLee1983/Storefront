@@ -1,0 +1,27 @@
+/* Admin overrides share storefront tokens without changing storefront form/table rules. */
+.admin-shell main, .admin-shell .site-header { width: min(100%, 90rem); }
+.admin-shell .site-header { flex-wrap: nowrap; gap: var(--space-2); }
+.admin-shell .brand { flex: 0 0 auto; }
+.admin-shell .site-header nav { flex: 1; min-width: 0; flex-wrap: nowrap; gap: var(--space-2); overflow-x: auto; }
+.admin-shell .site-header a { flex-shrink: 0; white-space: nowrap; }
+.admin-shell a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: var(--space-2); }
+.admin-shell button, .admin-shell input:not([type="hidden"]), .admin-shell select, .admin-shell textarea { min-width: 44px; min-height: 44px; }
+.admin-shell input:not([type="hidden"]), .admin-shell select { height: 44px; }
+.admin-shell input, .admin-shell select, .admin-shell textarea { max-width: 40rem; }
+.admin-shell label { max-width: 40rem; }
+.admin-shell .admin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.admin-shell .admin-actions form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.admin-shell .admin-filter { display: flex; align-items: flex-end; gap: var(--space-3); }
+.admin-shell .admin-filter label { margin: 0; flex: 0 1 15rem; min-width: 0; }
+.admin-shell .admin-filter select { display: block; }
+.admin-shell .admin-filter button { flex-shrink: 0; }
+.admin-shell .admin-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); }
+.admin-shell .category-preview { max-width: 100%; height: auto; max-height: 12rem; object-fit: contain; }
+
+.admin-shell #product-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-4); padding: 0; list-style: none; }
+.admin-shell #product-images li { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); min-width: 0; }
+.admin-shell #product-images img { display: block; width: 100%; height: 9rem; object-fit: contain; margin-bottom: var(--space-2); }
+.admin-shell #product-images .image-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.admin-shell #product-images .drag-over { outline: 3px solid currentColor; }
+.admin-shell .order-products { list-style: none; padding: 0; margin: 0; }
+.admin-shell .order-products li, .admin-shell .order-product { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }

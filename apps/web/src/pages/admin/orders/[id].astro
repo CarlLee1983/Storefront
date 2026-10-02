@@ -4,7 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeShipFailure, shipFormToInput } from "../../../admin/order-form";
 import OrderStatus from "../../../orders/OrderStatus.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
-import Layout from "../../../layouts/Layout.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { formToRecord } from "../../../shared/form-values";
 import { formatDateTime, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../../orders/labels";
 
@@ -37,7 +37,7 @@ const shipped = Astro.url.searchParams.get("saved") === "shipped";
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
-<Layout title={order ? `訂單 #${order.id}` : "訂單"} admin>
+<AdminLayout title={order ? `訂單 #${order.id}` : "訂單"}>
   {
     view === "forbidden" ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
@@ -69,7 +69,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           )
         }
         {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
-        <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
           </thead>
@@ -89,7 +89,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
         {
           order.payments.length > 0 && (
-            <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="付款嘗試資料表"><table>
               <thead>
                 <tr><th>發起時間</th><th>金額</th><th>狀態</th><th>退款原因</th><th>退款時間</th></tr>
               </thead>
@@ -117,9 +117,4 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       </>
     )
   }
-</Layout>
-
-<style>
-  .order-products { list-style: none; padding: 0; margin: 0; }
-  .order-products li, .order-product { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2); }
-</style>
+</AdminLayout>

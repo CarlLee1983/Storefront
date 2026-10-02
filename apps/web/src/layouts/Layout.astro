@@ -9,16 +9,14 @@ import { categorySlugFromPath, loadStorefrontNav } from "../categories/nav";
 
 interface Props {
   title: string;
-  admin?: boolean;
   noindex?: boolean;
   /** 頁面自己在版面中放置 h1（`title` 仍用於 <title>）。 */
   hideTitle?: boolean;
 }
-const { title, admin = false, noindex = false, hideTitle = false } = Astro.props;
-// 管理後台由 Cloudflare Access 保護，與顧客登入無關，不顯示登入狀態
-const customer = admin ? null : Astro.locals.customer;
-// 後台頁不查分類與特價；顧客頁一次 RPC 取得，失敗時當作沒有分類、沒有特價
-const { categories, hasSale } = admin ? { categories: [], hasSale: false } : await loadStorefrontNav(env.APP);
+const { title, noindex = false, hideTitle = false } = Astro.props;
+const customer = Astro.locals.customer;
+// 顧客頁一次 RPC 取得，失敗時當作沒有分類、沒有特價
+const { categories, hasSale } = await loadStorefrontNav(env.APP);
 const currentCategory = categorySlugFromPath(Astro.url.pathname);
 ---
 
@@ -27,7 +25,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    {(admin || noindex) && <meta name="robots" content="noindex" />}
+    {noindex && <meta name="robots" content="noindex" />}
     <title>{title}｜Storefront</title>
 
   </head>
@@ -35,59 +33,43 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
     <a class="skip-link" href="#main-content">跳到主要內容</a>
     <header class="site-header">
       <a class="brand" href="/">Storefront</a>
-      {
-        admin ? (
-          <nav aria-label="後台導覽">
-            <a href="/admin">管理後台</a>
-            <a href="/admin/categories">分類管理</a>
-            <a href="/admin/orders">訂單管理</a>
-          </nav>
-        ) : (
-          <>
-            <nav class="desktop-only" aria-label="主要導覽">
-              <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
-              <CategoryLinks categories={categories} current={currentCategory} />
-              {hasSale && <a class="sale-link" href="/sale" aria-current={Astro.url.pathname === "/sale" ? "page" : undefined}>特價</a>}
-            </nav>
-            <div class="tools">
-              <SearchDialog />
-              <div class="desktop-only account">
-                <AccountLinks customer={customer} url={Astro.url} />
-              </div>
-              <a href="/cart">
-                購物車（<span id="cart-count">0</span>）
-              </a>
-              <button type="button" class="icon-button menu-button" id="menu-button" aria-label="開啟選單" aria-haspopup="dialog">
-                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2" fill="none" /></svg>
-              </button>
-            </div>
-          </>
-        )
-      }
+      <nav class="desktop-only" aria-label="主要導覽">
+        <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
+        <CategoryLinks categories={categories} current={currentCategory} />
+        {hasSale && <a class="sale-link" href="/sale" aria-current={Astro.url.pathname === "/sale" ? "page" : undefined}>特價</a>}
+      </nav>
+      <div class="tools">
+        <SearchDialog />
+        <div class="desktop-only account">
+          <AccountLinks customer={customer} url={Astro.url} />
+        </div>
+        <a href="/cart">
+          購物車（<span id="cart-count">0</span>）
+        </a>
+        <button type="button" class="icon-button menu-button" id="menu-button" aria-label="開啟選單" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2" fill="none" /></svg>
+        </button>
+      </div>
     </header>
-    {
-      !admin && (
-        <dialog id="menu-drawer" class="menu-drawer" aria-label="選單">
-          <div class="drawer-head">
-            <span class="brand">Storefront</span>
-            <button type="button" class="icon-button" id="menu-close" aria-label="關閉選單" autofocus>
-              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none" /></svg>
-            </button>
-          </div>
-          <div class="drawer-search">
-            <SearchForm id="drawer-search-q" label="選單搜尋" />
-          </div>
-          <nav class="drawer-nav" aria-label="行動版導覽">
-            <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
-            <CategoryLinks categories={categories} current={currentCategory} showDescription />
-            {hasSale && <a class="sale-link" href="/sale" aria-current={Astro.url.pathname === "/sale" ? "page" : undefined}>特價</a>}
-          </nav>
-          <div class="drawer-foot">
-            <AccountLinks customer={customer} url={Astro.url} />
-          </div>
-        </dialog>
-      )
-    }
+    <dialog id="menu-drawer" class="menu-drawer" aria-label="選單">
+      <div class="drawer-head">
+        <span class="brand">Storefront</span>
+        <button type="button" class="icon-button" id="menu-close" aria-label="關閉選單" autofocus>
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none" /></svg>
+        </button>
+      </div>
+      <div class="drawer-search">
+        <SearchForm id="drawer-search-q" label="選單搜尋" />
+      </div>
+      <nav class="drawer-nav" aria-label="行動版導覽">
+        <a href="/products" aria-current={Astro.url.pathname === "/products" ? "page" : undefined}>全部商品</a>
+        <CategoryLinks categories={categories} current={currentCategory} showDescription />
+        {hasSale && <a class="sale-link" href="/sale" aria-current={Astro.url.pathname === "/sale" ? "page" : undefined}>特價</a>}
+      </nav>
+      <div class="drawer-foot">
+        <AccountLinks customer={customer} url={Astro.url} />
+      </div>
+    </dialog>
     <p id="sign-out-error" class="error" role="alert" hidden></p>
     <main id="main-content" tabindex="-1">
       {!hideTitle && <h1>{title}</h1>}

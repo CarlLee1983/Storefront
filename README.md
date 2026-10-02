@@ -77,6 +77,14 @@ bun run e2e
 - 失敗時 trace 與報告在 `e2e/test-results/`、`e2e/playwright-report/`（已 gitignore），CI 會上傳成 artifact。
 - 需要 8790、8791 與 9330、9331 埠空閒。
 
+## 後台版面
+
+所有後台頁面使用 `AdminLayout.astro`：內容容器上限 90rem，導覽以 `aria-current` 標示所在區域，品牌回到商品管理，另有「前往前台」連結；保留 `noindex`，不顯示前台頁尾。手機導覽維持單行並可水平捲動。
+
+共用後台樣式集中在 `apps/web/src/styles/admin.css`，以 `.admin-shell` 限定作用範圍並沿用前台設計 token。欄位上限 40rem、篩選選單上限 15rem，輸入框與選單等高，動作列有固定間距，連結與控制項至少 44px。前台的全域表單與表格規則維持原樣。`e2e/tests/admin-shell.spec.ts` 在 375 與 1280 寬度驗證所有後台頁面的版面與 axe，包含已付款訂單、403 與 404。
+
+本機驗證結果與既有前台圖庫滑動測試的限制見 [#77 驗收紀錄](docs/acceptance/77-admin-shell.md)。
+
 ## 示範資料
 
 `demo/catalog.json` 與 `demo/images/` 是示範用的 4 個分類與 32 件商品（#50）。`bun run seed` 以瀏覽器操作後台，走真實流程寫入：建立分類並上傳分類圖片、建立商品、補足庫存、上傳商品圖片（瀏覽器縮放、存進 R2）、設定分類、原價與精選，最後上架。以分類代稱與商品名稱判斷是否已存在，重跑只補缺的部分，不產生重複資料；中途失敗直接重跑即可接續。

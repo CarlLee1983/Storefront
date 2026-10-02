@@ -4,7 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { categoryUpdateFormToInput, parseCategoryId } from "../../../admin/category-form";
 import { describeFailure, logFailure, type Failure } from "../../../admin/failure";
 import { formToRecord } from "../../../shared/form-values";
-import Layout from "../../../layouts/Layout.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
 
 export const prerender = false;
 
@@ -51,7 +51,7 @@ const values = {
 const cover = current?.image?.variants[0];
 ---
 
-<Layout title="修改分類" admin>
+<AdminLayout title="修改分類">
   {
     Astro.response.status === 403 ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
@@ -74,8 +74,10 @@ const cover = current?.image?.variants[0];
             <input name="categoryDescription" value={values.categoryDescription} required />
             {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
           </label>
-          <button type="submit">儲存</button>
-          <a href="/admin/categories">取消</a>
+          <div class="admin-actions">
+            <button type="submit">儲存</button>
+            <a href="/admin/categories">取消</a>
+          </div>
         </form>
         <section aria-labelledby="category-image-heading">
           <h2 id="category-image-heading">分類圖片</h2>
@@ -94,7 +96,7 @@ const cover = current?.image?.variants[0];
       </>
     )
   }
-</Layout>
+</AdminLayout>
 
 <script>
   import { UserFacingError } from "../../../admin/failure";
