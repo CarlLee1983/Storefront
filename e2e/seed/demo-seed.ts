@@ -30,7 +30,7 @@ async function main(args: string[]) {
   try {
     const page = context.pages()[0] ?? (await context.newPage());
     if (target.interactiveLogin) await waitForAccessLogin(page, target);
-    await admin.assertStorefrontAdmin(page);
+    await admin.assertStorefrontAdmin(page, target.baseUrl);
     await seedCategories(page, catalog);
     await seedProducts(page, catalog);
     await report(page, catalog);

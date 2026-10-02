@@ -20,11 +20,11 @@ async function pngFile(page: Page, color: string, name: string) {
 }
 
 async function createListedProduct(admin: Page, name: string, categoryName: string) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/products/new");
   await admin.getByLabel("名稱", { exact: true }).fill(name);
   await admin.getByLabel("單價（新台幣整數元）").fill("880");
   await admin.getByRole("button", { name: "新增商品", exact: true }).click();
-  await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await expect(admin.getByRole("status").filter({ hasText: "已新增商品。" })).toHaveText("已新增商品。");
   await assignCategory(admin, name, categoryName);
   await admin.getByRole("row", { name: new RegExp(name) }).getByRole("link", { name: "編輯" }).click();
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles(await pngFile(admin, "#e5d8c5", "cover.png"));

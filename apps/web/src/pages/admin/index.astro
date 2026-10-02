@@ -1,24 +1,17 @@
 ---
 import { env } from "cloudflare:workers";
-import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "@storefront/app/category-slug";
 import { readAccessJwt } from "../../admin/access-jwt";
-import { describeFailure, type Failure } from "../../admin/failure";
-import { saleStatusText } from "../../admin/sale-status";
-import { dispatchProductForm, FEATURE_INTENT, productFormToInput, UNFEATURE_INTENT } from "../../admin/product-form";
-import { formToRecord } from "../../shared/form-values";
+import { describeFailure } from "../../admin/failure";
+import { dispatchProductForm, FEATURE_INTENT, UNFEATURE_INTENT } from "../../admin/product-form";
 import AdminLayout from "../../layouts/AdminLayout.astro";
 
 export const prerender = false;
 
 // 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
-let failure: Failure | undefined;
-let submitted: Record<string, string> = {};
 let unauthorized = false;
 let listingError = "";
-let stockFailure: (Failure & { id: number }) | undefined;
-let categoryFailure: Failure | undefined;
-let categorySubmitted: Record<string, string> = {};
+let stockFailureId: number | undefined;
 const LISTING_FAILED = "操作失敗，請稍後再試";
 
 /** 清單上按鈕（上下架、精選）的失敗：未授權交給頁面回 403，其餘顯示在清單上方。 */
@@ -46,12 +39,6 @@ if (Astro.request.method === "POST") {
     const result = await env.APP.setProductFeatured(jwt, { id: dispatch.id, featured: dispatch.featured });
     if (result.ok) return Astro.redirect(`/admin?saved=${dispatch.featured ? FEATURE_INTENT : UNFEATURE_INTENT}`, 303);
     failListingAction(result);
-  } else if (dispatch.kind === "create-category") {
-    categorySubmitted = formToRecord(form);
-    const result = await env.APP.createCategory(jwt, dispatch.input);
-    if (result.ok) return Astro.redirect("/admin?saved=category", 303);
-    if (result.reason === "unauthorized") unauthorized = true;
-    else categoryFailure = describeFailure(result, "建立分類失敗，請稍後再試");
   } else if (dispatch.kind === "stock") {
     // 清單上的庫存調整（增減量）
     const result = await env.APP.adjustStock(jwt, dispatch.input);
@@ -59,31 +46,21 @@ if (Astro.request.method === "POST") {
     if (result.reason === "unauthorized") unauthorized = true;
     else {
       const described = describeFailure(result, LISTING_FAILED);
-      listingError = described.message;
-      // 欄位錯誤（例如增減量不可為 0）顯示在該列的輸入框旁
-      stockFailure = { ...described, id: dispatch.input.id };
+      listingError = [described.message, ...(described.fields.delta ?? [])].join("：");
+      stockFailureId = dispatch.input.id;
     }
-  } else {
-    submitted = formToRecord(form);
-    const result = await env.APP.createProduct(jwt, productFormToInput(form));
-    if (result.ok) return Astro.redirect("/admin?saved=created", 303);
-    if (result.reason === "unauthorized") unauthorized = true;
-    else failure = describeFailure(result, "新增商品失敗，請稍後再試");
   }
 }
 
 const products = unauthorized ? null : await env.APP.listProductsForAdmin(jwt);
-const categories = unauthorized ? null : await env.APP.listCategoriesForAdmin(jwt);
 if (unauthorized || (products && !products.ok)) Astro.response.status = 403;
 const SAVED_MESSAGES: Record<string, string> = {
-  created: "已新增商品。",
   updated: "已儲存商品。",
   unlist: "已下架商品。",
   relist: "已重新上架商品。",
   [FEATURE_INTENT]: "已標為精選商品。",
   [UNFEATURE_INTENT]: "已取消精選。",
   stock: "已調整庫存。",
-  category: "已建立分類。",
 };
 const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
 const priceFormat = new Intl.NumberFormat("zh-TW");
@@ -95,29 +72,29 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
+        <p><a href="/admin/products/new">新增商品</a></p>
         {savedMessage && <p role="status">{savedMessage}</p>}
-        {listingError && <p class="error" role="alert">{listingError}</p>}
+        {listingError && <p id="listing-error" class="error" role="alert">{listingError}</p>}
         {products?.ok && products.data.length === 0 && <p>目前沒有商品。</p>}
         {
           products?.ok && products.data.length > 0 && (
-            <div class="table-scroll" tabindex="0" role="region" aria-label="管理資料表"><table>
+            <div class="table-scroll admin-products" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
-                <tr><th>封面</th><th>名稱</th><th>說明</th><th>分類</th><th>單價（NT$）</th><th>特價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th>精選</th><th>操作</th></tr>
+                <tr><th>封面</th><th>名稱</th><th>分類</th><th>售價</th><th>原價</th><th>在庫數</th><th>保留數</th><th>可售數量</th><th>狀態</th><th>精選</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
                   <tr>
-                    <td>{p.cover ? <img src={`/images/${p.cover.variants[0]!.key}`} width="64" height="64" style="object-fit: cover; border-radius: 0.25rem" alt={`${p.name}的封面`} loading="lazy" /> : <span>尚無圖片</span>}</td>
+                    <td data-label="封面">{p.cover ? <img src={`/images/${p.cover.variants[0]!.key}`} width="64" height="64" style="object-fit: cover; border-radius: 0.25rem" alt={`${p.name}的封面`} loading="lazy" /> : <span>尚無圖片</span>}</td>
                     <td>{p.name}</td>
-                    <td>{p.description}</td>
-                    <td>{p.category?.name ?? "未分類"}</td>
-                    <td>{priceFormat.format(p.priceTwd)}</td>
-                    <td>{saleStatusText(p.listed, p.compareAtPriceTwd)}</td>
-                    <td>{p.onHand}</td>
-                    <td>{p.reserved}</td>
-                    <td>{p.available}</td>
-                    <td>{p.listed ? "上架中" : "已下架"}</td>
-                    <td>
+                    <td data-label="分類">{p.category?.name ?? "未分類"}</td>
+                    <td data-label="售價">{priceFormat.format(p.priceTwd)}</td>
+                    <td data-label="原價">{p.compareAtPriceTwd === null ? "—" : priceFormat.format(p.compareAtPriceTwd)}</td>
+                    <td data-label="在庫數">{p.onHand}</td>
+                    <td data-label="保留數">{p.reserved}</td>
+                    <td data-label="可售數量">{p.available}</td>
+                    <td data-label="狀態">{p.listed ? "上架中" : "已下架"}</td>
+                    <td data-label="精選">
                       {p.featured ? "精選" : "—"}
                       <form method="post" class="inline">
                         <input type="hidden" name="id" value={p.id} />
@@ -125,7 +102,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                         <button type="submit" aria-label={`${p.featured ? "取消精選" : "標為精選"}：${p.name}`}>{p.featured ? "取消精選" : "標為精選"}</button>
                       </form>
                     </td>
-                    <td>
+                    <td data-label="操作">
                       <div class="admin-actions">
                         <a href={`/admin/products/${p.id}`}>編輯</a>
                         <form method="post" class="inline">
@@ -136,8 +113,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                         <form method="post" class="inline">
                           <input type="hidden" name="id" value={p.id} />
                           <input type="hidden" name="intent" value="adjust-stock" />
-                          <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="+20 或 -3" aria-label={`${p.name}的庫存增減量`} required />
-                          {stockFailure?.id === p.id && stockFailure.fields.delta?.map((m) => <span class="error">{m}</span>)}
+                          <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="+20 或 -5" aria-label={`${p.name}的庫存增減量`} aria-describedby={stockFailureId === p.id ? "listing-error" : undefined} aria-invalid={stockFailureId === p.id ? "true" : undefined} required />
                           <button type="submit">調整庫存</button>
                         </form>
                       </div>
@@ -148,64 +124,6 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </table></div>
           )
         }
-        <h2>分類</h2>
-        <p><a href="/admin/categories">管理分類</a>（修改名稱與說明、分類圖片、刪除）</p>
-        {categories?.ok && categories.data.length === 0 && <p>目前沒有分類。商品需要先有分類才能上架。</p>}
-        {
-          categories?.ok && categories.data.length > 0 && (
-            <div class="table-scroll" tabindex="0" role="region" aria-label="分類資料表"><table>
-              <thead>
-                <tr><th>名稱</th><th>代稱</th><th>商品數</th><th>上架商品數</th></tr>
-              </thead>
-              <tbody>
-                {categories.data.map((c) => (
-                  <tr><td>{c.name}</td><td>{c.slug}</td><td>{c.productCount}</td><td>{c.listedProductCount}</td></tr>
-                ))}
-              </tbody>
-            </table></div>
-          )
-        }
-        <h3>新增分類</h3>
-        {categoryFailure && <p class="error" role="alert">{categoryFailure.message}</p>}
-        <form method="post">
-          <input type="hidden" name="intent" value="create-category" />
-          <label>
-            分類名稱
-            <input name="categoryName" value={categorySubmitted.categoryName ?? ""} required />
-            {categoryFailure?.fields.name?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            分類說明（一行）
-            <input name="categoryDescription" value={categorySubmitted.categoryDescription ?? ""} required />
-            {categoryFailure?.fields.description?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            網址代稱（小寫英文、數字與連字號，建立後不能修改）
-            <input name="categorySlug" value={categorySubmitted.categorySlug ?? ""} required pattern={SLUG_PATTERN.source} maxlength={MAX_SLUG_LENGTH} />
-            {categoryFailure?.fields.slug?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <button type="submit">建立分類</button>
-        </form>
-        <h2>新增商品</h2>
-        {failure && <p class="error" role="alert">{failure.message}</p>}
-        <form method="post">
-          <label>
-            名稱
-            <input name="name" value={submitted.name ?? ""} required />
-            {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            說明
-            <textarea name="description" rows="3">{submitted.description ?? ""}</textarea>
-            {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            單價（新台幣整數元）
-            <input name="priceTwd" type="number" min="1" step="1" value={submitted.priceTwd ?? ""} required />
-            {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <button type="submit">新增商品</button>
-        </form>
       </>
     )
   }

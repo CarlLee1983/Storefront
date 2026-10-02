@@ -90,13 +90,13 @@ test("商品卡：封面是正方形，加入購物車是只有圖示的按鈕�
   expect((await add.innerText()).trim()).toBe("");
 });
 
-// 後台清單的特價欄由 sale.spec.ts 斷言（該列含「特價（原價 NT$ 450）」）；這裡只驗精選欄
+// 後台清單的原價欄由 sale.spec.ts 斷言；這裡只驗精選欄
 test("後台商品清單：精選欄顯示「精選」，按鈕改為取消精選", async ({ browser }) => {
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await context.newPage();
     await admin.goto("/admin");
-    // 精選欄以表頭位置定位：特價欄對未特價商品也是「—」，不能用文字找
+    // 精選欄以表頭位置定位：原價欄對未特價商品也是「—」，不能用文字找
     const headers = await admin.locator("thead th").allTextContents();
     const featuredColumn = headers.indexOf("精選");
     expect(featuredColumn, "後台清單要有「精選」欄").toBeGreaterThanOrEqual(0);

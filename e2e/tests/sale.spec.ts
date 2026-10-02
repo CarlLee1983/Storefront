@@ -12,6 +12,8 @@ const SEED_PREFIX = "特價測試";
 const card = (page: Page, name: string) => page.locator(".product-card").filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
 const saleNavLink = (page: Page) => page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: "特價", exact: true });
 const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+const adminCell = (page: Page, name: string, column: "原價" | "狀態") => page.getByRole("row", { name: new RegExp(name) })
+  .locator("td").nth({ 原價: 4, 狀態: 8 }[column]);
 
 /** 在商品編輯頁填寫（空字串為清空）原價並儲存；回傳送出後頁面（成功時是後台清單，被拒時停在編輯頁）。 */
 async function saveCompareAt(admin: Page, name: string, compareAt: string, priceTwd?: number) {
@@ -65,8 +67,8 @@ test("管理員拒絕不高於售價的原價，設定合法原價後顧客在�
     await expect(admin.getByRole("alert")).toContainText("原價必須高於這次儲存後的售價");
     await saveCompareAt(admin, SALE.name, String(SALE.compareAtPriceTwd));
     await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
-    await expect(admin.getByRole("row", { name: new RegExp(SALE.name) })).toContainText("特價（原價 NT$ 450）");
-    await expect(admin.getByRole("row", { name: new RegExp(REGULAR.name) })).not.toContainText("特價（原價");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    await expect(adminCell(admin, REGULAR.name, "原價")).toHaveText("—");
   } finally { await context.close(); }
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -128,17 +130,17 @@ test("/sale 有特價商品時桌機與手機 axe 零違規，手機抽屜也有
   await expect(drawerLink).toHaveAttribute("aria-current", "page");
 });
 
-test("特價商品下架後：後台標明前台不顯示，導覽列不再有「特價」；重新上架後回來", async ({ browser, page }) => {
+test("特價商品下架後：後台狀態更新，導覽列不再有「特價」；重新上架後回來", async ({ browser, page }) => {
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await context.newPage();
     await admin.goto("/admin");
     const row = admin.getByRole("row", { name: new RegExp(SALE.name) });
-    await expect(row).toContainText("特價（原價 NT$ 450）");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
     await row.getByRole("button", { name: "下架" }).click();
     await expect(admin.getByRole("status")).toHaveText("已下架商品。");
-    await expect(row).toContainText("原價 NT$ 450（下架中，前台不顯示）");
-    await expect(row).not.toContainText("特價（原價");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    await expect(adminCell(admin, SALE.name, "狀態")).toHaveText("已下架");
 
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/sale");
@@ -147,7 +149,8 @@ test("特價商品下架後：後台標明前台不顯示，導覽列不再有�
 
     await row.getByRole("button", { name: "重新上架" }).click();
     await expect(admin.getByRole("status")).toHaveText("已重新上架商品。");
-    await expect(row).toContainText("特價（原價 NT$ 450）");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    await expect(adminCell(admin, SALE.name, "狀態")).toHaveText("上架中");
   } finally { await context.close(); }
 });
 
@@ -157,7 +160,7 @@ test("結束特價：同一次儲存改回售價並清空原價後，導覽列�
     const admin = await context.newPage();
     await saveCompareAt(admin, SALE.name, "", SALE.compareAtPriceTwd);
     await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
-    await expect(admin.getByRole("row", { name: new RegExp(SALE.name) })).not.toContainText("特價（原價");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("—");
   } finally { await context.close(); }
 
   await page.setViewportSize({ width: 1280, height: 900 });

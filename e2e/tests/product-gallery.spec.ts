@@ -5,7 +5,7 @@ import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 
 async function createProduct(page: Page, name: string) {
-  await page.goto("/admin");
+  await page.goto("/admin/products/new");
   await page.getByLabel("名稱", { exact: true }).fill(name);
   await page.getByLabel("單價（新台幣整數元）").fill("350");
   await page.getByRole("button", { name: "新增商品", exact: true }).click();

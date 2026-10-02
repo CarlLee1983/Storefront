@@ -27,15 +27,25 @@ export interface AdminProduct {
 
 /** 開啟後台頁面；沒有權限（Access 未登入或 JWT 不對）時直接失敗，不往下寫。 */
 export async function openAdmin(page: Page, path: string) {
-  await page.goto(path);
+  const response = await page.goto(path);
   const denied = page.getByText("沒有權限：請確認已通過 Cloudflare Access 登入。");
   if (await denied.isVisible()) throw new Error(`沒有後台權限（${page.url()}）`);
+  return response;
 }
 
 /** 寫入前確認對方真的是本站後台：本機埠可能被其他專案的 dev server 佔用。 */
-export async function assertStorefrontAdmin(page: Page) {
-  await openAdmin(page, "/admin");
-  if (!(await page.getByRole("heading", { name: "新增商品" }).isVisible())) {
+export async function assertStorefrontAdmin(page: Page, expectedBaseUrl: string) {
+  const response = await openAdmin(page, "/admin");
+  const expected = new URL("/admin", expectedBaseUrl);
+  const actual = new URL(page.url());
+  const navigation = page.getByRole("navigation", { name: "後台導覽" });
+  const current = navigation.getByRole("link", { name: "商品管理", exact: true });
+  const create = page.getByRole("main").getByRole("link", { name: "新增商品", exact: true });
+  if (!response?.ok() || actual.origin !== expected.origin || actual.pathname !== expected.pathname
+    || !(await page.getByRole("heading", { level: 1, name: "商品管理", exact: true }).isVisible())
+    || !(await current.isVisible()) || await current.getAttribute("aria-current") !== "page"
+    || await current.getAttribute("href") !== "/admin"
+    || !(await create.isVisible()) || await create.getAttribute("href") !== "/admin/products/new") {
     throw new Error(`${page.url()} 不是 Storefront 的商品管理頁，停止 seed。`);
   }
 }
@@ -85,7 +95,7 @@ export async function listCategories(page: Page): Promise<AdminCategory[]> {
 }
 
 export async function createCategory(page: Page, category: DemoCategory) {
-  await openAdmin(page, "/admin");
+  await openAdmin(page, "/admin/categories");
   await page.getByLabel("分類名稱").fill(category.name);
   await page.getByLabel("分類說明").fill(category.blurb);
   await page.getByLabel("網址代稱").fill(category.slug);
@@ -119,12 +129,13 @@ export async function listProducts(page: Page): Promise<AdminProduct[]> {
 }
 
 export async function createProduct(page: Page, product: DemoProduct) {
-  await openAdmin(page, "/admin");
+  await openAdmin(page, "/admin/products/new");
   const form = page.locator("form").filter({ has: page.getByRole("button", { name: "新增商品", exact: true }) });
   await form.getByLabel("名稱", { exact: true }).fill(product.name);
   await form.getByLabel("說明", { exact: true }).fill(product.description);
   await form.getByLabel("單價（新台幣整數元）").fill(String(product.priceTwd));
   await submitAndExpect(page, form.getByRole("button", { name: "新增商品", exact: true }), "已新增商品。");
+  await expect(page).toHaveURL(/\/admin\/products\/[1-9]\d*\?saved=created$/);
 }
 
 /**

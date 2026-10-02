@@ -90,11 +90,14 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   // 2. 管理員新增商品、選分類、上傳多張圖片、補貨、標原價後上架並標為精選
   await admin.goto("/admin");
+  await admin.getByRole("link", { name: "新增商品", exact: true }).click();
+  await expect(admin).toHaveURL(`${BASE_URL}/admin/products/new`);
   await admin.getByLabel("名稱", { exact: true }).fill(PRODUCT.name);
   await admin.getByLabel("說明", { exact: true }).fill(PRODUCT.description);
   await admin.getByLabel("單價（新台幣整數元）").fill(PRODUCT.priceTwd);
   await admin.getByRole("button", { name: "新增商品" }).click();
-  await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await expect(admin).toHaveURL(new RegExp(`^${BASE_URL}/admin/products/\\d+\\?saved=created$`));
+  await expect(admin.getByRole("status").filter({ hasText: "已新增商品。" })).toHaveText("已新增商品。");
   await assignCategory(admin, PRODUCT.name, CATEGORY.name);
 
   const productRow = admin.getByRole("row", { name: new RegExp(PRODUCT.name) });

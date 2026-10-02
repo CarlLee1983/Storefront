@@ -6,9 +6,9 @@ import { expect, type Page } from "@playwright/test";
  */
 export const SHARED_CATEGORY = { slug: "e2e-shared", name: "E2E共用", description: "E2E 測試共用的分類" };
 
-/** 在 /admin 建立分類；表單送出後停在 /admin。 */
+/** 在分類管理頁建立分類；表單送出後停在分類管理頁。 */
 export async function createCategory(admin: Page, category: { slug: string; name: string; description: string }) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/categories");
   await admin.getByLabel("分類名稱").fill(category.name);
   await admin.getByLabel("分類說明").fill(category.description);
   await admin.getByLabel("網址代稱").fill(category.slug);
@@ -20,13 +20,13 @@ export async function createCategory(admin: Page, category: { slug: string; name
  * 這時不直接當成已存在，而是回後台確認清單裡真的有這個代稱與名稱的分類，否則測試失敗。
  */
 export async function ensureSharedCategory(admin: Page) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/categories");
   if (await admin.getByRole("row", { name: new RegExp(SHARED_CATEGORY.slug) }).count()) return;
   await createCategory(admin, SHARED_CATEGORY);
   const outcome = admin.getByRole("status").or(admin.getByRole("alert"));
   await expect(outcome).toContainText(/已建立分類|這個代稱已被使用/);
   if ((await outcome.textContent())?.includes("這個代稱已被使用")) {
-    await admin.goto("/admin");
+    await admin.goto("/admin/categories");
     const existing = admin.getByRole("row", { name: new RegExp(SHARED_CATEGORY.slug) });
     await expect(existing).toContainText(SHARED_CATEGORY.name);
   }
@@ -43,7 +43,9 @@ export async function assignCategory(admin: Page, productName: string, categoryN
 
 /** 讓商品歸到共用分類（必要時先建立）。商品必須已經存在。 */
 export async function assignSharedCategory(admin: Page, productName: string) {
-  // 先等新增商品的表單送出完成（列表出現這件商品），再換頁
+  // 新增商品成功後停在編輯頁；回清單確認商品已建立。
+  await expect(admin).toHaveURL(/\/admin\/products\/[1-9]\d*\?saved=created$/);
+  await admin.goto("/admin");
   await expect(admin.getByRole("row", { name: new RegExp(productName) })).toBeVisible();
   await ensureSharedCategory(admin);
   await assignCategory(admin, productName, SHARED_CATEGORY.name);

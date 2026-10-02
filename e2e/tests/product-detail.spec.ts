@@ -5,7 +5,7 @@ import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 
 async function createGallery(admin: Page, name: string) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/products/new");
   await admin.getByLabel("名稱", { exact: true }).fill(name);
   await admin.getByLabel("說明", { exact: true }).fill("為日常挑選的手工花器。\n每件作品都有不同的紋理與溫度。");
   await admin.getByLabel("單價（新台幣整數元）").fill("680");

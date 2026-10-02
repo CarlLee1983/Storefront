@@ -9,12 +9,12 @@ const MAIN = { name: "改版主打花器", priceTwd: 680 };
 const OTHER = { name: "改版同類托盤", priceTwd: 480 };
 
 async function createListedProduct(admin: Page, name: string, priceTwd: number) {
-  await admin.goto("/admin");
+  await admin.goto("/admin/products/new");
   await admin.getByLabel("名稱", { exact: true }).fill(name);
   await admin.getByLabel("說明", { exact: true }).fill("為日常挑選的好物，簡單而耐用。");
   await admin.getByLabel("單價（新台幣整數元）").fill(String(priceTwd));
   await admin.getByRole("button", { name: "新增商品" }).click();
-  await expect(admin.getByRole("status")).toHaveText("已新增商品。");
+  await expect(admin.getByRole("status").filter({ hasText: "已新增商品。" })).toHaveText("已新增商品。");
   await assignCategory(admin, name, CATEGORY.name);
   const row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByLabel(`${name}的庫存增減量`).fill("10");
