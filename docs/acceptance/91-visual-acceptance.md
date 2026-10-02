@@ -1,6 +1,6 @@
 # 前台視覺驗收（#91 / #76）
 
-狀態：截圖與 Lighthouse 已完成；**owner 視覺核可待完成**。實作 #85–#90 已合併，驗收附件不修改應用程式。
+狀態：截圖與 Lighthouse 已完成；**owner 已於 2026-10-02 在本次工作對話明確回覆「核可畫面」**。實作 #85–#90 已合併，驗收附件不修改應用程式。
 
 [畫面審閱頁（縮圖與完整 PNG）](91-assets/review.html) · [量測 manifest](91-assets/public-manifest.json) · [附件 SHA-256](91-assets/sha256.json)
 
@@ -30,7 +30,7 @@ Chrome 154.0.8037.93、Lighthouse 13.5.0、Node 24.21.0、Bun 1.4.2。Lighthouse
 | 有商品的特價 | [PNG](91-assets/sale-375.png) | [PNG](91-assets/sale-1280.png) |
 | 內容（關於） | [PNG](91-assets/content-about-375.png) | [PNG](91-assets/content-about-1280.png) |
 
-主代理已逐張檢視 18 張截圖；這是工程檢查，owner 核可另行記錄。
+主代理已逐張檢視 18 張截圖；owner 已審閱此份畫面總覽並明確回覆「核可畫面」。
 
 ## Lighthouse 與 #60 比較
 
@@ -57,7 +57,7 @@ Chrome 154.0.8037.93、Lighthouse 13.5.0、Node 24.21.0、Bun 1.4.2。Lighthouse
 
 - [x] 所需頁面 375／1280 截圖與 axe／溢出檢查完成。
 - [x] 重跑 Lighthouse、新增三頁並記錄 #60 比較。
-- [ ] owner 審閱核可。收到明確核可後才完成 #91、關閉 parent #76。
+- [x] owner 審閱核可：2026-10-02 本次工作對話回覆「核可畫面」。最後 CI 通過後合併並關閉 #91、parent #76。
 
 ## 重現此份驗收
 
