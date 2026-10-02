@@ -1,0 +1,61 @@
+/* Public storefront only. Admin keeps the shared base tokens and its own 48rem layout. */
+body.storefront-shell {
+  --color-error: #672579;
+  --text-display-hero: clamp(2rem, 7vw, 3.75rem);
+  --text-display-banner: clamp(2.25rem, 8vw, 4.5rem);
+  --text-display-page: clamp(2.5rem, 10vw, 5rem);
+  --text-display-product: clamp(2rem, 6vw, 3.5rem);
+  --text-display-placeholder: 4rem;
+  --section-gap: clamp(3rem, 6vw, 5rem);
+  --control-height: 3.25rem;
+  --product-thumb-size: 4rem;
+  --product-thumb-cart-size: 5.5rem;
+}
+
+body.storefront-shell h1,
+body.storefront-shell h2,
+body.storefront-shell h3 { font-weight: 700; letter-spacing: normal; }
+body.storefront-shell .brand,
+body.storefront-shell .drawer-nav a { font-weight: 700; letter-spacing: normal; }
+body.storefront-shell main a { color: var(--color-text); text-decoration: underline; }
+body.storefront-shell main a:hover { color: var(--color-text); text-decoration-thickness: 2px; }
+body.storefront-shell .site-header a:hover:not(.brand),
+body.storefront-shell .menu-drawer a:hover,
+body.storefront-shell .site-header a.sale-link,
+body.storefront-shell .drawer-nav a.sale-link,
+body.storefront-shell .site-header nav a[aria-current="page"],
+body.storefront-shell .drawer-nav a[aria-current="page"] { color: var(--color-text); }
+body.storefront-shell .site-header nav a[aria-current="page"],
+body.storefront-shell .drawer-nav a[aria-current="page"] { text-decoration: underline; }
+body.storefront-shell .price,
+body.storefront-shell .price-now,
+body.storefront-shell .price-was,
+body.storefront-shell .line-price,
+body.storefront-shell .line-subtotal,
+body.storefront-shell .cart-total,
+body.storefront-shell #checkout-total,
+body.storefront-shell .subtotal,
+body.storefront-shell .total { font-variant-numeric: tabular-nums; }
+
+body.storefront-shell .buy-form button,
+body.storefront-shell #checkout-form button,
+body.storefront-shell .pay { min-height: var(--control-height); }
+body.storefront-shell .button-secondary {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+}
+body.storefront-shell .button-secondary:hover { color: var(--color-text); background: var(--color-panel); }
+body.storefront-shell .button-secondary:disabled { color: var(--color-surface); background: var(--color-muted); }
+body.storefront-shell .on-sale .price-now { color: var(--color-primary); }
+body.storefront-shell .button-link,
+body.storefront-shell .checkout-link { color: var(--color-on-inverse); text-decoration: none; }
+body.storefront-shell .button-link:hover,
+body.storefront-shell .checkout-link:hover { color: var(--color-on-inverse); }
+
+/* Shared order status components keep their admin defaults; public colors are scoped here. */
+body.storefront-shell .order-status.paid { color: var(--color-on-inverse); background: var(--color-inverse); border-color: var(--color-inverse); }
+body.storefront-shell .order-status.shipped { color: var(--color-text); background: var(--color-surface); border-color: var(--color-control-border); }
+body.storefront-shell .payment-callout { border-color: var(--color-border); }
+
+/* Public layout uses 40rem, 56.25rem, and 64rem. Admin's 48rem breakpoint is independent. */

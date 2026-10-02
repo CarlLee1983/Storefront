@@ -14,7 +14,7 @@ const { customer, url } = Astro.props;
     <>
       <a href="/orders">我的訂單</a>
       <span class="customer-name">{customer.name}</span>
-      <button type="button" data-sign-out>登出</button>
+      <button type="button" class="button-secondary" data-sign-out>登出</button>
     </>
   ) : url.pathname === LOGIN_PATH ? null : (
     <a href={loginUrl(url)}>登入</a>

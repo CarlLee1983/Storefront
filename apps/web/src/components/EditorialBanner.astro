@@ -25,9 +25,9 @@ const { image, title, description, linkText } = EDITORIAL_BANNER;
 </section>
 
 <style>
-  .banner { display: grid; margin-top: var(--space-8); background: var(--color-primary); color: var(--color-on-inverse); }
+  .banner { display: grid; margin-top: var(--section-gap); background: var(--color-primary); color: var(--color-on-inverse); }
   .banner-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--space-4); padding: var(--space-8) var(--space-4); }
-  .banner-copy h2 { margin: 0; font-size: clamp(2.25rem, 8vw, 4.5rem); font-weight: 800; line-height: 1.05; letter-spacing: -.03em; text-wrap: balance; }
+  .banner-copy h2 { margin: 0; font-size: var(--text-display-banner); font-weight: 700; line-height: 1.05; text-wrap: balance; }
   .banner-copy p { margin: 0; font-size: var(--text-lg); max-width: 24em; }
   .banner-copy a { color: var(--color-on-inverse); font-weight: 700; text-decoration-thickness: 2px; }
   .banner-copy a:hover { color: var(--color-on-inverse); }

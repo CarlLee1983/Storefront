@@ -98,7 +98,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
         <p>{order.shippingInfo.address}</p>
         {order.status === "pending_payment" && <form class="cancel" method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
-          <p>取消後無法恢復。</p><button type="submit">取消訂單</button>
+          <p>取消後無法恢復。</p><button type="submit" class="button-secondary">取消訂單</button>
         </form>}
         <p><a href="/orders">回我的訂單</a></p>
       </>
@@ -128,7 +128,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 <style>
   .payment-callout { padding: var(--space-6); border: 2px solid var(--color-primary); border-radius: var(--radius-lg); background: var(--color-surface); margin-block: var(--space-6); box-shadow: var(--shadow-card); }
   .payment-callout h2 { margin-top: 0; }
-  .pay { width: 100%; padding: var(--space-4) var(--space-6); font-weight: 700; font-size: var(--text-lg); }
+  .pay { width: 100%; padding: var(--space-2) var(--space-6); font-weight: 700; font-size: var(--text-lg); }
   .cancel { margin-block: var(--space-8); border-top: 1px solid var(--color-border); }
   .cancel button { color: var(--color-muted); background: var(--color-surface); border-color: var(--color-border); }
   .cancel button:hover { background: var(--color-bg); }
