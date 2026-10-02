@@ -104,7 +104,7 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
               {createFailure?.fields.slug?.map((m) => <span class="error">{m}</span>)}
             </label>
             <div class="admin-actions">
-              <button type="submit">建立分類</button>
+              <button type="submit" class="button-primary">建立分類</button>
             </div>
           </form>
         </div>
@@ -126,14 +126,14 @@ const savedMessage = SAVED_MESSAGES[Astro.url.searchParams.get("saved") ?? ""];
                     <td data-label="商品數">{c.productCount}</td>
                     <td data-label="上架商品數">{c.listedProductCount}</td>
                     <td data-label="操作">
-                        <a href={`/admin/categories/${c.id}`} aria-label={`修改${c.name}（含圖片）`}>修改與圖片</a>
+                        <a href={`/admin/categories/${c.id}`} class="btn-action" aria-label={`修改${c.name}（含圖片）`}>修改與圖片</a>
                     </td>
                     <td data-label="刪除" class="admin-category-delete">
                         <form method="post" class="inline" data-confirm={`確定刪除分類「${c.name}」？`}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="name" value={c.name} />
                           <input type="hidden" name="intent" value="delete" />
-                          <button type="submit" aria-label={`刪除${c.name}`}>刪除</button>
+                          <button type="submit" class="btn-action" aria-label={`刪除${c.name}`}>刪除</button>
                         </form>
                     </td>
                   </tr>

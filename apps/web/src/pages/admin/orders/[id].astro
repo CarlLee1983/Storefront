@@ -46,29 +46,37 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     ) : (
       <>
         {shipped && <p role="status">已標為已出貨。</p>}
-        <p>訂單狀態：<OrderStatus status={order.status} /></p>
-        <p class="admin-order-email">顧客：{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</p>
-        <p>成立時間：{formatDateTime(order.createdAt)}</p>
-        {
-          order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
-        }
-        {
-          order.status === "paid" && (
-            <>
-              {failure && <p class="error" role="alert">{failure.message}</p>}
-              <form method="post" onsubmit="return confirm('確定要標為已出貨嗎？出貨後無法撤回。')">
-                <label>
-                  物流單號（可留空）
-                  <input name="trackingNumber" value={submitted.trackingNumber ?? ""} maxlength="100" />
-                  {failure?.fields.trackingNumber?.map((m) => <span class="error">{m}</span>)}
-                </label>
-                <p>出貨後無法撤回。</p>
-                <button type="submit">標為已出貨</button>
-              </form>
-            </>
-          )
-        }
-        {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
+        <div class="admin-card-section">
+          <h2>訂單狀態與基本資訊</h2>
+          <div class="admin-form-grid">
+            <div>
+              <p><strong>訂單狀態：</strong><OrderStatus status={order.status} /></p>
+              <p><strong>成立時間：</strong>{formatDateTime(order.createdAt)}</p>
+            </div>
+            <div>
+              <p class="admin-order-email"><strong>顧客：</strong>{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</p>
+              {order.status === "shipped" && <p><strong>物流進度：</strong>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>}
+            </div>
+          </div>
+          {
+            order.status === "paid" && (
+              <div class="admin-ship-panel">
+                <h3>出貨處理</h3>
+                {failure && <p class="error" role="alert">{failure.message}</p>}
+                <form method="post" onsubmit="return confirm('確定要標為已出貨嗎？出貨後無法撤回。')">
+                  <label>
+                    物流單號（可留空）
+                    <input name="trackingNumber" value={submitted.trackingNumber ?? ""} maxlength="100" placeholder="例如：SF12345678" />
+                    {failure?.fields.trackingNumber?.map((m) => <span class="error">{m}</span>)}
+                  </label>
+                  <p><small>出貨後狀態將變更為已出貨，無法撤回。</small></p>
+                  <button type="submit" class="button-primary">確認出貨</button>
+                </form>
+              </div>
+            )
+          }
+          {order.status !== "paid" && failure && <p class="error" role="alert">{failure.message}</p>}
+        </div>
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>小計</th></tr>
@@ -110,10 +118,19 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </table></div>
           )
         }
-        <h2>收件資訊</h2>
-        <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
-        <p>{order.shippingInfo.address}</p>
-        <p><a href="/admin/orders">回訂單管理</a></p>
+        <div class="admin-card-section">
+          <h2>收件資訊</h2>
+          <div class="admin-form-grid">
+            <div>
+              <p><strong>收件人姓名：</strong>{order.shippingInfo.name}</p>
+              <p><strong>聯絡電話：</strong>{order.shippingInfo.phone}</p>
+            </div>
+            <div>
+              <p><strong>配送地址：</strong>{order.shippingInfo.address}</p>
+            </div>
+          </div>
+        </div>
+        <p><a href="/admin/orders" class="admin-actions">← 返回訂單管理</a></p>
       </>
     )
   }

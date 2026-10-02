@@ -23,15 +23,39 @@ const links = [
   </head>
   <body class="admin-shell">
     <a class="skip-link" href="#main-content">跳到主要內容</a>
-    <header class="site-header">
-      <a class="brand" href="/admin">Storefront</a>
-      <nav aria-label="後台導覽">
-        {links.map(link => <a href={link.href} aria-current={link.section === section ? "page" : undefined}>{link.label}</a>)}
-        <a href="/">前往前台</a>
+    <header class="site-header admin-header">
+      <div class="admin-brand-group">
+        <a class="brand" href="/admin">
+          <span class="brand-badge">管理後台</span>
+          Still Life
+        </a>
+      </div>
+      <nav aria-label="後台導覽" class="admin-nav">
+        {links.map(link => (
+          <a
+            href={link.href}
+            class:list={["admin-nav-link", { "is-active": link.section === section }]}
+            aria-current={link.section === section ? "page" : undefined}
+          >
+            {link.label}
+          </a>
+        ))}
       </nav>
+      <div class="admin-header-actions">
+        <a href="/" class="admin-storefront-link" target="_blank" rel="noopener noreferrer">
+          <span>前往前台</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </a>
+      </div>
     </header>
     <main id="main-content" tabindex="-1">
-      <h1>{title}</h1>
+      <div class="admin-page-header">
+        <h1>{title}</h1>
+      </div>
       <slot />
     </main>
   </body>

@@ -24,16 +24,21 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     ) : (
       <>
         <form method="get" class="admin-filter">
-          <label>
+          <label class="filter-field">
             訂單狀態
             <select name="status">
-              <option value="" selected={status === undefined}>全部</option>
+              <option value="" selected={status === undefined}>全部訂單狀態</option>
               {ORDER_STATUS_CODES.map((code) => (
                 <option value={code} selected={status === code}>{orderStatusLabel(code)}</option>
               ))}
             </select>
           </label>
-          <button type="submit">篩選</button>
+          <div class="filter-actions">
+            <button type="submit" class="btn-filter-submit">篩選</button>
+            {status !== undefined && (
+              <a href="/admin/orders" class="btn-filter-reset">清除條件</a>
+            )}
+          </div>
         </form>
         <p>只顯示最新 200 筆訂單。</p>
         {orders.data.length === 0 && <p>沒有符合的訂單。</p>}

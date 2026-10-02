@@ -62,8 +62,10 @@ const cover = current?.image?.variants[0];
     ) : (
       <>
         {failure && <p class="error" role="alert">{failure.message}</p>}
-        <form method="post">
-          <p>網址代稱：<code>{current?.slug}</code>（建立後不能修改）</p>
+        <div class="admin-card-section">
+          <h2>基本資訊</h2>
+          <form method="post">
+            <p>網址代稱：<code>{current?.slug}</code>（建立後不能修改）</p>
           <label>
             分類名稱
             <input name="categoryName" value={values.categoryName} required />
@@ -75,11 +77,12 @@ const cover = current?.image?.variants[0];
             {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
           </label>
           <div class="admin-actions">
-            <button type="submit">儲存</button>
+            <button type="submit" class="button-primary">儲存</button>
             <a href="/admin/categories">取消</a>
           </div>
         </form>
-        <section aria-labelledby="category-image-heading">
+        </div>
+        <section aria-labelledby="category-image-heading" class="admin-card-section">
           <h2 id="category-image-heading">分類圖片</h2>
           <p>每個分類最多一張圖片，可以不上傳。上傳新圖片會取代目前的圖片。</p>
           <img id="category-image" src={cover ? `/images/${cover.key}` : undefined} width={cover?.width} height={cover?.height} alt={`${current?.name}的分類圖片`} hidden={!cover} class="category-preview" />

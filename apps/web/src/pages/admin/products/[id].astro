@@ -49,42 +49,47 @@ const values = {
       <>
         {Astro.url.searchParams.get("saved") === "created" && <p role="status">已新增商品。</p>}
         {failure && <p class="error" role="alert">{failure.message}</p>}
-        <form method="post">
-          <label>
-            名稱
-            <input name="name" value={values.name} required />
-            {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            說明
-            <textarea name="description" rows="3">{values.description}</textarea>
-            {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            單價（新台幣整數元）
-            <input name="priceTwd" type="number" min="1" step="1" value={values.priceTwd} required />
-            {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            原價（選填）
-            <input name="compareAtPriceTwd" type="number" min="1" step="1" value={values.compareAtPriceTwd} aria-describedby="compare-at-hint" />
-            {failure?.fields.compareAtPriceTwd?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <p id="compare-at-hint"><small>填寫後商品以特價呈現，必須高於售價；清空即結束特價。</small></p>
-          {/* 標籤文字用 for 關聯：巢狀在 label 裡的話，所有選項文字都會變成它的名稱 */}
-          <label for="category-id">分類</label>
-          <select id="category-id" name="categoryId">
-            <option value="" selected={values.categoryId === ""}>未分類</option>
-            {categories?.ok && categories.data.map((c) => <option value={String(c.id)} selected={values.categoryId === String(c.id)}>{c.name}</option>)}
-          </select>
-          {failure?.fields.categoryId?.map((m) => <span class="error">{m}</span>)}
-          <p>商品必須有分類才能上架。</p>
-          <div class="admin-actions">
-            <button type="submit">儲存</button>
-            <a href="/admin">取消</a>
-          </div>
-        </form>
-        <section aria-labelledby="image-heading">
+        <div class="admin-card-section">
+          <h2>基本資訊</h2>
+          <form method="post">
+            <label>
+              名稱
+              <input name="name" value={values.name} required />
+              {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              說明
+              <textarea name="description" rows="3">{values.description}</textarea>
+              {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <div class="admin-form-grid">
+              <label>
+                單價（新台幣整數元）
+                <input name="priceTwd" type="number" min="1" step="1" value={values.priceTwd} required />
+                {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <label>
+                原價（選填）
+                <input name="compareAtPriceTwd" type="number" min="1" step="1" value={values.compareAtPriceTwd} aria-describedby="compare-at-hint" />
+                {failure?.fields.compareAtPriceTwd?.map((m) => <span class="error">{m}</span>)}
+              </label>
+            </div>
+            <p id="compare-at-hint"><small>填寫後商品以特價呈現，必須高於售價；清空即結束特價。</small></p>
+            {/* 標籤文字用 for 關聯：巢狀在 label 裡的話，所有選項文字都會變成它的名稱 */}
+            <label for="category-id">分類</label>
+            <select id="category-id" name="categoryId">
+              <option value="" selected={values.categoryId === ""}>未分類</option>
+              {categories?.ok && categories.data.map((c) => <option value={String(c.id)} selected={values.categoryId === String(c.id)}>{c.name}</option>)}
+            </select>
+            {failure?.fields.categoryId?.map((m) => <span class="error">{m}</span>)}
+            <p><small>商品必須有分類才能上架。</small></p>
+            <div class="admin-actions">
+              <button type="submit" class="button-primary">儲存變更</button>
+              <a href="/admin">取消</a>
+            </div>
+          </form>
+        </div>
+        <section aria-labelledby="image-heading" class="admin-card-section">
           <h2 id="image-heading">商品圖片</h2>
           <p>先上傳商品圖片才能上架。每件商品最多 8 張，第一張是封面。</p>
           <p id="gallery-help">拖曳商品圖片，或使用「上移」「下移」按鈕調整順序，排第一張即為封面。排序會立即儲存。</p>

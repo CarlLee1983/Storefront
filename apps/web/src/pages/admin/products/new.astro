@@ -37,29 +37,32 @@ if (unauthorized || (access && !access.ok)) Astro.response.status = 403;
     <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
   ) : (
     <>
-      <p>新增商品預設下架，建立後可上傳圖片並設定分類。</p>
-      {failure && <p class="error" role="alert">{failure.message}</p>}
-      <form method="post">
-        <label>
-          名稱
-          <input name="name" value={submitted.name ?? ""} required />
-          {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
-        </label>
-        <label>
-          說明
-          <textarea name="description" rows="3">{submitted.description ?? ""}</textarea>
-          {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
-        </label>
-        <label>
-          單價（新台幣整數元）
-          <input name="priceTwd" type="number" min="1" step="1" value={submitted.priceTwd ?? ""} required />
-          {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
-        </label>
-        <div class="admin-actions">
-          <button type="submit">新增商品</button>
-          <a href="/admin">取消</a>
-        </div>
-      </form>
+      <div class="admin-card-section">
+        <h2>商品基本資料</h2>
+        <p><small>新增商品預設下架，建立後可上傳圖片並設定分類。</small></p>
+        {failure && <p class="error" role="alert">{failure.message}</p>}
+        <form method="post">
+          <label>
+            名稱
+            <input name="name" value={submitted.name ?? ""} required />
+            {failure?.fields.name?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            說明
+            <textarea name="description" rows="3">{submitted.description ?? ""}</textarea>
+            {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            單價（新台幣整數元）
+            <input name="priceTwd" type="number" min="1" step="1" value={submitted.priceTwd ?? ""} required />
+            {failure?.fields.priceTwd?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <div class="admin-actions">
+            <button type="submit" class="button-primary">新增商品</button>
+            <a href="/admin">取消</a>
+          </div>
+        </form>
+      </div>
     </>
   )}
 </AdminLayout>
