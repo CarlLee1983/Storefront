@@ -1,4 +1,4 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
 import { checkoutInput, createStockedListing, newKey } from "./checkout-helpers";
@@ -315,5 +315,55 @@ describe("出貨通知與顧客可見範圍", () => {
     const listed = await app.listMyOrders(alice.cookie);
     expect(listed.ok && listed.data[0]).toMatchObject({ id: alice.orderId, status: "shipped", shipments: [{ trackingNumber: "TW999" }] });
     expect(await orderOf(bob.cookie, bob.orderId)).toMatchObject({ status: "paid", shipments: [] });
+  });
+});
+
+describe("交運的保護邊界", () => {
+  beforeEach(resetDb);
+
+  it("同一冪等鍵帶不同內容回 dispatch_key_conflict：不建立第二批、不重複扣庫；內容相同（明細順序不同）仍視為重送", async () => {
+    const { orderId, variantId } = await paidOrder("alice", { onHand: 10, quantity: 3 });
+    const [line] = (await adminOrder(orderId)).lines;
+    const jwt = await mintAccessJwt();
+    const base = { orderId, dispatchKey: "conflict-0001", items: [{ orderLineId: line!.id, quantity: 1 }], trackingNumber: "A" };
+    await app.shipOrder(jwt, base);
+
+    expect(await app.shipOrder(jwt, { ...base, items: [{ orderLineId: line!.id, quantity: 2 }] })).toEqual({ ok: false, reason: "dispatch_key_conflict" });
+    expect(await app.shipOrder(jwt, { ...base, trackingNumber: "B" })).toEqual({ ok: false, reason: "dispatch_key_conflict" });
+    expect(await app.shipOrder(jwt, base)).toMatchObject({ ok: true, data: { replayed: true } });
+
+    expect((await adminOrder(orderId)).shipments).toHaveLength(1);
+    expect(await stockOf(variantId)).toEqual({ onHand: 9, available: 7 });
+  });
+
+  it("遷移補建的舊批次不會被重送扣庫或寄信：舊鍵 legacy 對已出完的舊單被擋，遷移鍵 legacy:0021 輸入驗證不接受", async () => {
+    const { cookie, orderId, variantId } = await paidOrder("alice", { onHand: 10, quantity: 3 });
+    const [line] = (await adminOrder(orderId)).lines;
+    // 模擬 0021 補建的舊批次（沒有內容指紋、沒有流水），訂單已出完
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO shipments (id, order_id, dispatch_key, tracking_number, actor) VALUES (900, ?, 'legacy:0021', 'OLD', 'system:0021_shipments')").bind(orderId),
+      env.DB.prepare("INSERT INTO shipment_items (shipment_id, order_line_id, quantity) VALUES (900, ?, 3)").bind(line!.id),
+      env.DB.prepare("UPDATE orders SET status = 'shipped' WHERE id = ?").bind(orderId),
+    ]);
+    const before = await stockOf(variantId);
+    const mailBefore = await app.listMyMail(cookie);
+    const jwt = await mintAccessJwt();
+    const items = [{ orderLineId: line!.id, quantity: 3 }];
+
+    expect(await app.shipOrder(jwt, { orderId, dispatchKey: "legacy", items })).toEqual({ ok: false, reason: "order_not_shippable" });
+    expect(await app.shipOrder(jwt, { orderId, dispatchKey: "legacy:0021", items })).toMatchObject({ ok: false, reason: "invalid_input", fields: { dispatchKey: [expect.any(String)] } });
+
+    expect(await stockOf(variantId)).toEqual(before);
+    const movements = await app.listStockMovements(jwt, { orderId });
+    expect(movements.ok && movements.data.items.filter((item) => item.kind === "dispatch")).toEqual([]);
+    expect(await app.listMyMail(cookie)).toEqual(mailBefore);
+    expect((await adminOrder(orderId)).shipments).toMatchObject([{ id: 900, trackingNumber: "OLD" }]);
+  });
+
+  it.each(["pending_payment", "expired", "cancelled", "shipped"])("%s 的訂單即使輸入缺時段也先回 order_not_shippable", async (status) => {
+    const { orderId, tableLine } = await paidMixedOrder();
+    await forceOrderStatus(orderId, status);
+
+    expect(await shipRemaining(orderId, { items: [{ orderLineId: tableLine.id, quantity: 1 }] })).toEqual({ ok: false, reason: "order_not_shippable" });
   });
 });

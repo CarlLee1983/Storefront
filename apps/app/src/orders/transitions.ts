@@ -11,6 +11,7 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = 
   pending_payment: ["paid", "expired", "cancelled"],
   expired: ["paid"],
   paid: ["partially_shipped", "shipped"],
+  // 自轉換：表的語意是「允許的寫入」，部分出貨每多一批仍是部分出貨；不是狀態真的變了
   partially_shipped: ["partially_shipped", "shipped"],
   shipped: [],
   cancelled: [],

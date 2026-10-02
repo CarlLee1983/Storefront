@@ -1,7 +1,7 @@
 -- 回復 0021_shipments：回到「整單一次出貨」的舊模型，移除出貨批次。
 -- 舊模型無法表達分批，守門檢查讓回復失敗的情況：
---   1. 有部分出貨的訂單，或有遷移補建（dispatch_key = 'legacy'）以外的批次：分批資料一旦移除就無法還原，須先人工確認可以捨棄；
---   2. 有 dispatch_key = 'legacy' 以外的庫存流水關聯批次（同上，由 1 涵蓋）。
+--   1. 有部分出貨的訂單，或有遷移補建（dispatch_key = 'legacy:0021'，輸入驗證無法產生此鍵）以外的批次：分批資料一旦移除就無法還原，須先人工確認可以捨棄；
+--   2. 有 dispatch_key = 'legacy:0021' 以外的庫存流水關聯批次（同上，由 1 涵蓋）。
 -- 遷移補建的整單批次會搬回 orders.tracking_number、shipped_at（遷移前沒有出貨時間的舊單仍為 null）。
 -- 用法：先停止寫入，再以 `wrangler d1 execute <DB> --file rollback/0021_shipments.down.sql` 執行；
 -- 回復前須一併回復 App（舊 App 不認得部分出貨狀態與批次）。最後一句移除遷移紀錄，之後可重新套用 0021。
@@ -13,7 +13,7 @@ CREATE TABLE `rollback_guard` (`ok` integer NOT NULL CHECK(`ok` = 1));
 INSERT INTO `rollback_guard` (`ok`)
 SELECT CASE
   WHEN EXISTS (SELECT 1 FROM `orders` WHERE `status` = 'partially_shipped') THEN 0
-  WHEN EXISTS (SELECT 1 FROM `shipments` WHERE `dispatch_key` <> 'legacy') THEN 0
+  WHEN EXISTS (SELECT 1 FROM `shipments` WHERE `dispatch_key` <> 'legacy:0021') THEN 0
   ELSE 1 END;
 --> statement-breakpoint
 DROP TABLE `rollback_guard`;

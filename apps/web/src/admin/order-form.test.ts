@@ -65,6 +65,7 @@ describe("describeShipFailure", () => {
     expect(describeShipFailure({ reason: "order_not_shippable" }).message).toContain("不是已付款或部分出貨");
     expect(describeShipFailure({ reason: "order_not_found" }).message).toBe("找不到這張訂單");
     expect(describeShipFailure({ reason: "shipment_quantity_exceeded" }).message).toContain("尚未交運的數量");
+    expect(describeShipFailure({ reason: "dispatch_key_conflict" }).message).toContain("重新整理");
     expect(describeShipFailure({ reason: "appointment_required" }).message).toContain("配送時段");
     expect(describeShipFailure({ reason: "appointment_not_applicable" }).message).toContain("不需要配送時段");
   });

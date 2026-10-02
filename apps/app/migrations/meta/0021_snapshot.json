@@ -1862,6 +1862,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "tracking_number": {
           "name": "tracking_number",
           "type": "text",

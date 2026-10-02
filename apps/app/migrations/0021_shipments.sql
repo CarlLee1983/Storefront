@@ -14,6 +14,7 @@ CREATE TABLE `shipments` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`order_id` integer NOT NULL,
 	`dispatch_key` text NOT NULL,
+	`request_hash` text,
 	`tracking_number` text,
 	`appointment_start` integer,
 	`appointment_end` integer,
@@ -27,9 +28,9 @@ CREATE UNIQUE INDEX `shipments_order_key_uidx` ON `shipments` (`order_id`,`dispa
 -- 舊的已出貨訂單（#111 之前整單出貨）補一批整單批次：物流單號與出貨時間只照搬舊欄位，舊訂單沒有的資訊（出貨時間、預約）留空，不編造。
 -- 那些訂單當時已扣過實體在庫（0020 的流水），所以補建批次不動庫存也不寫流水。
 INSERT INTO `shipments` (`order_id`, `dispatch_key`, `tracking_number`, `shipped_at`, `actor`)
-SELECT `id`, 'legacy', `tracking_number`, `shipped_at`, 'system:0021_shipments' FROM `orders` WHERE `status` = 'shipped';--> statement-breakpoint
+SELECT `id`, 'legacy:0021', `tracking_number`, `shipped_at`, 'system:0021_shipments' FROM `orders` WHERE `status` = 'shipped';--> statement-breakpoint
 INSERT INTO `shipment_items` (`shipment_id`, `order_line_id`, `quantity`)
-SELECT shipment.`id`, line.`id`, line.`quantity` FROM `shipments` shipment JOIN `order_lines` line ON line.`order_id` = shipment.`order_id` WHERE shipment.`dispatch_key` = 'legacy';--> statement-breakpoint
+SELECT shipment.`id`, line.`id`, line.`quantity` FROM `shipments` shipment JOIN `order_lines` line ON line.`order_id` = shipment.`order_id` WHERE shipment.`dispatch_key` = 'legacy:0021';--> statement-breakpoint
 -- 重建 orders：放寬狀態 CHECK（新增 partially_shipped），並移除已搬到批次的 tracking_number、shipped_at。
 -- D1 上 PRAGMA foreign_keys 不能關，所以不用「建新表、改名」：先把資料備份到無外鍵的暫存表，砍掉舊表、建新表、再把資料原樣（含編號）
 -- 寫回；寫回父列時延後檢查的外鍵違規即被消除，並還原 AUTOINCREMENT 計數，提交時沒有任何違規。

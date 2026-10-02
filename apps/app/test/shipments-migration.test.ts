@@ -48,8 +48,8 @@ it("0021 為舊的已出貨訂單補一批整單批次（照搬舊物流單號�
     { id: 1, status: "paid" }, { id: 2, status: "shipped" }, { id: 3, status: "shipped" }, { id: 4, status: "pending_payment" },
   ]);
   expect(await rows("SELECT order_id, dispatch_key, tracking_number, appointment_start, appointment_end, shipped_at, actor FROM shipments ORDER BY order_id")).toEqual([
-    { order_id: 2, dispatch_key: "legacy", tracking_number: "TW123", appointment_start: null, appointment_end: null, shipped_at: 1_000, actor: "system:0021_shipments" },
-    { order_id: 3, dispatch_key: "legacy", tracking_number: null, appointment_start: null, appointment_end: null, shipped_at: null, actor: "system:0021_shipments" },
+    { order_id: 2, dispatch_key: "legacy:0021", tracking_number: "TW123", appointment_start: null, appointment_end: null, shipped_at: 1_000, actor: "system:0021_shipments" },
+    { order_id: 3, dispatch_key: "legacy:0021", tracking_number: null, appointment_start: null, appointment_end: null, shipped_at: null, actor: "system:0021_shipments" },
   ]);
   expect(await rows("SELECT s.order_id, l.variant_id, i.quantity FROM shipment_items i JOIN shipments s ON s.id = i.shipment_id JOIN order_lines l ON l.id = i.order_line_id ORDER BY i.id")).toEqual([
     { order_id: 2, variant_id: 1, quantity: 3 }, { order_id: 2, variant_id: 2, quantity: 1 }, { order_id: 3, variant_id: 1, quantity: 1 },

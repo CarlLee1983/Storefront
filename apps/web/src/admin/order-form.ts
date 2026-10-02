@@ -42,6 +42,7 @@ export function describeShipFailure(result: { reason: string; fields?: Record<st
     order_not_shippable: "這張訂單目前不是已付款或部分出貨，不能交運（可能已全數出貨或已被處理）",
     shipment_line_invalid: "交運的明細不屬於這張訂單，請重新整理後再填",
     shipment_quantity_exceeded: "數量超過這筆明細尚未交運的數量（可能剛有另一批交運），請重新整理後再填",
+    dispatch_key_conflict: "這次提交的內容與同一份表單先前送出的不同，請重新整理頁面後再填",
     appointment_required: "含大型配送商品的批次必須填寫與顧客議定的配送時段",
     appointment_not_applicable: "只有一般宅配商品的批次不需要配送時段，請清空時段欄位",
   };

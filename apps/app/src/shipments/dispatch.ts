@@ -1,12 +1,13 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { insertShipmentNotice } from "../contact/notices";
 import { orderLines, orders, PARTIALLY_SHIPPED, SHIPPED, type OrderStatus } from "../orders/schema";
-import { canTransitionTo } from "../orders/transitions";
+import { allowedSources, canTransitionTo } from "../orders/transitions";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
 import type { DeliveryType } from "../shipping/types";
 import { dispatchedQuantity } from "./queries";
+import { shipments } from "./schema";
 
 export interface DispatchItem {
   orderLineId: number;
@@ -28,6 +29,7 @@ export interface DispatchRequest {
 export type DispatchFailure =
   | "order_not_found"
   | "order_not_shippable"
+  | "dispatch_key_conflict"
   | "shipment_line_invalid"
   | "shipment_quantity_exceeded"
   | "appointment_required"
@@ -56,24 +58,31 @@ export async function dispatchShipment(
 ): Promise<DispatchResult> {
   const { orderId, dispatchKey, items, trackingNumber, appointment, actor } = request;
 
+  const [order] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId));
+  if (!order) return fail("order_not_found");
+  // 已出完（或不是已付款）的訂單先回 order_not_shippable，不被後面的輸入檢查蓋掉；同鍵重送已出完的訂單仍回原批次，所以只在沒有該鍵的批次時擋
+  const [existing] = await db.select({ id: shipments.id }).from(shipments).where(and(eq(shipments.orderId, orderId), eq(shipments.dispatchKey, dispatchKey)));
+  if (!existing && !allowedSources(SHIPPED).includes(order.status)) return fail("order_not_shippable");
+
   const lines = await db.select({ id: orderLines.id, deliveryType: orderLines.deliveryType }).from(orderLines).where(eq(orderLines.orderId, orderId));
-  if (lines.length === 0) return fail("order_not_found");
   const deliveryTypes = new Map<number, DeliveryType>(lines.map((line) => [line.id, line.deliveryType]));
   const shipsLarge = items.some((item) => deliveryTypes.get(item.orderLineId) === "large");
   if (items.some((item) => !deliveryTypes.has(item.orderLineId))) return fail("shipment_line_invalid");
   if (shipsLarge && !appointment) return fail("appointment_required");
   if (!shipsLarge && appointment) return fail("appointment_not_applicable");
 
+  const requestHash = await hashRequest(items, trackingNumber, appointment);
   const itemsJson = JSON.stringify(items);
   const shipmentId = sql`(SELECT id FROM shipments WHERE order_id = ${orderId} AND dispatch_key = ${dispatchKey})`;
-  // 這個批次還沒有庫存流水 = 還沒扣過庫（建立批次的同一個 batch 內才為真，重送時為假）
-  const notYetDeducted = sql`${shipmentId} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM stock_movements WHERE shipment_id = ${shipmentId})`;
+  // 本次 batch 新建的批次：有內容指紋（遷移補建的舊批次為 null，永遠不會被扣庫）、且還沒有庫存流水。
+  // 每個非遷移批次都在建立的同一個 batch 內寫流水，所以「有指紋且沒有流水」只可能是剛剛建立的這一批，重送與舊批次都為假
+  const notYetDeducted = sql`(SELECT request_hash FROM shipments WHERE id = ${shipmentId}) IS NOT NULL AND NOT EXISTS (SELECT 1 FROM stock_movements WHERE shipment_id = ${shipmentId})`;
   const reason = `交運扣庫（訂單 #${orderId}）`;
 
   const results = await batchAtEffectiveNow(d1, now, [
     sql`
-      INSERT INTO shipments (order_id, dispatch_key, tracking_number, appointment_start, appointment_end, shipped_at, actor)
-      SELECT orders.id, ${dispatchKey}, ${trackingNumber}, ${appointment?.start ?? null}, ${appointment?.end ?? null}, ${effectiveNow}, ${actor}
+      INSERT INTO shipments (order_id, dispatch_key, request_hash, tracking_number, appointment_start, appointment_end, shipped_at, actor)
+      SELECT orders.id, ${dispatchKey}, ${requestHash}, ${trackingNumber}, ${appointment?.start ?? null}, ${appointment?.end ?? null}, ${effectiveNow}, ${actor}
       FROM orders
       WHERE orders.id = ${orderId} AND ${canTransitionTo(SHIPPED)}
         AND ${shipmentId} IS NULL
@@ -117,13 +126,21 @@ export async function dispatchShipment(
       WHERE id = ${orderId} AND ${canTransitionTo(PARTIALLY_SHIPPED)} AND ${shipmentId} IS NOT NULL
     `,
     insertShipmentNotice(orderId, dispatchKey),
-    sql`SELECT shipments.id AS shipmentId, orders.status AS status FROM shipments JOIN orders ON orders.id = shipments.order_id WHERE shipments.order_id = ${orderId} AND shipments.dispatch_key = ${dispatchKey}`,
+    sql`SELECT shipments.id AS shipmentId, orders.status AS status, shipments.request_hash AS requestHash FROM shipments JOIN orders ON orders.id = shipments.order_id WHERE shipments.order_id = ${orderId} AND shipments.dispatch_key = ${dispatchKey}`,
   ]);
 
   const created = results[0]!.meta.changes > 0;
-  const found = results[results.length - 1]!.results[0] as { shipmentId: number; status: OrderStatus } | undefined;
+  const found = results[results.length - 1]!.results[0] as { shipmentId: number; status: OrderStatus; requestHash: string | null } | undefined;
+  if (found && !created && found.requestHash !== requestHash) return fail("dispatch_key_conflict");
   if (found) return ok({ orderId, shipmentId: found.shipmentId, status: found.status, replayed: !created });
 
   const shippable = await db.select({ id: orders.id }).from(orders).where(sql`${orders.id} = ${orderId} AND ${canTransitionTo(SHIPPED)}`);
   return fail(shippable.length > 0 ? "shipment_quantity_exceeded" : "order_not_shippable");
+}
+
+/** 交運內容的 SHA-256 hex（明細依訂單明細編號排序，同樣內容得到同樣指紋）。 */
+async function hashRequest(items: DispatchItem[], trackingNumber: string | null, appointment: DispatchRequest["appointment"]): Promise<string> {
+  const normalized = JSON.stringify({ items: [...items].sort((a, b) => a.orderLineId - b.orderLineId), trackingNumber, appointment });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

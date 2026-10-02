@@ -10,8 +10,10 @@ import { orderLines, orders } from "../orders/schema";
 export const shipments = sqliteTable("shipments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   orderId: integer("order_id").notNull().references(() => orders.id),
-  /** 管理員表單一次提交的冪等鍵：同一張訂單同一個鍵只會建立一批，重送回原批次，不重複扣庫也不再次通知。遷移補建的舊批次為 `legacy`。 */
+  /** 管理員表單一次提交的冪等鍵：同一張訂單同一個鍵只會建立一批，重送回原批次，不重複扣庫也不再次通知。遷移補建的舊批次為 `legacy:0021`（輸入驗證不接受冒號，一般交運產生不出這個鍵）。 */
   dispatchKey: text("dispatch_key").notNull(),
+  /** 交運內容（明細、物流單號、時段）的 SHA-256 hex；同一個冪等鍵帶不同內容時靠它認出來。遷移補建的舊批次為 null，也用來區分「本次 batch 新建」與既有批次。 */
+  requestHash: text("request_hash"),
   /** 物流單號；可空（交運時可以不附）。 */
   trackingNumber: text("tracking_number"),
   /** 大型配送與顧客議定的預約時段（UTC epoch 毫秒，起訖成對）；只記錄，不做司機容量排程。沒有議定（一般宅配）為 null。 */

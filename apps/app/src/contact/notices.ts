@@ -72,7 +72,7 @@ export function insertShipmentNotice(orderId: number, dispatchKey: string): SQL 
       '各批出貨進度請至訂單頁查看。',
       'shipment:' || shipments.id, ${effectiveNow}
     FROM shipments JOIN orders ON orders.id = shipments.order_id
-    WHERE shipments.order_id = ${orderId} AND shipments.dispatch_key = ${dispatchKey}
+    WHERE shipments.order_id = ${orderId} AND shipments.dispatch_key = ${dispatchKey} AND shipments.request_hash IS NOT NULL
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
