@@ -60,6 +60,17 @@ describe("地址簿", () => {
     expect(await app.addAddress(cookie, HOME)).toMatchObject({ ok: true });
   });
 
+  it("並行新增也不會超過上限", async () => {
+    const cookie = await signInCustomer("alice");
+
+    const results = await Promise.all(Array.from({ length: 11 }, (_, i) => app.addAddress(cookie, { ...HOME, address: `${HOME.address} ${i}` })));
+
+    expect(results.filter((result) => result.ok)).toHaveLength(10);
+    expect(results.filter((result) => !result.ok)).toEqual([{ ok: false, reason: "address_limit_reached" }]);
+    const listed = await app.listMyAddresses(cookie);
+    expect(listed.ok && listed.data).toHaveLength(10);
+  });
+
   it("未登入或 session 無效不能使用任何地址簿 RPC", async () => {
     const unauthorized = { ok: false, reason: "unauthorized" };
     for (const cookie of ["", "better-auth.session_token=forged"]) {

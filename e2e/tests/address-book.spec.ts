@@ -102,9 +102,11 @@ for (const viewport of VIEWPORTS) {
       await page.goto("/account/addresses");
       const homeForm = page.locator("form", { has: page.locator(`input[value="${HOME.address}"]`) });
       await homeForm.getByLabel("收件地址").fill("高雄市前鎮區中山三路 1 號");
-      await homeForm.getByRole("button", { name: "儲存修改" }).click();
+      await homeForm.getByRole("button", { name: /^儲存修改/ }).click();
       await expect(page.getByRole("status")).toHaveText("已儲存修改。");
-      await page.locator("form", { has: page.locator(`input[value="${OFFICE.address}"]`) }).getByRole("button", { name: "刪除" }).click();
+      await page.getByRole("link", { name: `刪除：${OFFICE.name}／${OFFICE.address}` }).click();
+      await assertAccessibleLayout(page, viewport.width);
+      await page.getByRole("button", { name: `確認刪除：${OFFICE.name}／${OFFICE.address}` }).click();
       await expect(page.getByRole("status")).toHaveText("已刪除地址。");
       await expect(page.locator(`input[value="${OFFICE.address}"]`)).toHaveCount(0);
       await page.goto(orderUrl.replace("?placed=1", ""));

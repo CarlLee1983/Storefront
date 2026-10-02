@@ -26,7 +26,7 @@ if (Astro.request.method === "POST") {
   const intent = toText(form.get("intent"));
   const addressId = parseAddressId(form.get("addressId"));
   const input = addressFormToInput(form);
-  // 地址編號不合法時照樣交給 App，由它回報找不到
+  // 地址編號不合法時以 0 交給 App，由它的輸入驗證回報 invalid_input（不洩漏任何地址是否存在）
   const payload = { addressId: addressId ?? 0 };
   const result =
     intent === "add" ? await env.APP.addAddress(cookie, input)
@@ -45,6 +45,8 @@ if (!list.ok) return Astro.redirect(loginUrl(Astro.url), 303);
 const addresses = list.data;
 const done = Astro.url.searchParams.get("done");
 const doneMessages: Record<string, string> = { add: "已新增地址。", update: "已儲存修改。", delete: "已刪除地址。" };
+// 刪除要二段確認：先帶 ?confirm=<編號> 回到本頁顯示確認區，再按確認才送出
+const confirmId = parseAddressId(Astro.url.searchParams.get("confirm"));
 const doneMessage = done && Object.hasOwn(doneMessages, done) ? doneMessages[done] : undefined;
 ---
 
@@ -60,16 +62,29 @@ const doneMessage = done && Object.hasOwn(doneMessages, done) ? doneMessages[don
       return (
         <li class="panel">
           <form method="post" action="/account/addresses">
-            <input type="hidden" name="addressId" value={item.id} />
-            <label>收件人姓名<input name="name" autocomplete="off" required value={values.name} aria-invalid={showFailure ? "true" : undefined} /></label>
-            <label>收件人電話<input name="phone" type="tel" inputmode="tel" autocomplete="off" required value={values.phone} aria-invalid={showFailure ? "true" : undefined} /></label>
-            <label>收件地址<input name="address" autocomplete="off" required value={values.address} aria-invalid={showFailure ? "true" : undefined} /></label>
-            {showFailure && <p class="error" role="alert">{failure}</p>}
-            <div class="actions">
-              <button type="submit" name="intent" value="update">儲存修改</button>
-              <button type="submit" name="intent" value="delete" class="button-secondary" formnovalidate>刪除</button>
-            </div>
+            <fieldset>
+              <legend>{item.name}／{item.address}</legend>
+              <input type="hidden" name="addressId" value={item.id} />
+              <label>收件人姓名<input name="name" autocomplete="off" required value={values.name} aria-invalid={showFailure ? "true" : undefined} /></label>
+              <label>收件人電話<input name="phone" type="tel" inputmode="tel" autocomplete="off" required value={values.phone} aria-invalid={showFailure ? "true" : undefined} /></label>
+              <label>收件地址<input name="address" autocomplete="off" required value={values.address} aria-invalid={showFailure ? "true" : undefined} /></label>
+              {showFailure && <p class="error" role="alert">{failure}</p>}
+              <div class="actions">
+                <button type="submit" name="intent" value="update" aria-label={`儲存修改：${item.name}／${item.address}`}>儲存修改</button>
+                <a class="button-link" href={`/account/addresses?confirm=${item.id}`} aria-label={`刪除：${item.name}／${item.address}`}>刪除</a>
+              </div>
+            </fieldset>
           </form>
+          {confirmId === item.id && (
+            <form method="post" action="/account/addresses" class="confirm" aria-label={`確認刪除：${item.name}／${item.address}`}>
+              <input type="hidden" name="addressId" value={item.id} />
+              <p role="alert">確定要刪除這筆地址嗎？已成立的訂單不受影響。</p>
+              <div class="actions">
+                <button type="submit" name="intent" value="delete" aria-label={`確認刪除：${item.name}／${item.address}`}>確認刪除</button>
+                <a class="button-link" href="/account/addresses">取消</a>
+              </div>
+            </form>
+          )}
         </li>
       );
     })}
@@ -96,6 +111,10 @@ const doneMessage = done && Object.hasOwn(doneMessages, done) ? doneMessages[don
   .panel { max-width: 36rem; margin-bottom: var(--space-6); padding: var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-subtle); }
   .panel h2 { margin-top: 0; font-size: var(--text-base); font-weight: 700; }
   .panel input { width: 100%; min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  legend { padding: 0; margin-bottom: var(--space-4); font-weight: 700; overflow-wrap: anywhere; }
+  .confirm { margin-top: var(--space-4); }
+  .button-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
   .actions { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
   .panel button { width: 100%; margin-top: var(--space-4); }
   .actions button { margin-top: 0; }
