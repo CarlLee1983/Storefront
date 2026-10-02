@@ -90,6 +90,16 @@ describe("shipmentEventFormToInput", () => {
     expect(shipmentEventFormToInput(form)).toEqual({ shipmentId: 5, eventKey: "evt-1", kind: "delivered", occurredAt: Date.UTC(2026, 9, 10, 1, 30) });
   });
 
+  it("發生時間可帶秒（datetime-local step=1），不帶秒視為 0 秒", () => {
+    const withSeconds = new FormData();
+    withSeconds.set("occurredAt", "2026-10-10T09:30:45");
+    const without = new FormData();
+    without.set("occurredAt", "2026-10-10T09:30");
+
+    expect(shipmentEventFormToInput(withSeconds).occurredAt).toBe(Date.UTC(2026, 9, 10, 1, 30, 45));
+    expect(shipmentEventFormToInput(without).occurredAt).toBe(Date.UTC(2026, 9, 10, 1, 30, 0));
+  });
+
   it("補寄通知的重送帶原始發生時間（epoch 毫秒），優先於日期時間欄位", () => {
     const form = new FormData();
     form.set("shipmentId", "5");

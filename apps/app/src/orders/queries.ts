@@ -169,19 +169,20 @@ export async function selectRequestHash(db: DrizzleD1Database, customerId: strin
 
 /** 顧客自己的訂單（含訂單明細，名稱與單價都是下單當時的快照），新的在前；`scope` 再收窄到某一張。永遠限定顧客，看不到別人的。 */
 export async function selectOrders(db: DrizzleD1Database, customerId: string, scope?: OrderScope): Promise<OrderView[]> {
-  const views = await selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)));
+  const views = await selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)), false);
   // 顧客不需要（也不回傳）自己的 email
   return views.map(({ customerEmail: _customerEmail, ...view }) => view);
 }
 
 /** 管理員讀單張訂單（不限顧客），連同顧客 email；不存在回 undefined。 */
 export async function selectOrderForAdmin(db: DrizzleD1Database, orderId: number): Promise<(OrderView & { customerEmail: string }) | undefined> {
-  const [view] = await selectOrderViews(db, eq(orders.id, orderId));
+  const [view] = await selectOrderViews(db, eq(orders.id, orderId), true);
   return view;
 }
 
 /** 訂單視圖的共同查詢：範圍（誰的、哪一張）由呼叫端的 `where` 決定。 */
-async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): Promise<(OrderView & { customerEmail: string })[]> {
+/** `withEvents`：附上各批的物流回報（管理端對帳用）；顧客路徑不查，各批 `events` 為空陣列。 */
+async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, withEvents: boolean): Promise<(OrderView & { customerEmail: string })[]> {
   const rows = await db
     .select({
       order: orders,
@@ -229,7 +230,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
     }
   }
 
-  const shipmentsByOrder = await selectShipmentsByOrder(db, [...views.keys()]);
+  const shipmentsByOrder = await selectShipmentsByOrder(db, [...views.keys()], { withEvents });
   return [...views.values()].map((view) => ({ ...view, shipments: shipmentsByOrder.get(view.id) ?? [] }));
 }
 

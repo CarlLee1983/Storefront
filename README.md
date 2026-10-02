@@ -110,8 +110,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 資料：`shipment_events`（只增不改的對帳紀錄，同一批同一 `event_key` 只有一筆；發生時間 `occurred_at` 與系統記錄時間 `recorded_at` 分開存）；`shipments.delivery_status`（`in_transit`／`delivery_failed`／`delivered`，預設 `in_transit`）與 `shipments.delivered_at`（實際送達時間，逐批記錄，#118 依各批送達日讀它）。進度不接受直接寫入，每次記錄回報都由該批全部事件重新推導，不看到達順序：有送達回報就是已送達（終點），送達時間取發生最早的一筆；否則依發生時間最新的回報，配送失敗 → `delivery_failed`，再次配送或沒有回報 → `in_transit`。所以延遲、重送、亂序都不會偽造送達或打回已確定的進度；已送達後才到的失敗或再次配送回報只留紀錄。
 - 再次配送是同一批原貨再交付：不建新批次、不新增出貨數量、不扣庫、不退款（暫時失敗後送達無退款，設計文件 Q25），也因此不碰 `request_hash` 不變式。物流退回與確認遺失屬 #117／#119，退回入倉檢查屬 #120，不在這裡。
 - 驗證：發生時間須不早於該批交運時間（有的話）、不晚於現在，否則 `event_time_invalid`；批次不存在 `shipment_not_found`；同一事件鍵帶不同內容 `event_key_conflict`。同鍵同內容重送回 `replayed: true`。舊批次（0021 補建）沒有可靠送達日，維持運送中、`delivered_at` 為空，不編造。
-- 通知（沿用 #109 outbox，與回報同一個 batch 寫入）：送達通知 `shipment_delivered`（一批一封，`event_key = shipment_delivered:<批次編號>`）、配送異常通知 `shipment_delivery_failed`（一次失敗回報一封，`event_key = shipment_delivery_failed:<批次編號>:<回報事件鍵>`，該批已送達後才到的失敗回報不寄）；再次配送不寄信。投遞失敗不影響記錄，出現在 `/admin/mail` 待處理，可重送。
-- 查證與補齊：管理員訂單頁每批的「物流回報」列出事件與其通知是否存在（`noticeMessageId`）；通知遺失時按「補齊通知」以同一事件重送，補回信件且不產生第二封。顧客訂單頁與我的訂單顯示各批配送進度與實際送達時間。
+- 通知（沿用 #109 outbox，與回報同一個 batch 寫入）：送達通知 `shipment_delivered`（一批一封，`event_key = shipment_delivered:<批次編號>`；信件記載寫信當下的送達時間，之後才到的較早送達回報會更新 `delivered_at`，但不改寫已寄出的信）、配送異常通知 `shipment_delivery_failed`（一次失敗回報一封，`event_key = shipment_delivery_failed:<批次編號>:<回報事件鍵>`；只在該批未送達、且它是發生時間最新的回報時才寄，已送達後才到或已被後續回報取代的失敗回報不寄）；再次配送不寄信。投遞失敗不影響記錄，出現在 `/admin/mail` 待處理，可重送。
+- 查證與補齊：管理員訂單頁每批的「物流回報」列出事件與其通知是否存在：`noticeExpected`（與寫信同一條件）為真而 `noticeMessageId` 為空才標「通知缺漏」，不該寄的（再次配送、已被取代或已送達）顯示「不寄信」；通知遺失時按「補齊通知」以同一事件重送，補回信件且不產生第二封。顧客訂單頁與我的訂單顯示各批配送進度與實際送達時間（顧客路徑不查物流回報）。表單回報時間精度到秒。
 - 回復：先回復 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0022_shipment_delivery.down.sql`（已有任何物流回報或已送達批次時守門檢查讓回復失敗，須先確認可以捨棄）。回復順序是 0022 → 0021 → …。
 - 測試見 `apps/app/test/shipment-delivery.test.ts`（送達、失敗後再次配送、亂序／重送／通知遺失、時間與衝突、權限）、`shipment-delivery-migration.test.ts`；Web 表單解析在 `order-form.test.ts`，手機與桌機操作由 `e2e/tests/shipment-delivery.spec.ts` 驗證。
 

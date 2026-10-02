@@ -11,9 +11,9 @@ async function assertLayout(page: Page, width: number) {
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 }
 
-/** 目前台北時間往前推 `minutes` 分鐘的 `datetime-local` 值。 */
-function taipeiLocal(minutesAgo: number): string {
-  return new Date(Date.now() + 8 * 3_600_000 - minutesAgo * 60_000).toISOString().slice(0, 16);
+/** 目前台北時間（到秒）的 `datetime-local` 值。 */
+function taipeiLocalNow(): string {
+  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 19);
 }
 
 for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }]) {
@@ -55,21 +55,21 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       const batches = admin.getByRole("list", { name: "出貨批次" });
       await expect(batches).toContainText("配送進度：運送中");
 
-      // 表單時間只到分鐘：等到下一個整分，這一分鐘的起點才不早於交運時間
-      await admin.waitForTimeout(60_000 - (Date.now() % 60_000) + 500);
+      // 表單時間到秒：每筆回報前等到下一秒，截斷後的時間才不早於交運時間，三筆時間也遞增
 
-      const report = async (kind: string, minutesAgo: number) => {
+      const report = async (kind: string) => {
+        await admin.waitForTimeout(1_000 - (Date.now() % 1_000) + 50);
         // 配送失敗時清單預設展開，其餘收合：只在收合時點開
         if (!(await batches.locator("details").evaluate((element: HTMLDetailsElement) => element.open))) await batches.getByText(/^物流回報/).click();
         await batches.getByLabel("回報種類").selectOption(kind);
-        await batches.getByLabel(/回報發生時間/).fill(taipeiLocal(minutesAgo));
+        await batches.getByLabel(/回報發生時間/).fill(taipeiLocalNow());
         await batches.getByRole("button", { name: "記錄物流回報" }).click();
         await expect(admin).toHaveURL(/saved=event/);
         await expect(admin.getByRole("status")).toHaveText("已記錄物流回報。");
         await admin.goto(`/admin/orders/${orderId}`);
       };
 
-      await report("delivery_failed", 0);
+      await report("delivery_failed");
       await expect(batches).toContainText("配送進度：配送未成功，等待再次配送");
       await expect(batches).toContainText("通知已建立");
       await assertLayout(admin, viewport.width);
@@ -78,9 +78,9 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await expect(page.getByRole("list", { name: "出貨批次" })).toContainText("配送未成功，等待再次配送");
 
       await admin.goto(`/admin/orders/${orderId}`);
-      await report("redelivery", 0);
+      await report("redelivery");
       await expect(batches).toContainText("配送進度：運送中");
-      await report("delivered", 0);
+      await report("delivered");
       await expect(batches).toContainText("配送進度：已送達（實際送達：");
       await expect(admin.getByText("訂單狀態：已出貨")).toBeVisible();
       await expect(batches).toContainText("第 1 批");

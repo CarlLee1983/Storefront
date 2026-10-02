@@ -51,7 +51,8 @@ describe("送達與配送進度", () => {
     expect(result).toEqual({ ok: true, data: { shipmentId, deliveryStatus: "delivered", deliveredAt: at(60), replayed: false } });
     expect(await adminShipment(orderId, shipmentId)).toMatchObject({ deliveryStatus: "delivered", deliveredAt: at(60) });
     expect(await adminShipment(orderId, other)).toMatchObject({ deliveryStatus: "in_transit", deliveredAt: null });
-    expect((await orderOf(cookie, orderId)).shipments.find((shipment) => shipment.id === shipmentId)).toMatchObject({ deliveryStatus: "delivered", deliveredAt: at(60) });
+    // 顧客路徑看得到進度與送達時間，但不查物流回報（對帳資料只給管理端）
+    expect((await orderOf(cookie, orderId)).shipments.find((shipment) => shipment.id === shipmentId)).toMatchObject({ deliveryStatus: "delivered", deliveredAt: at(60), events: [] });
   });
 
   it("送達同 batch 寫一封送達通知（一批一封）；同鍵重送與另一個鍵的重複送達回報都不再寄", async () => {
@@ -140,6 +141,50 @@ describe("延遲、重送、亂序與通知遺失", () => {
     expect((await adminShipment(orderId, shipmentId)).events.map((event) => event.kind).sort()).toEqual(["delivered", "delivery_failed", "redelivery"]);
   });
 
+  it("不寄信的回報不標為通知缺漏：已送達後晚到的失敗、被再次配送取代的較早失敗、再次配送本身都是 noticeExpected=false", async () => {
+    const { shipmentId, at } = await freshBatch();
+    await reportShipmentEvent(shipmentId, "evt-failed-superseded", "delivery_failed", at(30));
+    await reportShipmentEvent(shipmentId, "evt-redelivery", "redelivery", at(60));
+    await reportShipmentEvent(shipmentId, "evt-delivered", "delivered", at(90));
+    await reportShipmentEvent(shipmentId, "evt-failed-late", "delivery_failed", at(45));
+
+    const events = (await adminShipment(orderId, shipmentId)).events;
+    const byKey = Object.fromEntries(events.map((event) => [event.eventKey, event]));
+
+    expect(byKey["evt-delivered"]).toMatchObject({ noticeExpected: true, noticeMessageId: expect.any(Number) });
+    expect(byKey["evt-redelivery"]).toMatchObject({ noticeExpected: false, noticeMessageId: null });
+    // 較早的失敗當時是最新回報，信已寄出；之後被取代，信仍在但不再「應有」
+    expect(byKey["evt-failed-superseded"]).toMatchObject({ noticeExpected: false, noticeMessageId: expect.any(Number) });
+    expect(byKey["evt-failed-late"]).toMatchObject({ noticeExpected: false, noticeMessageId: null });
+  });
+
+  it("較早的失敗晚到、已有更新的回報時不寄信也不標缺漏；目前最新的失敗回報遺失通知時標為缺漏並可補齊", async () => {
+    const { shipmentId, at } = await freshBatch();
+    await reportShipmentEvent(shipmentId, "evt-newer", "delivery_failed", at(60));
+    await reportShipmentEvent(shipmentId, "evt-older", "delivery_failed", at(30));
+    const view = async () => Object.fromEntries((await adminShipment(orderId, shipmentId)).events.map((event) => [event.eventKey, event]));
+
+    expect((await view())["evt-older"]).toMatchObject({ noticeExpected: false, noticeMessageId: null });
+    expect((await view())["evt-newer"]).toMatchObject({ noticeExpected: true, noticeMessageId: expect.any(Number) });
+
+    await env.DB.prepare("DELETE FROM mail_deliveries WHERE message_id IN (SELECT id FROM mail_messages WHERE event_key = ?)").bind(`shipment_delivery_failed:${shipmentId}:evt-newer`).run();
+    await env.DB.prepare("DELETE FROM mail_messages WHERE event_key = ?").bind(`shipment_delivery_failed:${shipmentId}:evt-newer`).run();
+    expect((await view())["evt-newer"]).toMatchObject({ noticeExpected: true, noticeMessageId: null });
+
+    await reportShipmentEvent(shipmentId, "evt-newer", "delivery_failed", at(60));
+    expect((await view())["evt-newer"]).toMatchObject({ noticeExpected: true, noticeMessageId: expect.any(Number) });
+    // 較早那筆重送也補不出信
+    await reportShipmentEvent(shipmentId, "evt-older", "delivery_failed", at(30));
+    expect((await view())["evt-older"]).toMatchObject({ noticeExpected: false, noticeMessageId: null });
+  });
+
+  it("發生時間剛好等於交運時間或現在都接受", async () => {
+    const { shipmentId, at } = await freshBatch();
+
+    expect(await reportShipmentEvent(shipmentId, "evt-at-shipped", "delivery_failed", at(0))).toMatchObject({ ok: true });
+    expect(await reportShipmentEvent(shipmentId, "evt-at-now", "redelivery", at(180))).toMatchObject({ ok: true, data: { deliveryStatus: "in_transit" } });
+  });
+
   it("再次配送先到、較早的失敗後到：以發生時間最新的回報為準，仍是運送中（不被亂序打回失敗）", async () => {
     const { shipmentId, at } = await freshBatch();
 
@@ -180,7 +225,7 @@ describe("延遲、重送、亂序與通知遺失", () => {
   it("通知遺失可查證及補齊：事件列出對應通知，信遺失（noticeMessageId 為 null）後以同一事件重送會補回，且不產生第二封", async () => {
     const { shipmentId, at } = await freshBatch();
     await reportShipmentEvent(shipmentId, "evt-delivered", "delivered", at(60));
-    expect((await adminShipment(orderId, shipmentId)).events).toMatchObject([{ eventKey: "evt-delivered", kind: "delivered", occurredAt: at(60), noticeMessageId: expect.any(Number) }]);
+    expect((await adminShipment(orderId, shipmentId)).events).toMatchObject([{ eventKey: "evt-delivered", kind: "delivered", occurredAt: at(60), noticeExpected: true, noticeMessageId: expect.any(Number) }]);
 
     await env.DB.prepare("DELETE FROM mail_deliveries WHERE message_id IN (SELECT id FROM mail_messages WHERE event_key = ?)").bind(`shipment_delivered:${shipmentId}`).run();
     await env.DB.prepare("DELETE FROM mail_messages WHERE event_key = ?").bind(`shipment_delivered:${shipmentId}`).run();

@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { effectiveNow } from "../shared/high-water-mark";
+import { isLatestEvent } from "../shipments/queries";
 
 /**
  * 交易通知的信件本體（outbox）：和業務變化寫在同一個 batch，所以業務事實成立，信就一定存在，
@@ -81,7 +82,7 @@ export function insertShipmentNotice(orderId: number, dispatchKey: string): SQL 
 }
 
 /**
- * 送達通知：一個出貨批次一封，事件鍵 `shipment_delivered:<批次編號>`；只在該批目前已送達時寫，
+ * 送達通知：一個出貨批次一封，事件鍵 `shipment_delivered:<批次編號>`；只在該批目前已送達時寫，信件記載寫信當下的送達時間（之後才到的較早送達回報會改 `delivered_at`，但不改寫已寄出的信）；
  * 多筆送達回報、重送都只會有一封（信遺失時同一事件重送會補回）。信件描述這一批的商品與實際送達時間（台灣時間）。
  */
 export function insertDeliveredNotice(shipmentId: number): SQL {
@@ -100,7 +101,8 @@ export function insertDeliveredNotice(shipmentId: number): SQL {
 
 /**
  * 配送異常通知：一次配送失敗回報一封，事件鍵 `shipment_delivery_failed:<批次編號>:<回報事件鍵>`。
- * 回報存在且是配送失敗、而且該批尚未送達才寫（已送達後才到的失敗回報只留紀錄，不通知顧客）。
+ * 回報存在且是配送失敗、該批尚未送達、而且它是該批發生時間最新的回報才寫（已送達後才到、或已被後續回報取代的失敗回報只留紀錄，不通知顧客；
+ * 管理端的 `noticeExpected` 用同一個條件，所以「不寄」不會被當成通知缺漏）。
  * 信件說明物流仍持有原貨、會再次配送，顧客不需要重新下單。
  */
 export function insertDeliveryFailedNotice(shipmentId: number, eventKey: string): SQL {
@@ -111,7 +113,7 @@ export function insertDeliveryFailedNotice(shipmentId: number, eventKey: string)
       '物流仍持有這批商品，會再次安排配送，你不需要重新下單；各批出貨進度請至訂單頁查看。',
       'shipment_delivery_failed:' || shipments.id || ':' || event.event_key, ${effectiveNow}
     FROM shipment_events event JOIN shipments ON shipments.id = event.shipment_id JOIN orders ON orders.id = shipments.order_id
-    WHERE event.shipment_id = ${shipmentId} AND event.event_key = ${eventKey} AND event.kind = 'delivery_failed' AND shipments.delivery_status <> 'delivered'
+    WHERE event.shipment_id = ${shipmentId} AND event.event_key = ${eventKey} AND event.kind = 'delivery_failed' AND shipments.delivery_status <> 'delivered' AND ${isLatestEvent("event")}
     ON CONFLICT (event_key) DO NOTHING
   `;
 }

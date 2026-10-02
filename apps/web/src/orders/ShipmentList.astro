@@ -9,15 +9,17 @@ interface Props {
     appointment: { start: number; end: number } | null;
     deliveryStatus: string;
     deliveredAt: number | null;
-    events: Array<{ id: number; eventKey: string; kind: string; occurredAt: number; noticeMessageId: number | null }>;
+    events: Array<{ id: number; eventKey: string; kind: string; occurredAt: number; noticeExpected: boolean; noticeMessageId: number | null }>;
     items: Array<{ productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }>;
   }>;
   /** 顧客頁用較口語的物流單號說明；後台顯示「（未附）」。 */
   customer?: boolean;
   /** 後台：列出物流回報與通知是否存在，並提供記錄回報（含補寄通知）的表單；表單 POST 回目前頁面。 */
   admin?: boolean;
+  /** 記錄回報驗證失敗後重填：該批的新回報表單沿用提交過的識別碼，雙擊或重送不會建立第二筆。 */
+  submittedEvent?: { shipmentId: number; eventKey: string };
 }
-const { shipments, customer = false, admin = false } = Astro.props;
+const { shipments, customer = false, admin = false, submittedEvent } = Astro.props;
 ---
 {shipments.length > 0 && <ol class="shipment-list" aria-label="出貨批次">
   {shipments.map((shipment, index) => <li>
@@ -33,8 +35,8 @@ const { shipments, customer = false, admin = false } = Astro.props;
       {shipment.events.length > 0 && <ul>
         {shipment.events.map((event) => <li>
           <span>{shipmentEventKindLabel(event.kind)}・發生於 {formatDateTime(event.occurredAt)}・識別碼 {event.eventKey}</span>
-          {event.kind === "redelivery"
-            ? <span>（不寄信）</span>
+          {!event.noticeExpected && event.noticeMessageId === null
+            ? <span>・不寄信（{event.kind === "redelivery" ? "再次配送不通知" : "已被後續回報取代或已送達"}）</span>
             : event.noticeMessageId === null
               ? <strong class="error"> 通知缺漏
                 <form method="post" class="shipment-replay">
@@ -51,7 +53,7 @@ const { shipments, customer = false, admin = false } = Astro.props;
       <form method="post" class="shipment-event-form">
         <input type="hidden" name="intent" value="shipment-event" />
         <input type="hidden" name="shipmentId" value={shipment.id} />
-        <input type="hidden" name="eventKey" value={crypto.randomUUID()} />
+        <input type="hidden" name="eventKey" value={submittedEvent?.shipmentId === shipment.id ? submittedEvent.eventKey : crypto.randomUUID()} />
         <label>回報種類
           <select name="kind" required>
             <option value="delivered">送達</option>
@@ -59,7 +61,7 @@ const { shipments, customer = false, admin = false } = Astro.props;
             <option value="redelivery">再次配送</option>
           </select>
         </label>
-        <label>回報發生時間（台北時間）<input type="datetime-local" name="occurredAt" required /></label>
+        <label>回報發生時間（台北時間）<input type="datetime-local" name="occurredAt" step="1" required /></label>
         <button type="submit" class="button-primary">記錄物流回報</button>
       </form>
     </details>}

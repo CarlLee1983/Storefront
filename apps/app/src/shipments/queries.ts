@@ -9,7 +9,10 @@ export function dispatchedQuantity(orderLineId: SQL): SQL<number> {
   return sql<number>`COALESCE((SELECT SUM(dispatched.quantity) FROM shipment_items dispatched WHERE dispatched.order_line_id = ${orderLineId}), 0)`;
 }
 
-/** 一筆物流回報：`noticeMessageId` 是它對應的通知信（送達、配送失敗才有；再次配送不寄信，或信遺失時為 null），給管理員查證漏通知。 */
+/**
+ * 一筆物流回報。`noticeExpected` 是這筆回報「應該有通知信」（與寫信同一個條件：送達回報；或是批次未送達、且是發生時間最新的配送失敗回報）；
+ * `noticeMessageId` 是它對應的通知信，應有而為 null 才是漏通知，給管理員查證；不應有的（再次配送、已被後續回報取代或已送達）不算缺漏。
+ */
 export interface ShipmentEventView {
   id: number;
   eventKey: string;
@@ -18,6 +21,7 @@ export interface ShipmentEventView {
   occurredAt: number;
   /** 系統收到並記錄的時間，UTC epoch 毫秒。 */
   recordedAt: number;
+  noticeExpected: boolean;
   noticeMessageId: number | null;
 }
 
@@ -38,8 +42,17 @@ export interface ShipmentView {
   items: { orderLineId: number; productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }[];
 }
 
+/** 條件：外層以 `alias` 引用的回報，是同一批發生時間最新的回報（同時間則較晚到者為新）。通知的寫入條件與管理端的 `noticeExpected` 共用它。 */
+export function isLatestEvent(alias: string): SQL {
+  const outer = sql.raw(alias);
+  return sql`NOT EXISTS (
+    SELECT 1 FROM shipment_events later WHERE later.shipment_id = ${outer}.shipment_id
+      AND (later.occurred_at > ${outer}.occurred_at OR (later.occurred_at = ${outer}.occurred_at AND later.id > ${outer}.id))
+  )`;
+}
+
 /** 一批訂單的出貨批次（舊的在前），依訂單編號分組；沒有批次的訂單不在結果裡。 */
-export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: number[]): Promise<Map<number, ShipmentView[]>> {
+export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: number[], { withEvents }: { withEvents: boolean }): Promise<Map<number, ShipmentView[]>> {
   const result = new Map<number, ShipmentView[]>();
   if (orderIds.length === 0) return result;
   const rows = await db
@@ -75,7 +88,7 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
     view.items.push({ orderLineId, productName, variantLabel, quantity, deliveryType });
   }
 
-  if (byId.size === 0) return result;
+  if (!withEvents || byId.size === 0) return result;
   const events = await db
     .select({
       id: shipmentEvents.id,
@@ -84,6 +97,11 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
       kind: shipmentEvents.kind,
       occurredAt: shipmentEvents.occurredAt,
       recordedAt: shipmentEvents.recordedAt,
+      noticeExpected: sql<boolean>`(shipment_events.kind = 'delivered' OR (
+        shipment_events.kind = 'delivery_failed'
+        AND (SELECT delivery_status FROM shipments WHERE shipments.id = shipment_events.shipment_id) <> 'delivered'
+        AND ${isLatestEvent("shipment_events")}
+      ))`.mapWith(Boolean),
       noticeMessageId: sql<number | null>`(SELECT mail.id FROM mail_messages mail WHERE mail.event_key = CASE shipment_events.kind
         WHEN 'delivered' THEN 'shipment_delivered:' || shipment_events.shipment_id
         WHEN 'delivery_failed' THEN 'shipment_delivery_failed:' || shipment_events.shipment_id || ':' || shipment_events.event_key

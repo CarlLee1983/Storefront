@@ -17,6 +17,7 @@ export const prerender = false;
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const orderId = parseOrderId(Astro.params.id);
 let failure: ReturnType<typeof describeShipFailure> | undefined;
+let submittedEvent: { shipmentId: number; eventKey: string } | undefined;
 let eventFailure: ReturnType<typeof describeShipmentEventFailure> | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
@@ -25,10 +26,14 @@ let unauthorized = false;
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   if (form.get("intent") === "shipment-event") {
-    const result = await env.APP.recordShipmentEvent(jwt, shipmentEventFormToInput(form));
+    const input = shipmentEventFormToInput(form);
+    const result = await env.APP.recordShipmentEvent(jwt, input);
     if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=event`, 303);
     if (result.reason === "unauthorized") unauthorized = true;
-    else eventFailure = describeShipmentEventFailure(result);
+    else {
+      eventFailure = describeShipmentEventFailure(result);
+      submittedEvent = { shipmentId: input.shipmentId, eventKey: input.eventKey };
+    }
   } else {
     // 交運一批：訂單已不能交運（例如另一位管理員剛出完）會顯示原因與最新狀態
     submitted = formToRecord(form);
@@ -117,7 +122,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           {!canShip && failure && <p class="error" role="alert">{failure.message}</p>}
         </div>
         <h2>出貨批次</h2>
-        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin />}
+        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>配送類型</th><th>小計</th></tr>

@@ -6,11 +6,12 @@ export function parseStatusFilter(value: string | null): string | undefined {
   return value !== null && ORDER_STATUS_CODES.includes(value) ? value : undefined;
 }
 
-/** 瀏覽器 `datetime-local` 的值（`2026-10-10T09:00`，台北時間）→ UTC epoch 毫秒；留空為 undefined，格式不對為 NaN（交給 App 回報欄位錯誤）。 */
+/** 瀏覽器 `datetime-local` 的值（`2026-10-10T09:00` 或帶秒 `2026-10-10T09:00:30`，台北時間）→ UTC epoch 毫秒；留空為 undefined，格式不對為 NaN（交給 App 回報欄位錯誤）。 */
 function taipeiLocalToEpoch(value: unknown): number | undefined {
   const text = toText(value).trim();
   if (text === "") return undefined;
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text) ? Date.parse(`${text}:00+08:00`) : Number.NaN;
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?$/.exec(text);
+  return match ? Date.parse(`${match[1]}${match[2] ?? ":00"}+08:00`) : Number.NaN;
 }
 
 /**
