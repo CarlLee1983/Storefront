@@ -1,12 +1,12 @@
 ---
 import type { ProductImage } from "@storefront/app/product-images";
-interface Props { cover: ProductImage | null; name: string }
-const { cover, name } = Astro.props;
+interface Props { cover: ProductImage | null; name: string; customer?: boolean }
+const { cover, name, customer = false } = Astro.props;
 const variants = cover?.variants ?? [];
 const image = variants.at(-1);
 ---
 <span class="order-cover">
-  {image ? <img src={`/images/${image.key}`} srcset={variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")} sizes="80px" width={image.width} height={image.height} loading="lazy" alt={`${name}的封面`} /> : <span class="placeholder" role="img" aria-label={`${name}暫無商品圖片`}>暫無圖片</span>}
+  {image ? <img src={`/images/${image.key}`} srcset={variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")} sizes="80px" width={image.width} height={image.height} loading="lazy" alt={customer ? name : `${name}的封面`} /> : <span class="placeholder" role="img" aria-label={`${name}暫無商品圖片`}>{customer ? "暫無商品圖片" : "暫無圖片"}</span>}
 </span>
 <style>
   .order-cover { display: inline-flex; width: 5rem; height: 5rem; flex: 0 0 5rem; overflow: hidden; border-radius: var(--radius-sm); background: var(--color-bg); border: 1px solid var(--color-border); }

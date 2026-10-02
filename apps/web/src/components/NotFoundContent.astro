@@ -1,0 +1,15 @@
+---
+import SearchForm from "./SearchForm.astro";
+---
+
+<div class="not-found-content">
+  <p>網址可能有誤，或頁面已移動。你可以搜尋商品，或繼續瀏覽全部商品。</p>
+  <SearchForm id="not-found-search-q" label="找不到頁面搜尋" />
+  <p><a href="/products">全部商品</a></p>
+</div>
+
+<style>
+  .not-found-content { max-width: 38rem; }
+  .not-found-content p { line-height: 1.8; }
+  .not-found-content > p:last-child { margin-top: var(--space-6); }
+</style>

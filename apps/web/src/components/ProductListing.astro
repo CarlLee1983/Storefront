@@ -23,6 +23,7 @@ const { pathname, searchParams } = Astro.url;
 const state = parseListingParams(searchParams);
 const result = preloaded ?? await env.APP.listProducts({ category, q, inStock: state.inStock, onSale: onSaleOnly || state.onSale, sort: state.sort, page: state.page });
 const listing = result.ok ? result.data : null;
+const invalidInput = !result.ok && result.reason === "invalid_input";
 // 篩選表單送出時要保留的參數：目前的排序與其他不相關的參數；instock 與 sale 由 checkbox 決定，頁數不帶（回到第 1 頁）
 const hiddenParams = [...searchParams].filter(([name]) => name !== "instock" && name !== "sale" && name !== "page" && name !== "sort");
 if (state.sort !== "new") hiddenParams.push(["sort", state.sort]);
@@ -31,11 +32,10 @@ const filtered = state.inStock || (!onSaleOnly && state.onSale);
 // 空結果的說明依原因而不同：搜尋沒命中（可加上有貨、特價條件）、只看有貨或特價、特價頁沒有商品，或店裡根本沒有商品
 function emptyMessage(): string {
   if (q !== undefined) {
-    const conditions = [state.inStock ? "有貨" : "", !onSaleOnly && state.onSale ? "特價" : ""].filter(Boolean).join("、");
-    return conditions === "" ? `找不到符合「${q}」的商品` : `沒有符合「${q}」且${conditions}的商品`;
+    return `找不到符合「${q}」的商品。${filtered ? "試著清除篩選條件。" : ""}`;
   }
   if (filtered) return "目前沒有符合條件的商品。";
-  return onSaleOnly ? "目前沒有特價商品。" : "目前沒有上架的商品。";
+  return category ? "這個分類目前沒有商品。" : onSaleOnly ? "目前沒有特價商品。" : "目前沒有上架的商品。";
 }
 const clearHref = listingHref(pathname, searchParams, { inStock: false, onSale: false });
 ---
@@ -64,12 +64,12 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false, onSale: 
 
 {
   listing === null ? (
-    <p class="error" role="alert">商品列表暫時無法顯示，請稍後再試。</p>
+    <div><p class="error" role="alert">{invalidInput ? q !== undefined ? "搜尋條件無法使用，請調整條件後再試。" : "目前無法套用這些條件，請清除篩選後再試。" : "商品暫時無法顯示，請稍後重新整理。"}</p>{invalidInput && <a href={clearHref}>清除篩選</a>}</div>
   ) : listing.items.length === 0 ? (
     <div class="listing-empty">
       <p>{emptyMessage()}</p>
       {filtered && <p><a href={clearHref}>清除篩選</a></p>}
-      {q !== undefined && <p><a href="/products">前往全部商品</a></p>}
+      {q !== undefined && <p><a href="/products">全部商品</a></p>}
     </div>
   ) : (
     <>

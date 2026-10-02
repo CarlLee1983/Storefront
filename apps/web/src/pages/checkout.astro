@@ -4,6 +4,7 @@ import { loginUrl } from "../auth/customer";
 import { describeCheckoutFailure, type CheckoutFailure } from "../checkout/failure";
 import { checkoutEntry } from "../checkout/entry";
 import { checkoutFormToInput } from "../checkout/request";
+import { checkoutValidationIssues } from "../checkout/validation";
 import Layout from "../layouts/Layout.astro";
 import { toText } from "../shared/form-values";
 
@@ -24,12 +25,13 @@ let submitted = { name: "", phone: "", address: "" };
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   submitted = { name: toText(form.get("name")), phone: toText(form.get("phone")), address: toText(form.get("address")) };
-  const result = await env.APP.checkout(Astro.request.headers.get("cookie") ?? "", checkoutFormToInput(form));
+  const input = checkoutFormToInput(form);
+  const result = await env.APP.checkout(Astro.request.headers.get("cookie") ?? "", input);
   // 成功時不直接 303：要讓瀏覽器先記下這次成立的訂單編號，訂單頁才知道可以清空購物車（見下面的 script）
   if (result.ok) placedOrderId = result.data.orderId;
   // session 在填表期間失效：導回登入，登入後回到結帳（購物車還在瀏覽器）
   if (!result.ok && result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
-  if (!result.ok) failure = describeCheckoutFailure(result);
+  if (!result.ok) failure = describeCheckoutFailure(result, result.reason === "invalid_input" ? checkoutValidationIssues(input) : []);
   resetKey = !result.ok && result.reason === "idempotency_key_reused";
 }
 
@@ -42,11 +44,11 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   {
     placedOrderId !== undefined && (
       <p role="status">
-        訂單已成立，正在前往訂單頁…沒有自動前往請<a href={`/orders/${placedOrderId}?placed=1`}>按這裡</a>。
+        訂單已成立，正在前往訂單頁。若未自動跳轉，請<a href={`/orders/${placedOrderId}?placed=1`}>查看訂單詳情</a>。
       </p>
     )
   }
-  <p id="checkout-empty" hidden>購物車是空的。<a href="/">去逛逛商品</a></p>
+  <p id="checkout-empty" hidden>購物車目前是空的，請先挑選商品。<a href="/products">全部商品</a></p>
   <div id="checkout-content" hidden={placedOrderId !== undefined}>
     <section class="checkout-summary" aria-labelledby="summary-title">
     <h2 id="summary-title">訂單摘要</h2>
@@ -62,7 +64,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     {failure && <p class="error" role="alert">{failure.message}</p>}
     <ul id="checkout-issues" class="error" aria-live="polite"></ul>
     <p id="checkout-issues-actions" hidden>
-      <button type="button" class="button-secondary" id="apply-price-changes">更新購物車為新價格</button>
+      <button type="button" class="button-secondary" id="apply-price-changes">更新購物車價格</button>
     </p>
     <p id="checkout-notice" role="status" hidden></p>
     <p id="checkout-storage-error" class="error" role="alert" hidden></p>
@@ -73,15 +75,18 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
       {failure?.fields.idempotencyKey?.map((m) => <p class="error">{m}</p>)}
       <label>
         收件人姓名
-        <input name="name" autocomplete="shipping name" inputmode="text" aria-describedby={failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.shippingInfo ? "true" : undefined} value={submitted.name} required />
+        <input name="name" autocomplete="shipping name" inputmode="text" aria-describedby={failure?.fields.name ? "name-error" : failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.name || failure?.fields.shippingInfo ? "true" : undefined} value={submitted.name} required />
+        {failure?.fields.name && <span id="name-error" class="error">{failure.fields.name.join(" ")}</span>}
       </label>
       <label>
         收件人電話
-        <input name="phone" type="tel" autocomplete="shipping tel" inputmode="tel" aria-describedby={failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.shippingInfo ? "true" : undefined} value={submitted.phone} required />
+        <input name="phone" type="tel" autocomplete="shipping tel" inputmode="tel" aria-describedby={failure?.fields.phone ? "phone-error" : failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.phone || failure?.fields.shippingInfo ? "true" : undefined} value={submitted.phone} required />
+        {failure?.fields.phone && <span id="phone-error" class="error">{failure.fields.phone.join(" ")}</span>}
       </label>
       <label>
         收件地址
-        <input name="address" autocomplete="shipping street-address" inputmode="text" aria-describedby={failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.shippingInfo ? "true" : undefined} value={submitted.address} required />
+        <input name="address" autocomplete="shipping street-address" inputmode="text" aria-describedby={failure?.fields.address ? "address-error" : failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.address || failure?.fields.shippingInfo ? "true" : undefined} value={submitted.address} required />
+        {failure?.fields.address && <span id="address-error" class="error">{failure.fields.address.join(" ")}</span>}
       </label>
       <input type="hidden" name="lines" />
       <input type="hidden" name="idempotencyKey" />
@@ -163,7 +168,10 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         product.className = "summary-product";
         const name = document.createElement("span");
         name.textContent = line.name;
-        product.appendChild(createCartCover(line.cover, line.name));
+        // 商品欄已顯示名稱，封面不再重複朗讀。
+        const cover = createCartCover(line.cover, line.name);
+        cover.setAttribute("aria-hidden", "true");
+        product.appendChild(cover);
         product.appendChild(name);
         for (const child of [product, cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`, "單價"), cell(String(line.quantity), "數量"), cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`, "小計")]) row.appendChild(child);
         return row;
@@ -186,7 +194,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     issues = issues.filter((issue) => issue.kind !== "price_changed");
     change((cart) => applyPriceChanges(cart, applied));
     const notice = $("#checkout-notice");
-    notice.textContent = "已更新為新價格，請確認總金額後再送出。";
+    notice.textContent = "購物車價格已更新，請確認總金額後再送出。";
     notice.hidden = false;
   });
 

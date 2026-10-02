@@ -38,7 +38,7 @@ test.afterAll(async ({ browser }) => {
 const hero = (page: Page) => page.getByRole("region", { name: "主視覺" });
 const heroStatus = (page: Page) => hero(page).locator("#hero-status");
 const featuredSection = (page: Page) => page.getByRole("region", { name: "精選商品" });
-const categorySection = (page: Page) => page.getByRole("region", { name: "選購分類" });
+const categorySection = (page: Page) => page.getByRole("region", { name: "依空間選物" });
 const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
 
 test("管理員在後台標為精選後，商品出現在首頁精選區", async ({ browser, page }) => {
@@ -50,7 +50,7 @@ test("管理員在後台標為精選後，商品出現在首頁精選區", async
   await expect(section.getByRole("heading", { level: 2, name: "精選商品" })).toBeVisible();
   await expect(section.getByRole("listitem").filter({ hasText: BETA.name })).toBeVisible();
   await expect(section.getByRole("listitem").filter({ hasText: ALPHA.name })).toBeVisible();
-  await section.getByRole("link", { name: "看全部商品" }).click();
+  await section.getByRole("link", { name: "全部商品" }).click();
   await expect(page).toHaveURL(/\/products$/);
 });
 
@@ -73,7 +73,7 @@ test("精選卡片可以直接加入購物車，顯示 toast 並更新件數", a
   await page.goto("/");
   const card = featuredSection(page).getByRole("listitem").filter({ hasText: ALPHA.name });
   await card.getByRole("button", { name: "加入購物車" }).click();
-  await expect(card.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  await expect(card.getByRole("status")).toHaveText("已加入購物車，目前 1 件。");
   await expect(page.locator("#cart-count")).toHaveText("1");
 });
 
@@ -82,7 +82,7 @@ test("商品卡：封面是正方形，加入購物車是只有圖示的按鈕�
   await page.goto("/");
   const card = featuredSection(page).getByRole("listitem").filter({ hasText: ALPHA.name });
   // 封面：寬高相差不到 1px（版面以 aspect-ratio 撐成方形，不是靠圖片原始比例）
-  const cover = (await card.getByRole("img", { name: `${ALPHA.name}的封面` }).boundingBox())!;
+  const cover = (await card.getByAltText(ALPHA.name, { exact: true }).boundingBox())!;
   expect(Math.abs(cover.width - cover.height)).toBeLessThan(1);
   // 按鈕：名稱帶商品名、內容是 svg 圖示、畫面上沒有可見文字
   const add = card.getByRole("button", { name: `加入購物車：${ALPHA.name}` });
@@ -146,7 +146,9 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await expect(images.first()).toHaveAttribute("sizes", /.+/);
   await expect(images.first()).toHaveAttribute("width", "1600");
   await expect(images.first()).toHaveAttribute("height", "914");
-  await expect(carousel.getByRole("link", { name: "開始選購" }).first()).toHaveAttribute("href", "/products");
+  for (const [index, label, href] of [[0, "逛客廳選物", "/categories/living"], [1, "逛餐廳選物", "/categories/dining"], [2, "逛工作區選物", "/categories/workspace"]] as const) {
+    await expect(slides.nth(index).getByRole("link", { name: label, includeHidden: true })).toHaveAttribute("href", href);
+  }
 
   await expect(heroStatus(page)).toHaveText("1 / 3");
   // 只有目前這張可聚焦；軌道本身不是 tab stop；切換後 inert 跟著換
@@ -238,7 +240,7 @@ for (const [width, height] of [[390, 844], [1280, 900]] as const) {
     await page.setViewportSize({ width, height });
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    await expect(page.getByRole("link", { name: /逛逛全部商品/ })).toHaveAttribute("href", "/products");
+    await expect(page.getByRole("region", { name: "日常，從喜歡的物件開始" }).getByRole("link", { name: "全部商品", exact: true })).toHaveAttribute("href", "/products");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     // 圖片都載入完成後再量測、截圖
     await page.evaluate(async () => {

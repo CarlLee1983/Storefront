@@ -13,13 +13,13 @@ export function describeIssue(issue: CheckoutIssue, line: Pick<CartLine, "name" 
   const name = `「${line?.name ?? `商品 #${issue.productId}`}」`;
   switch (issue.kind) {
     case "price_changed":
-      return `${name}的單價已變動為 ${twd(issue.currentUnitPriceTwd)}（你看到的是 ${twd(line?.unitPriceTwd ?? 0)}）。`;
+      return `${name}的售價已更新為 ${twd(issue.currentUnitPriceTwd)}。請確認總金額，再決定是否更新購物車。`;
     case "unlisted":
-      return `${name}已下架，無法結帳，請移除。`;
+      return `${name}目前無法購買，請從購物車移除。`;
     case "insufficient_stock":
       return `${name}的可售數量不足，請減少數量或移除。`;
     case "product_not_found":
-      return `${name}已不存在，請移除。`;
+      return `${name}目前無法購買，請從購物車移除。`;
   }
 }
 
@@ -47,9 +47,35 @@ export function removeLines(cart: Cart, productIds: readonly number[]): Cart {
 
 export interface CheckoutFailure {
   message: string;
-  /** 欄位名稱 → 錯誤訊息（訊息由 App 的驗證產生，已是可顯示的文字）。 */
+  /** 顧客欄位名稱 → 固定文案；不回顯 App 原始文字。 */
   fields: Record<string, string[]>;
   issues: CheckoutIssue[];
+}
+
+export interface CheckoutValidationIssue {
+  path: readonly PropertyKey[];
+  code: string;
+}
+
+function customerFields(issues: readonly CheckoutValidationIssue[], remoteFields: Record<string, string[]>): Record<string, string[]> {
+  const fields: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const [parent, child] = issue.path;
+    if (parent !== "shippingInfo") continue;
+    const key = child === "name" || child === "phone" || child === "address" ? child : "shippingInfo";
+    const message = key === "shippingInfo" ? "請確認收件人姓名、電話與地址後再送出。"
+      : key === "phone" ? (issue.code === "too_small" ? "請填寫收件人電話。" : "請確認收件人電話格式。")
+      : key === "name" ? (issue.code === "too_big" ? "收件人姓名太長，請縮短後再試。" : "請填寫收件人姓名。")
+      : issue.code === "too_big" ? "收件地址太長，請縮短後再試。" : "請填寫收件地址。";
+    (fields[key] ??= []).includes(message) || fields[key]!.push(message);
+  }
+  if (Object.hasOwn(remoteFields, "shippingInfo") && !["name", "phone", "address", "shippingInfo"].some((key) => fields[key])) {
+    fields.shippingInfo = ["請確認收件人姓名、電話與地址後再送出。"];
+  }
+  if (Object.hasOwn(remoteFields, "idempotencyKey") || issues.some((issue) => issue.path[0] === "idempotencyKey")) {
+    fields.idempotencyKey = ["這次結帳未能完成，請確認購物車與收件資訊後再送出。"];
+  }
+  return fields;
 }
 
 /** 結帳 RPC 的失敗結果 → 頁面訊息；`unauthorized` 由頁面另外處理（導向登入）。 */
@@ -57,17 +83,17 @@ export function describeCheckoutFailure(result: {
   reason: string;
   fields?: Record<string, string[]>;
   issues?: CheckoutIssue[];
-}): CheckoutFailure {
+}, validationIssues: readonly CheckoutValidationIssue[] = []): CheckoutFailure {
   const messages: Record<string, string> = {
-    checkout_rejected: "有商品無法結帳，請依下列說明修正後再送出。",
-    invalid_input: "輸入有誤，請修正後再送出。",
+    checkout_rejected: "有商品目前無法結帳，請依下列說明調整購物車。",
+    invalid_input: "輸入有誤，請確認資料後再送出。",
     // 同一個冪等鍵帶了不同內容（例如另一個分頁改過購物車）；頁面會清掉舊鍵，下一次送出用新鍵
-    idempotency_key_reused: "這次結帳的內容和先前送出的不同，已重新準備，請確認內容後再送出一次。",
+    idempotency_key_reused: "結帳內容已有變動，請確認商品與總金額後再送出一次。",
     checkout_unavailable: "目前無法完成結帳，請稍後再試。",
   };
   return {
-    message: messages[result.reason] ?? "結帳失敗，請稍後再試。",
-    fields: result.fields ?? {},
+    message: Object.hasOwn(messages, result.reason) ? messages[result.reason]! : "目前無法完成結帳，請稍後再試。",
+    fields: result.reason === "invalid_input" ? customerFields(validationIssues, result.fields ?? {}) : {},
     issues: result.issues ?? [],
   };
 }

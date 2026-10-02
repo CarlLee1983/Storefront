@@ -2,10 +2,12 @@
 import { env } from "cloudflare:workers";
 import { MAX_QUANTITY } from "../../cart/cart";
 import CartToast from "../../components/CartToast.astro";
+import NotFoundContent from "../../components/NotFoundContent.astro";
 import ProductGallery from "../../components/ProductGallery.astro";
 import ProductList from "../../components/ProductList.astro";
 import QuantityStepper from "../../components/QuantityStepper.astro";
 import Layout from "../../layouts/Layout.astro";
+import { notFoundDescription, previewText } from "../../metadata";
 import { saleDisplay } from "../../sale/price";
 
 export const prerender = false;
@@ -16,7 +18,7 @@ if (!product) Astro.response.status = 404;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) : null;
 ---
-<Layout title={product?.name ?? "找不到頁面"} noindex={!product} hideTitle={!!product}>
+<Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={product?.images[0]?.variants.at(-1)?.key ? `/images/${product.images[0]!.variants.at(-1)!.key}` : undefined} noindex={!product} hideTitle={!!product}>
   {product ? <>
     <nav class="breadcrumb" aria-label="麵包屑">
       <ol>
@@ -43,14 +45,14 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
           <button type="submit" class="buy-button">加入購物車<span aria-hidden="true"> →</span></button>
           <CartToast />
         </form>}
-        <p class="policy">含稅、免運。付款後無法自行取消，商品問題請聯繫客服。</p>
+        <p class="policy">售價含稅、免運。付款後無法自行取消訂單；商品或訂單問題請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。詳情請見<a href="/returns">退換貨說明</a>。</p>
       </section>
     </div>
     {product.related.length > 0 && <section class="related" aria-labelledby="related-heading">
       <h2 id="related-heading">同分類的其他商品</h2>
       <ProductList products={product.related} />
     </section>}
-  </> : <><p>這個商品不存在，或已經下架。</p><p><a href="/">回首頁</a></p></>}
+  </> : <NotFoundContent />}
 </Layout>
 <script>
   import { parseCartCover } from "../../cart/cover";

@@ -4,5 +4,19 @@ export const prerender = false;
 ---
 
 <Layout title="退換貨說明">
-  <p>付款後無法自行取消訂單。如有商品或訂單問題，請聯繫客服，由人工協助處理。</p><p>聯繫時請提供訂單編號，方便查詢。</p>
+  <div class="content">
+    <section><h2>申請期限</h2><p>自到貨隔日起 7 天內可提出退換貨申請。請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>，提供訂單編號、商品名稱及需要協助的情況，我們會回覆後續安排。</p></section>
+    <section><h2>商品條件</h2><p>請保持商品完整並保留原包裝，以便收回。若商品狀況或包裝有疑慮，請在來信中說明。</p></section>
+    <section><h2>收回與運費</h2><p>由靜物安排到府收回商品，退回運費由靜物負擔。大型家具同樣由我們協調收回時間。</p></section>
+    <section><h2>退款</h2><p>收到退回商品後，14 個工作天內將款項退至原付款方式。若付款或退款狀態有疑問，請附訂單編號寄信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。</p></section>
+    <p>付款前可在訂單頁取消待付款訂單；付款後無法自行取消，請來信協助處理。本站為示範網站，不實際出貨；以上為示範購物流程的說明。</p>
+  </div>
 </Layout>
+
+<style>
+  .content { max-width: 44rem; line-height: 1.8; }
+  .content section + section { margin-top: var(--space-8); }
+  .content h2 { margin-bottom: var(--space-2); }
+  .content section p { margin-top: 0; }
+  .content > p { margin-top: var(--space-8); }
+</style>

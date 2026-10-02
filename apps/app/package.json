@@ -11,7 +11,8 @@
     "./category-slug": "./src/categories/slug.ts",
     "./catalog-listing": "./src/catalog/listing.ts",
     "./product-images": "./src/product-images.ts",
-    "./catalog-types": "./src/catalog/types.ts"
+    "./catalog-types": "./src/catalog/types.ts",
+    "./orders-input": "./src/orders/input.ts"
   },
   "scripts": {
     "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

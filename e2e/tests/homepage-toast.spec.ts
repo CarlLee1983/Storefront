@@ -53,10 +53,10 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   const sold = page.getByRole("listitem").filter({ hasText: "首頁售完測試" });
   await expect(sold).toContainText("已售完");
   await expect(sold.getByRole("button", { name: "加入購物車" })).toHaveCount(0);
-  await expect(card.getByRole("img")).toHaveAttribute("srcset", /320w.*640w.*1280w/);
+  await expect(card.locator("img")).toHaveAttribute("srcset", /320w.*640w.*1280w/);
   await card.getByRole("button", { name: "加入購物車" }).focus();
   await page.keyboard.press("Enter");
-  await expect(card.getByRole("status")).toHaveText("已加入購物車（目前 1 件）");
+  await expect(card.getByRole("status")).toHaveText("已加入購物車，目前 1 件。");
   // Entry motion must never fade the live-region text below its AA contrast.
   expect(await card.getByRole("status").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
   await expect(card.getByRole("button", { name: "加入購物車" })).toBeFocused();
@@ -67,7 +67,7 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   await testInfo.attach("homepage-mobile-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.keyboard.press("Enter");
-  await expect(card.getByRole("status")).toHaveText("已加入購物車（目前 2 件）");
+  await expect(card.getByRole("status")).toHaveText("已加入購物車，目前 2 件。");
   await expect(page.locator("#cart-count")).toHaveText("2");
   expect(await card.getByRole("status").evaluate(element => getComputedStyle(element).animationName)).toBe("none");
   expect(await page.locator("#cart-count").evaluate(element => getComputedStyle(element).animationName)).toBe("none");

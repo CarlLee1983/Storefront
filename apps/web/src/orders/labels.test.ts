@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
+import { customerOrderStatusLabel, customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary } from "./labels";
+
+describe("顧客訂單與付款文案", () => {
+  it("已知狀態、物流資訊與退款原因顯示核准內容", () => {
+    expect(customerOrderStatusNote("pending_payment", 0)).toContain(formatDateTime(0));
+    expect(customerOrderStatusNote("expired", 0)).toContain("狀態可能更新");
+    expect(customerShipmentSummary(null, null)).toBe("尚未提供物流單號。");
+    expect(customerShipmentSummary(null, "TW123")).toBe("物流單號：TW123");
+    expect(customerPaymentStatusLabel("refund_failed")).toBe("退款尚未完成");
+    expect(customerPaymentStatusNote("refund_failed")).not.toContain("已退回原付款方式");
+    expect(customerRefundReasonLabel("duplicate_success")).toBe("同一張訂單有另一筆成功付款");
+  });
+
+  it("未知及 prototype 代碼不顯示原始值", () => {
+    for (const code of ["future_status", "__proto__", "constructor"]) {
+      expect(customerOrderStatusLabel(code)).toBe("訂單狀態待確認");
+      expect(customerOrderStatusNote(code, 0)).toContain("無法確認訂單狀態");
+      expect(customerPaymentStatusLabel(code)).toBe("付款狀態待確認");
+      expect(customerPaymentStatusNote(code)).toContain("無法確認這筆付款");
+      expect(customerRefundReasonLabel(code)).toBe("退款原因待確認");
+    }
+  });
+});
 
 describe("orderStatusNote", () => {
   it("已逾期說明保留已釋放；已取消說明是終點", () => {

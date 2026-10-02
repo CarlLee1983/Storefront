@@ -12,7 +12,7 @@ const { name, images } = Astro.props;
           srcset={image.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
           sizes="(min-width: 64rem) 38rem, (min-width: 40rem) calc(100vw - 4rem), calc(100vw - 2rem)"
           width={image.variants.at(-1)!.width} height={image.variants.at(-1)!.height}
-          alt={`${name}的商品圖片 ${index + 1}`} loading={index === 0 ? "eager" : "lazy"} decoding="async" />
+          alt={`${name}，第 ${index + 1} 張商品圖片`} loading={index === 0 ? "eager" : "lazy"} decoding="async" />
       </div>
     ))}
   </div>
@@ -24,8 +24,8 @@ const { name, images } = Astro.props;
     </div>
     <div class="gallery-thumbnails" role="group" aria-label="選擇商品圖片">
       {images.map((image, index) => (
-        <button type="button" data-gallery-index={index} aria-label={`查看${name}的商品圖片 ${index + 1}`} aria-current={index === 0 ? "true" : undefined}>
-          <img src={`/images/${image.variants[0]!.key}`} width={image.variants[0]!.width} height={image.variants[0]!.height} alt={`${name}的商品圖片 ${index + 1} 縮圖`} loading="lazy" />
+        <button type="button" data-gallery-index={index} aria-label={`查看${name}第 ${index + 1} 張商品圖片`} aria-current={index === 0 ? "true" : undefined}>
+          <img src={`/images/${image.variants[0]!.key}`} width={image.variants[0]!.width} height={image.variants[0]!.height} alt="" loading="lazy" />
         </button>
       ))}
     </div>

@@ -5,7 +5,7 @@ import { checkoutEntry } from "../../checkout/entry";
 import OrderStatus from "../../orders/OrderStatus.astro";
 import OrderLines from "../../orders/OrderLines.astro";
 import Layout from "../../layouts/Layout.astro";
-import { formatDateTime, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel, shipmentSummary } from "../../orders/labels";
+import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
@@ -36,7 +36,7 @@ const order = found?.ok ? found.data : undefined;
 if (!order) Astro.response.status = 404;
 // 剛結帳成功導來這一頁：顯示成立訊息（清購物車與冪等鍵在下面的 client script）
 const placed = Astro.url.searchParams.get("placed") === "1";
-const statusNote = order ? orderStatusNote(order.status) : null;
+const statusNote = order ? customerOrderStatusNote(order.status, order.paymentDeadline) : null;
 // 發起付款被拒（/orders/:id/pay 帶回原因），或付款完導回時閘道暫時查不到結果（/orders/:id/payment-return）
 const paymentError = paymentErrorMessage(Astro.url.searchParams.get("payment_error"));
 const cancelError = cancelErrorMessage(Astro.url.searchParams.get("cancel_error"));
@@ -44,21 +44,21 @@ const paymentUnconfirmed = Astro.url.searchParams.get("payment") === "unconfirme
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
-<Layout title={order ? `訂單 #${order.id}` : "找不到訂單"} noindex>
+<Layout title={order ? `訂單 #${order.id}` : "找不到頁面"} description={order ? `查看訂單 #${order.id} 的付款、出貨狀態與收件資訊。` : undefined} noindex>
   {
     !order ? (
-      <p class="error" role="alert">找不到這張訂單。<a href="/orders">回我的訂單</a></p>
+      <p class="error" role="alert">找不到這張訂單。<a href="/orders">返回我的訂單</a></p>
     ) : (
       <>
-        {placed && <p role="status">訂單已成立，商品已為你保留。</p>}
+        {placed && <p role="status">訂單已成立，商品已為你保留，請於付款期限內完成付款。</p>}
         {paymentError && <p class="error" role="alert">{paymentError}</p>}
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
-        {paymentUnconfirmed && <p role="status">付款結果暫時無法確認，請稍後重新整理本頁；結果確認後訂單狀態會自動更新。</p>}
-        {order.status === "paid" && <p role="status">已收到付款，訂單已付款。</p>}
-        <p>訂單狀態：<OrderStatus status={order.status} /></p>
+        {paymentUnconfirmed && <p role="status">目前無法確認付款結果，請稍後重新整理訂單頁。</p>}
+        {order.status === "paid" && <p role="status">已收到付款，訂單目前為已付款。</p>}
+        <p>訂單狀態：<OrderStatus status={order.status} customer /></p>
         {statusNote && <p>{statusNote}</p>}
         {
-          order.status === "shipped" && <p>{shipmentSummary(order.shippedAt, order.trackingNumber)}</p>
+          order.status === "shipped" && <p>{customerShipmentSummary(order.shippedAt, order.trackingNumber)}</p>
         }
         {order.status === "pending_payment" && <section class="payment-callout" aria-label="完成付款">
           <h2>完成付款，準備迎接你的商品</h2>
@@ -73,10 +73,10 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {
           order.payments.length > 0 && (
             <>
-              <h2>付款嘗試</h2>
+              <h2>付款資訊</h2>
               <table>
                 <thead>
-                  <tr><th>發起時間</th><th>金額</th><th>狀態</th></tr>
+                  <tr><th>付款時間</th><th>金額</th><th>付款狀態</th></tr>
                 </thead>
                 <tbody>
                   {order.payments.map((payment) => (
@@ -84,8 +84,9 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                       <td>{formatDateTime(payment.createdAt)}</td>
                       <td>NT$ {priceFormat.format(payment.amountTwd)}</td>
                       <td>
-                        {paymentStatusLabel(payment.status)}
-                        {refundReasonLabel(payment.refundReason) && <small>（{refundReasonLabel(payment.refundReason)}）</small>}
+                        {customerPaymentStatusLabel(payment.status)}
+                        <small>（{customerPaymentStatusNote(payment.status)}）</small>
+                        {customerRefundReasonLabel(payment.refundReason) && <small>（{customerRefundReasonLabel(payment.refundReason)}）</small>}
                       </td>
                     </tr>
                   ))}
@@ -95,12 +96,11 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           )
         }
         <h2>收件資訊</h2>
-        <p>{order.shippingInfo.name}／{order.shippingInfo.phone}</p>
-        <p>{order.shippingInfo.address}</p>
+        <dl><dt>收件人姓名</dt><dd>{order.shippingInfo.name}</dd><dt>收件人電話</dt><dd>{order.shippingInfo.phone}</dd><dt>收件地址</dt><dd>{order.shippingInfo.address}</dd></dl>
         {order.status === "pending_payment" && <form class="cancel" method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
           <p>取消後無法恢復。</p><button type="submit" class="button-secondary">取消訂單</button>
         </form>}
-        <p><a href="/orders">回我的訂單</a></p>
+        <p><a href="/orders">返回我的訂單</a></p>
       </>
     )
   }

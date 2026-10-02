@@ -22,6 +22,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     <li class:list={["product-card", { "is-sold-out": !p.purchasable, "on-sale": sale }]}>
       <a class="product-link" href={`/products/${p.id}`}>
         <span class="cover-frame">
+          {/* 同一個連結的標題已提供商品名稱，封面不再重複朗讀。 */}
           {p.cover
             ? <img
                 src={`/images/${p.cover.variants[0]!.key}`}
@@ -29,10 +30,11 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                 sizes="(min-width: 56.25rem) 18rem, 50vw"
                 width={p.cover.variants.at(-1)!.width}
                 height={p.cover.variants.at(-1)!.height}
-                alt={`${p.name}的封面`}
+                alt={p.name}
+                aria-hidden="true"
                 loading={eagerFirst && index === 0 ? "eager" : "lazy"}
               />
-            : <span class="cover-placeholder">暫無圖片</span>}
+            : <span class="cover-placeholder">暫無商品圖片</span>}
           {!p.purchasable && <span class="sold-out">已售完</span>}
           {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
         </span>

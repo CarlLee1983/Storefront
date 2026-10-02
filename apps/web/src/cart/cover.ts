@@ -26,12 +26,12 @@ export function createCartCover(cover: CartCover | undefined, name: string): HTM
   frame.className = "cart-cover";
   const placeholder = document.createElement("span");
   placeholder.className = "cover-placeholder";
-  placeholder.textContent = "暫無圖片";
+  placeholder.textContent = "暫無商品圖片";
   frame.appendChild(placeholder);
   const variant = cover?.variants[0];
   if (variant) {
     const image = document.createElement("img");
-    image.alt = `${name}的封面`;
+    image.alt = name;
     image.width = variant.width;
     image.height = variant.height;
     image.loading = "lazy";

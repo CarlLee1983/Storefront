@@ -26,16 +26,16 @@ export function startPaymentLocation(
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
-  order_not_payable: "這張訂單目前不能付款。",
-  payment_deadline_passed: "已超過付款期限，無法付款。",
-  payment_window_closed: "付款期限前 2 分鐘內不能再發起付款，請重新下單。",
-  payment_in_progress: "這張訂單有一筆付款正在進行中，請先完成它，或稍後再試。",
-  payment_already_succeeded: "這張訂單已經有一筆付款成功。",
-  payment_gateway_unavailable: "金流暫時無法使用，請稍後再試。",
-  payment_unavailable: "付款功能尚未開放，請稍後再試。",
+  order_not_payable: "這張訂單目前無法付款，請查看訂單狀態。",
+  payment_deadline_passed: "已超過付款期限，無法再發起付款。",
+  payment_window_closed: "付款期限前 2 分鐘內無法再發起新的付款。請查看訂單狀態。",
+  payment_in_progress: "這張訂單已有一筆付款正在進行，請先完成付款，或稍後再試。",
+  payment_already_succeeded: "這張訂單已有一筆成功付款，請查看訂單狀態。",
+  payment_gateway_unavailable: "付款目前無法使用，請稍後再試；若持續無法付款，請聯絡 hello@gravito.dev。",
+  payment_unavailable: "付款目前無法使用，請稍後再試；若持續無法付款，請聯絡 hello@gravito.dev。",
 };
 
-const GENERIC_ERROR = "無法發起付款，請稍後再試。";
+const GENERIC_ERROR = "目前無法前往付款，請稍後再試。";
 
 /** 訂單頁網址上 `payment_error` 對應的說明；沒有帶就是 null，不認得的原因用通用說明（不回顯網址上的字串）。 */
 export function paymentErrorMessage(reason: string | null): string | null {
@@ -49,12 +49,12 @@ export function cancelOrderLocation(orderId: number, result: { ok: true } | { ok
 }
 
 const CANCEL_ERROR_MESSAGES: Record<string, string> = {
-  payment_gateway_unavailable: "金流暫時無法使用，進行中的付款尚未失效，訂單未取消，請稍後再試。",
-  payment_in_progress: "這張訂單有一筆付款正在進行中，暫時無法取消，請先完成付款或稍後再試。",
-  payment_unavailable: "付款功能尚未開放，訂單未取消，請稍後再試。",
+  payment_gateway_unavailable: "目前無法取消訂單，訂單仍保留原狀態。請稍後再試。",
+  payment_in_progress: "這張訂單有付款正在進行，目前無法取消。請先完成付款或稍後再試。",
+  payment_unavailable: "目前無法取消訂單，訂單仍保留原狀態。請稍後再試。",
 };
 
-const GENERIC_CANCEL_ERROR = "無法取消訂單，訂單未取消，請稍後再試。";
+const GENERIC_CANCEL_ERROR = "目前無法取消訂單，訂單仍保留原狀態。請稍後再試。";
 
 /** 訂單頁網址上 `cancel_error` 對應的說明；沒有帶就是 null，不認得的原因用通用說明（不回顯網址上的字串）。 */
 export function cancelErrorMessage(reason: string | null): string | null {

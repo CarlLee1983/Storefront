@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f2f2f0"/>
+  <rect x="88" y="88" width="1024" height="454" fill="#141414"/>
+  <path d="M223 256h-34c-21 0-32 11-32 28s11 28 32 28h17c17 0 28 8 28 22s-11 22-28 22h-43" fill="none" stroke="#fff" stroke-width="17" stroke-linecap="square"/>
+  <path d="M265 256v100h45" fill="none" stroke="#fff" stroke-width="17" stroke-linecap="square"/>
+  <circle cx="232" cy="256" r="10" fill="#c4321c"/>
+  <text x="345" y="332" fill="#fff" font-family="Helvetica,Arial,sans-serif" font-size="93" letter-spacing="-3">Still Life</text>
+  <text x="345" y="398" fill="#dcdcd8" font-family="Helvetica,Arial,sans-serif" font-size="29" letter-spacing="7">靜物</text>
+</svg>

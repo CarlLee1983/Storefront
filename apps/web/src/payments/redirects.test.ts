@@ -45,9 +45,10 @@ describe("paymentErrorMessage", () => {
   it("已知的原因有專屬說明，未知的一律用通用說明（不回顯網址上的字串）", () => {
     expect(paymentErrorMessage("payment_deadline_passed")).toContain("付款期限");
     expect(paymentErrorMessage("payment_window_closed")).toContain("付款期限前");
-    expect(paymentErrorMessage("payment_gateway_unavailable")).toContain("金流");
-    expect(paymentErrorMessage("payment_in_progress")).toContain("進行中");
+    expect(paymentErrorMessage("payment_gateway_unavailable")).toContain("付款");
+    expect(paymentErrorMessage("payment_in_progress")).toContain("正在進行");
     expect(paymentErrorMessage("<script>")).toBe(paymentErrorMessage("no_such_reason"));
+    expect(paymentErrorMessage("constructor")).toBe(paymentErrorMessage("no_such_reason"));
     expect(paymentErrorMessage(null)).toBeNull();
   });
 });
@@ -67,9 +68,10 @@ describe("cancelOrderLocation（取消訂單完導向哪裡）", () => {
 
 describe("cancelErrorMessage", () => {
   it("說明訂單沒有取消；不認得的原因用通用說明，不回顯網址上的字串", () => {
-    expect(cancelErrorMessage("payment_gateway_unavailable")).toContain("訂單未取消");
-    expect(cancelErrorMessage("payment_in_progress")).toContain("進行中");
+    expect(cancelErrorMessage("payment_gateway_unavailable")).toContain("訂單仍保留原狀態");
+    expect(cancelErrorMessage("payment_in_progress")).toContain("正在進行");
     expect(cancelErrorMessage("<script>")).toBe(cancelErrorMessage("no_such_reason"));
+    expect(cancelErrorMessage("__proto__")).toBe(cancelErrorMessage("no_such_reason"));
     expect(cancelErrorMessage(null)).toBeNull();
   });
 });
