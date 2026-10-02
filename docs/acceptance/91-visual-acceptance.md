@@ -58,3 +58,19 @@ Chrome 154.0.8037.93、Lighthouse 13.5.0、Node 24.21.0、Bun 1.4.2。Lighthouse
 - [x] 所需頁面 375／1280 截圖與 axe／溢出檢查完成。
 - [x] 重跑 Lighthouse、新增三頁並記錄 #60 比較。
 - [ ] owner 審閱核可。收到明確核可後才完成 #91、關閉 parent #76。
+
+## 重現此份驗收
+
+[實際執行腳本](91-assets/capture-final.mjs) 原樣保存，SHA-256 與 public manifest 的 `scriptSha256` 完全一致。另保存[中止的前置檢查腳本](91-assets/capture-stopped-preflight.mjs)，雜湊與 stopped-preflight 紀錄一致；它只供追溯，請執行完成版。
+
+使用隔離 worktree `9c0c160`，先執行 `bun install --frozen-lockfile`，再用既有 `bun e2e/harness/serve.ts` 啟動 production harness。等待 localhost:8790 就緒，將 harness 產生的 `.wrangler/e2e/admin-access-jwt` 寫成該 worktree 的 `apps/web/.dev.vars` 中 `ACCESS_DEV_JWT`（僅本次假 E2E token），然後執行 `bun e2e/seed/demo-seed.ts local http://localhost:8790`；確認 4 個分類、32 件上架。這與本次擷取使用相同資料與偽身份，不使用正式店面或 owner 的 cookie。
+
+將 `TASK_REPLAY_WORKTREE` 設為此隔離 worktree 的絕對路徑。腳本會把 Chrome 設定檔放在腳本旁，因此必須先複製到新建的暫存目錄，再執行：
+
+```sh
+TASK_REPLAY_ROOT=$(mktemp -d)
+cp docs/acceptance/91-assets/capture-final.mjs "$TASK_REPLAY_ROOT/capture-final.mjs"
+bun "$TASK_REPLAY_ROOT/capture-final.mjs" "$TASK_REPLAY_WORKTREE" "$TASK_REPLAY_ROOT/reports"
+```
+
+執行前以 `lsof -nP -iTCP:19229 -sTCP:LISTEN` 確認選用的 CDP 埠未占用。若已有服務，先選另一個未占用埠，透過 `LH_CDP_PORT` 指定，避免連到既有瀏覽器。兩個原始腳本記錄本機 Google Chrome 標準路徑與本次 Lighthouse 13.5.0 的 npm cache 絕對路徑；換機時需先調整這兩個工具路徑。調整後腳本會自行記錄新的雜湊與版本，產生的是新量測，不覆寫本次原始報告。完成後停掉自己的 harness 並保留完整 reports；不要把 Chrome 設定檔加入 Git。
