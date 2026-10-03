@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import migration0020 from "../migrations/0020_stock_ledger.sql?raw";
 
-/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、退款嘗試與退款、確認遺失明細與確認遺失、出貨批次的物流回報事件、明細與批次、投遞紀錄、信件、驗證請求、退款嘗試與退款、退貨申請的批次對應與明細與退貨申請、取消申請明細與取消申請、付款補查待辦與付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
+/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、退款嘗試與退款、物流退回明細與物流退回、確認遺失明細與確認遺失、出貨批次的物流回報事件、明細與批次、投遞紀錄、信件、驗證請求、退款嘗試與退款、退貨申請的批次對應與明細與退貨申請、取消申請明細與取消申請、付款補查待辦與付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
 export async function resetDb(): Promise<void> {
   // 庫存流水有禁止刪改的 trigger（0020）：測試清理時暫時拿掉，清完用遷移裡同一份定義還原
   const triggers = migration0020.split("--> statement-breakpoint").filter((statement) => statement.includes("CREATE TRIGGER"));
@@ -13,6 +13,8 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM refund_attempts"),
     env.DB.prepare("DELETE FROM refunds"),
     env.DB.prepare("DELETE FROM return_request_batches"),
+    env.DB.prepare("DELETE FROM shipment_return_items"),
+    env.DB.prepare("DELETE FROM shipment_returns"),
     env.DB.prepare("DELETE FROM shipment_loss_items"),
     env.DB.prepare("DELETE FROM shipment_losses"),
     env.DB.prepare("DELETE FROM shipment_events"),

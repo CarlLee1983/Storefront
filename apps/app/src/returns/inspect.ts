@@ -6,6 +6,7 @@ import { newGatewayRefundId, withinQuotaSql } from "../payments/refunds";
 import type { RefundStatus } from "../payments/shared";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
+import { convertInspectedToSellable, type StockReturnCase } from "../stock/conversion";
 import type { RecordReturnInspectionInput } from "./input";
 import { returnRequestItems, returnRequests } from "./schema";
 
@@ -62,13 +63,23 @@ export async function recordReturnInspection(
 
   const itemsJson = JSON.stringify(items);
   const reason = `退貨檢查合格轉可售（退貨申請 #${requestId}）`;
-  const notYetConverted = sql`NOT EXISTS (SELECT 1 FROM stock_movements WHERE return_request_id = ${requestId} AND kind = 'return_inspected')`;
   const completed = sql`EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status = 'completed')`;
   const sellableByVariant = sql`
     SELECT line.variant_id AS variant_id, SUM(item.sellable_quantity) AS quantity
     FROM return_request_items item JOIN order_lines line ON line.id = item.order_line_id
     WHERE item.request_id = ${requestId} AND item.sellable_quantity > 0
     GROUP BY line.variant_id`;
+  const stockCase: StockReturnCase = {
+    movementColumn: "return_request_id",
+    receivedKind: "return_received",
+    inspectedKind: "return_inspected",
+    caseId: requestId,
+    orderId: sql`(SELECT order_id FROM return_requests WHERE id = ${requestId})`,
+    receivedByVariant: sellableByVariant,
+    sellableByVariant,
+    isReceived: sql`EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status = 'received')`,
+    isCompleted: completed,
+  };
 
   const results = await batchAtEffectiveNow(d1, now, [
     sql`
@@ -89,18 +100,7 @@ export async function recordReturnInspection(
         damaged_quantity = COALESCE((SELECT json_extract(item.value, '$.damagedQuantity') FROM json_each(${itemsJson}) item WHERE json_extract(item.value, '$.orderLineId') = return_request_items.order_line_id), 0)
       WHERE request_id = ${requestId} AND sellable_quantity IS NULL AND ${completed}
     `,
-    sql`
-      UPDATE product_variants
-      SET unavailable = unavailable - (SELECT sellable.quantity FROM (${sellableByVariant}) sellable WHERE sellable.variant_id = product_variants.id)
-      WHERE id IN (SELECT variant_id FROM (${sellableByVariant})) AND ${completed} AND ${notYetConverted}
-    `,
-    sql`
-      INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, unavailable_delta, unavailable_after, order_id, return_request_id, actor, reason, created_at)
-      SELECT variant.id, 'return_inspected', 0, variant.on_hand, -sellable.quantity, variant.unavailable,
-        (SELECT order_id FROM return_requests WHERE id = ${requestId}), ${requestId}, ${actor}, ${reason}, ${effectiveNow}
-      FROM (${sellableByVariant}) sellable JOIN product_variants variant ON variant.id = sellable.variant_id
-      WHERE ${completed} AND ${notYetConverted}
-    `,
+    ...convertInspectedToSellable(stockCase, actor, reason),
     sql`
       INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, return_request_id, created_at)
       SELECT rr.order_id, p.id, 'return', ${newGatewayRefundId()},

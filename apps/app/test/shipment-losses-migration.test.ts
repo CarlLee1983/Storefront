@@ -5,6 +5,9 @@ import rollbackSql from "../rollback/0028_shipment_losses.down.sql?raw";
 
 const db = env.MIGRATION_DB;
 const THROUGH_0027 = 28;
+const THROUGH_0028 = 29;
+/** 0028 之後的遷移（0029 物流退回）不在這個檔案的範圍：套用與回復都只看到 0028。 */
+const applyThrough0028 = () => applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0028));
 const rollbackStatements = () => rollbackSql.split("--> statement-breakpoint").map((statement) => db.prepare(statement));
 const rows = async (query: string) => (await db.prepare(query).all()).results;
 
@@ -41,7 +44,7 @@ const insertLossRefund = (reason: string, gatewayId: string) =>
 it("0028 保留既有退款與嘗試紀錄（含編號與外鍵），退款新增 loss 原因與一案一筆的唯一性，遺失明細數量須大於 0", async () => {
   await seed0027();
 
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyThrough0028();
 
   expect(await rows("SELECT id, reason, status, shipment_loss_id FROM refunds ORDER BY id")).toEqual([
     { id: 1, reason: "duplicate_success", status: "succeeded", shipment_loss_id: null },
@@ -64,7 +67,7 @@ it("0028 保留既有退款與嘗試紀錄（含編號與外鍵），退款新�
 
 it("回復程序移除確認遺失，refunds 回到 0027 的結構，既有退款原樣保留，之後可重新套用 0028", async () => {
   await seed0027();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyThrough0028();
 
   await db.batch(rollbackStatements());
 
@@ -73,13 +76,13 @@ it("回復程序移除確認遺失，refunds 回到 0027 的結構，既有退�
   expect(await rows("SELECT id, status FROM refunds ORDER BY id")).toEqual([{ id: 1, status: "succeeded" }, { id: 7, status: "failed" }]);
   expect(await rows("SELECT refund_id FROM refund_attempts")).toEqual([{ refund_id: 7 }]);
   expect(await rows("PRAGMA foreign_key_check")).toEqual([]);
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyThrough0028();
   expect(await rows("SELECT id FROM refunds ORDER BY id")).toEqual([{ id: 1 }, { id: 7 }]);
 });
 
 it("已有確認遺失、遺失退款或遺失進度的批次時，回復的守門檢查讓整段失敗且資料不動", async () => {
   await seed0027();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyThrough0028();
   await insertLoss("k1").run();
 
   await expect(db.batch(rollbackStatements())).rejects.toThrow();

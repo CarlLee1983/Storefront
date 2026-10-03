@@ -1,6 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { orderLines } from "../orders/schema";
+import { heldByShipmentReturnQuantity, returnedInBatchQuantity } from "../shipment-returns/quantities";
 import { dispatchedQuantity, lostInBatchQuantity, lostQuantity } from "../shipments/queries";
 import { shipmentItems, shipments } from "../shipments/schema";
 import { heldByReturnBatchQuantity, heldByReturnQuantity } from "./queries";
@@ -18,7 +19,7 @@ export interface ReturnBatchView {
 }
 
 /**
- * 一張訂單各批的自助退貨窗口。可自助申請的數量 = min(該批數量 − 該批已被自助占用 − 該批已遺失, 明細層「已交運 − 占用 − 遺失」)，
+ * 一張訂單各批的自助退貨窗口。可自助申請的數量 = min(該批數量 − 該批已被自助占用 − 該批已遺失 − 該批物流退回, 明細層「已交運 − 占用 − 遺失 − 物流退回」)，
  * 和寫入端（`returns/request.ts`）的條件同一個算式；窗口依「當下」的送達時間計算，送達時間被較早的回報改寫後期限隨之改變。
  */
 export async function selectReturnBatches(db: DrizzleD1Database, orderId: number, now: number): Promise<ReturnBatchView[]> {
@@ -30,7 +31,7 @@ export async function selectReturnBatches(db: DrizzleD1Database, orderId: number
       productName: orderLines.productName,
       variantLabel: orderLines.variantLabel,
       quantity: shipmentItems.quantity,
-      selfServiceQuantity: sql<number>`MAX(0, MIN(${shipmentItems.quantity} - ${heldByReturnBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`)} - ${lostInBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`)}, ${dispatchedQuantity(sql`${shipmentItems.orderLineId}`)} - ${heldByReturnQuantity(sql`${shipmentItems.orderLineId}`)} - ${lostQuantity(sql`${shipmentItems.orderLineId}`)}))`,
+      selfServiceQuantity: sql<number>`MAX(0, MIN(${shipmentItems.quantity} - ${heldByReturnBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`)} - ${lostInBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`)} - ${returnedInBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`)}, ${dispatchedQuantity(sql`${shipmentItems.orderLineId}`)} - ${heldByReturnQuantity(sql`${shipmentItems.orderLineId}`)} - ${lostQuantity(sql`${shipmentItems.orderLineId}`)} - ${heldByShipmentReturnQuantity(sql`${shipmentItems.orderLineId}`)}))`,
     })
     .from(shipments)
     .innerJoin(shipmentItems, eq(shipmentItems.shipmentId, shipments.id))

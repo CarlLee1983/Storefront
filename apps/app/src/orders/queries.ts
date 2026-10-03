@@ -11,6 +11,7 @@ import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/s
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import type { VariantState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
+import { heldByShipmentReturnQuantity } from "../shipment-returns/quantities";
 import { dispatchedQuantity, lostQuantity, selectShipmentsByOrder, type ShipmentView } from "../shipments/queries";
 import { shippingFeeSql } from "../shipping/queries";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
@@ -157,10 +158,12 @@ export interface OrderLineView {
   pendingCancellationQuantity: number;
   /** 已完成收回檢查的退貨數量（已退貨，不能再退）。 */
   returnedQuantity: number;
-  /** 退貨進行中的數量（待審、已核准待收回、已收回待檢查），仍占用。可再申請退貨的是 `shippedQuantity - returnedQuantity - openReturnQuantity - lostQuantity`。 */
+  /** 退貨進行中的數量（待審、已核准待收回、已收回待檢查），仍占用。可再申請退貨的是 `shippedQuantity - returnedQuantity - openReturnQuantity - lostQuantity - shipmentReturnedQuantity`。 */
   openReturnQuantity: number;
   /** 確認遺失的數量（已退款、不回補庫存、不補寄，不能再申請退貨）。 */
   lostQuantity: number;
+  /** 物流退回的數量（登記退回中、已收回、已完成檢查；不含尋回的遺失品）：不能再申請退貨，也不從同單補寄。 */
+  shipmentReturnedQuantity: number;
   cover: ProductImage | null;
 }
 
@@ -214,6 +217,7 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, w
       returnedQuantity: completedReturnedQuantity(sql`${orderLines.id}`),
       openReturnQuantity: openReturnQuantity(sql`${orderLines.id}`),
       lostQuantity: lostQuantity(sql`${orderLines.id}`),
+      shipmentReturnedQuantity: heldByShipmentReturnQuantity(sql`${orderLines.id}`),
       cover: currentCover(sql`${orderLines.productId}`),
     })
     .from(orders)
@@ -242,9 +246,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, w
       };
       views.set(order.id, view);
     }
-    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, lostQuantity: lost, cover } = line;
+    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, lostQuantity: lost, shipmentReturnedQuantity: sentBack, cover } = line;
     if (lineId !== null && productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null && deliveryType !== null) {
-      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, lostQuantity: lost, cover });
+      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, lostQuantity: lost, shipmentReturnedQuantity: sentBack, cover });
     }
   }
 

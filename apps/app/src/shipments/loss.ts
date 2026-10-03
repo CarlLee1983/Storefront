@@ -5,6 +5,7 @@ import { lossShippingRefundSql } from "../payments/exit-refund";
 import { newGatewayRefundId, withinQuotaSql } from "../payments/refunds";
 import type { RefundStatus } from "../payments/shared";
 import { heldByReturnBatchQuantity, heldByReturnQuantity } from "../returns/queries";
+import { heldByShipmentReturnQuantity, returnedInBatchQuantity } from "../shipment-returns/quantities";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { hashCaseRequest } from "../shared/request-hash";
 import { fail, ok } from "../shared/result";
@@ -30,11 +31,11 @@ export type ConfirmLossResult =
 /**
  * 管理員確認某一批的部分商品遺失（ADR 0006、0007；設計文件 Q5、Q20、Q25）。單一 batch，同成同敗，是否成立由條件寫入的結果判斷（不先讀再寫）：
  * 1. 建立遺失案件：批次尚未送達（有實際送達時間就是已送達，包含部分遺失之後才送達的批次；已送達是終點，不可再確認遺失；暫時配送失敗不是遺失，所以失敗與再次配送中的批次可以確認），
- *    且每筆遺失明細都在這一批裡，「該批已遺失 + 該批自助退貨占用 + 本次」不超過該批數量，
- *    「明細已遺失 + 退貨占用 + 本次」不超過明細已交運數量（與退貨申請 `returns/request.ts` 共用同一份數量，兩邊同一句條件寫入互斥；待審與核准中的退貨也占用，須先處理）。
+ *    且每筆遺失明細都在這一批裡，「該批已遺失 + 該批自助退貨占用 + 該批物流退回占用 + 本次」不超過該批數量，
+ *    「明細已遺失 + 退貨占用 + 物流退回占用 + 本次」不超過明細已交運數量（與退貨申請 `returns/request.ts`、物流退回 `shipment-returns/declare.ts` 共用同一份數量，同一句條件寫入互斥；待審與核准中的退貨也占用，須先處理）。
  *    同一句算定退款拆分：商品款 = 遺失數量 × 原實付單價，原運費依 `lossShippingRefundSql`（任一該類遺失就退該類整類原運費一次，與取消、退貨、別案遺失互斥，見 `payments/exit-refund.ts`）。
  * 2. 寫遺失明細（只在這案還沒有明細時）、3. 批次進度改為 `lost`（優先於送達與失敗回報，見 `shipments/events.ts`）。
- *    遺失不寫庫存流水、不動在庫與保留：貨已交運、不在倉內，不回補庫存；也不從同單補寄，需要再購買須重新下單。
+ *    遺失不寫庫存流水、不動在庫與保留：貨已交運、不在倉內，不回補庫存；之後若物流尋回並退回倉庫，登記物流退回時可標示為尋回的遺失品（入庫但不再退款，見 `shipment-returns/declare.ts`）；也不從同單補寄，需要再購買須重新下單。
  * 4. 登記這案的退款（唯一索引保證一案一筆）：額度條件與其他退款共用 `withinQuotaSql`，綁定讓訂單成立的那筆付款；
  *    額度不足時確認照樣成立（款項是否退成功不改變遺失事實），列進退款待辦，重送同一確認會再嘗試登記。
  * 5. 通知，與確認同一個 batch。退款的執行（向閘道送出）在 batch 之外，由呼叫端接續。
@@ -71,8 +72,8 @@ export async function confirmShipmentLoss(
           SELECT 1 FROM json_each(${itemsJson}) item
           LEFT JOIN shipment_items ship_item ON ship_item.shipment_id = ship.id AND ship_item.order_line_id = json_extract(item.value, '$.orderLineId')
           WHERE ship_item.id IS NULL
-            OR ${lostInBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + ${heldByReturnBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + json_extract(item.value, '$.quantity') > ship_item.quantity
-            OR ${lostQuantity(sql`ship_item.order_line_id`)} + ${heldByReturnQuantity(sql`ship_item.order_line_id`)} + json_extract(item.value, '$.quantity') > ${dispatchedQuantity(sql`ship_item.order_line_id`)}
+            OR ${lostInBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + ${heldByReturnBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + ${returnedInBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + json_extract(item.value, '$.quantity') > ship_item.quantity
+            OR ${lostQuantity(sql`ship_item.order_line_id`)} + ${heldByReturnQuantity(sql`ship_item.order_line_id`)} + ${heldByShipmentReturnQuantity(sql`ship_item.order_line_id`)} + json_extract(item.value, '$.quantity') > ${dispatchedQuantity(sql`ship_item.order_line_id`)}
         )
       ON CONFLICT (shipment_id, loss_key) DO NOTHING
     `,

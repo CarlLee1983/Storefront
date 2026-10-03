@@ -4,6 +4,7 @@ import { user } from "../auth/schema";
 import { orderLines, orders } from "../orders/schema";
 import { refunds } from "../payments/schema";
 import type { RefundStatus } from "../payments/shared";
+import { awaitingShipmentReturnInspectionQuantity } from "../shipment-returns/quantities";
 import type { DeliveryType } from "../shipping/types";
 import { returnRequestItems, returnRequests, type ReturnStatus } from "./schema";
 
@@ -35,11 +36,11 @@ export function openReturnQuantity(orderLineId: SQL): SQL<number> {
 }
 
 /**
- * 某個變體已收回、尚未檢查的數量：在不可售數量裡但還不能報廢（檢查之後才知道是良品還是損壞）。
+ * 某個變體已收回、尚未檢查的數量（退貨與物流退回合計）：在不可售數量裡但還不能報廢（檢查之後才知道是良品還是損壞）。
  * 報廢只能動「不可售 − 待檢」，也就是已檢查確認的損壞品（見 `stock/scrap.ts`）。
  */
 export function awaitingInspectionQuantity(variantId: SQL): SQL<number> {
-  return sql<number>`COALESCE((SELECT SUM(awaiting.received_quantity) FROM return_request_items awaiting JOIN return_requests awaiting_request ON awaiting_request.id = awaiting.request_id JOIN order_lines awaiting_line ON awaiting_line.id = awaiting.order_line_id WHERE awaiting_line.variant_id = ${variantId} AND awaiting_request.status = 'received'), 0)`;
+  return sql<number>`(COALESCE((SELECT SUM(awaiting.received_quantity) FROM return_request_items awaiting JOIN return_requests awaiting_request ON awaiting_request.id = awaiting.request_id JOIN order_lines awaiting_line ON awaiting_line.id = awaiting.order_line_id WHERE awaiting_line.variant_id = ${variantId} AND awaiting_request.status = 'received'), 0) + ${awaitingShipmentReturnInspectionQuantity(variantId)})`;
 }
 
 export interface ReturnItemView {

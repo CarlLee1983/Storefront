@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
+import { receiveIntoStock, type StockReturnCase } from "../stock/conversion";
 import type { RecordReturnReceiptInput } from "./input";
 import { returnRequestItems, returnRequests, type ReturnStatus } from "./schema";
 
@@ -42,12 +43,22 @@ export async function recordReturnReceipt(
   const target = received > 0 ? "received" : "not_received";
   const itemsJson = JSON.stringify(items);
   const reason = `退貨收回入倉（退貨申請 #${requestId}）`;
-  const notYetStocked = sql`NOT EXISTS (SELECT 1 FROM stock_movements WHERE return_request_id = ${requestId} AND kind = 'return_received')`;
   const receivedByVariant = sql`
     SELECT line.variant_id AS variant_id, SUM(item.received_quantity) AS quantity
     FROM return_request_items item JOIN order_lines line ON line.id = item.order_line_id
     WHERE item.request_id = ${requestId} AND item.received_quantity > 0
     GROUP BY line.variant_id`;
+  const stockCase: StockReturnCase = {
+    movementColumn: "return_request_id",
+    receivedKind: "return_received",
+    inspectedKind: "return_inspected",
+    caseId: requestId,
+    orderId: sql`(SELECT order_id FROM return_requests WHERE id = ${requestId})`,
+    receivedByVariant,
+    sellableByVariant: receivedByVariant,
+    isReceived: sql`EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status = 'received')`,
+    isCompleted: sql`EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status = 'completed')`,
+  };
 
   const results = await batchAtEffectiveNow(d1, now, [
     sql`
@@ -61,20 +72,7 @@ export async function recordReturnReceipt(
       WHERE request_id = ${requestId} AND received_quantity IS NULL
         AND EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status IN ('received', 'not_received'))
     `,
-    sql`
-      UPDATE product_variants
-      SET on_hand = on_hand + (SELECT received.quantity FROM (${receivedByVariant}) received WHERE received.variant_id = product_variants.id),
-        unavailable = unavailable + (SELECT received.quantity FROM (${receivedByVariant}) received WHERE received.variant_id = product_variants.id)
-      WHERE id IN (SELECT variant_id FROM (${receivedByVariant}))
-        AND EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status = 'received') AND ${notYetStocked}
-    `,
-    sql`
-      INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, unavailable_delta, unavailable_after, order_id, return_request_id, actor, reason, created_at)
-      SELECT variant.id, 'return_received', received.quantity, variant.on_hand, received.quantity, variant.unavailable,
-        (SELECT order_id FROM return_requests WHERE id = ${requestId}), ${requestId}, ${actor}, ${reason}, ${effectiveNow}
-      FROM (${receivedByVariant}) received JOIN product_variants variant ON variant.id = received.variant_id
-      WHERE EXISTS (SELECT 1 FROM return_requests WHERE id = ${requestId} AND status = 'received') AND ${notYetStocked}
-    `,
+    ...receiveIntoStock(stockCase, actor, reason),
   ]);
 
   if (results[0]!.meta.changes > 0) return ok({ requestId, status: target, replayed: false });

@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { orderLines, orders } from "../orders/schema";
 
-export const DELIVERY_STATUSES = ["in_transit", "delivery_failed", "delivered", "lost"] as const;
+export const DELIVERY_STATUSES = ["in_transit", "delivery_failed", "delivered", "lost", "returned"] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
 /** 物流回報的種類：送達、配送失敗、再次配送（物流仍持有原貨，重新安排交付）。 */
@@ -34,6 +34,7 @@ export const shipments = sqliteTable("shipments", {
   /**
    * 配送進度，由物流回報事件（`shipmentEvents`）與確認遺失（`shipmentLosses`）推導而來、不接受直接寫入：
    * 有確認遺失就是 `lost`（管理員確認、已退款的結局，最優先；之後才到的送達、失敗、再次配送回報只留紀錄，不改進度）；
+   * 其次有物流退回案件（`shipment_returns`，管理員登記物流把商品送回倉庫）就是 `returned`（同樣優先於之後才到的送達、失敗、再次配送回報）；
    * 否則已送達為終點（之後到達的失敗、再次配送回報只留紀錄，不改進度），其餘依回報發生時間最新的一筆決定：配送失敗 → `delivery_failed`，再次配送或沒有回報 → `in_transit`。
    * 再次配送是同一批原貨再交付，不新增出貨數量、不扣庫、不建新批次。配送失敗只是暫時異常，不會變成遺失，遺失一定來自管理員的確認。
    */

@@ -9,6 +9,7 @@ import { requestReturnInput } from "../returns/input";
 import { readEffectiveNow } from "../shared/high-water-mark";
 import { selectReturnBatches } from "../returns/batches";
 import { selectMyReturns } from "../returns/queries";
+import { selectMyShipmentReturns } from "../shipment-returns/queries";
 import { selectMyLosses } from "../shipments/loss-queries";
 import { requestReturn } from "../returns/request";
 import { deliverNoticeSafely } from "../contact/notify";
@@ -115,8 +116,9 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const cancellations = await selectMyCancellations(db, customerId, order.id);
       const returns = await selectMyReturns(db, customerId, order.id);
       const losses = await selectMyLosses(db, customerId, order.id);
+      const shipmentReturns = await selectMyShipmentReturns(db, customerId, order.id);
       const returnBatches = await selectReturnBatches(db, order.id, await readEffectiveNow(db, clock.now()));
-      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns, returnBatches, losses });
+      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns, returnBatches, losses, shipmentReturns });
     },
 
     /**

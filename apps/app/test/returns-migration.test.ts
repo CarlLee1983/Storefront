@@ -1,6 +1,7 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
+import rollback0029Sql from "../rollback/0029_shipment_returns.down.sql?raw";
 import rollback0028Sql from "../rollback/0028_shipment_losses.down.sql?raw";
 import rollback0027Sql from "../rollback/0027_return_batches.down.sql?raw";
 import rollbackSql from "../rollback/0026_returns.down.sql?raw";
@@ -8,8 +9,8 @@ import rollbackSql from "../rollback/0026_returns.down.sql?raw";
 const db = env.MIGRATION_DB;
 const THROUGH_0025 = 26;
 const splitStatements = (sql: string) => sql.split("--> statement-breakpoint").map((statement) => db.prepare(statement));
-// 回復順序由新到舊：0028（確認遺失）先於 0027（批次對應表）先於 0026
-const rollbackStatements = () => [...splitStatements(rollback0028Sql), ...splitStatements(rollback0027Sql), ...splitStatements(rollbackSql)];
+// 回復順序由新到舊：0029（物流退回）先於 0028（確認遺失）先於 0027（批次對應表）先於 0026
+const rollbackStatements = () => [...splitStatements(rollback0029Sql), ...splitStatements(rollback0028Sql), ...splitStatements(rollback0027Sql), ...splitStatements(rollbackSql)];
 const rows = async (query: string) => (await db.prepare(query).all()).results;
 
 /** 每個測試從空白資料庫開始（遷移會改結構，整個砍掉重來）。 */

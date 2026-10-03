@@ -2,13 +2,14 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { productVariants } from "../catalog/schema";
 import { returnRequests } from "../returns/schema";
 import { orders } from "../orders/schema";
+import { shipmentReturns } from "../shipment-returns/schema";
 import { shipments } from "../shipments/schema";
 
 /**
  * 庫存流水的來源（ADR 0006）：管理員調整、交運扣庫、遷移加回、退貨收回入倉（在庫與不可售同增）、
- * 退貨檢查合格（不可售轉可售，在庫不變）、報廢（在庫與不可售同減）。
+ * 退貨檢查合格（不可售轉可售，在庫不變）、報廢（在庫與不可售同減），以及物流退回的收回與檢查（與退貨同一套轉換，各自的來源值，#120）。
  */
-export const STOCK_MOVEMENT_KINDS = ["adjustment", "dispatch", "migration", "return_received", "return_inspected", "scrap"] as const;
+export const STOCK_MOVEMENT_KINDS = ["adjustment", "dispatch", "migration", "return_received", "return_inspected", "scrap", "shipment_return_received", "shipment_return_inspected"] as const;
 export type StockMovementKind = (typeof STOCK_MOVEMENT_KINDS)[number];
 
 /**
@@ -35,6 +36,8 @@ export const stockMovements = sqliteTable("stock_movements", {
   shipmentId: integer("shipment_id").references(() => shipments.id),
   /** 退貨收回與檢查時對應的退貨申請；其他來源為 null。 */
   returnRequestId: integer("return_request_id").references(() => returnRequests.id),
+  /** 物流退回收回與檢查時對應的物流退回案件；其他來源為 null。 */
+  shipmentReturnId: integer("shipment_return_id").references(() => shipmentReturns.id),
   /** 操作人：管理員 email；系統動作（遷移）為 `system:<名稱>`。 */
   actor: text("actor").notNull(),
   /** 原因：調整由管理員填寫，交運與遷移為固定說明。 */
@@ -46,4 +49,5 @@ export const stockMovements = sqliteTable("stock_movements", {
   index("stock_movements_order_idx").on(table.orderId),
   index("stock_movements_shipment_idx").on(table.shipmentId),
   index("stock_movements_return_idx").on(table.returnRequestId),
+  index("stock_movements_shipment_return_idx").on(table.shipmentReturnId),
 ]);

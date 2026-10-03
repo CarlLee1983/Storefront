@@ -18,6 +18,8 @@ export interface StockMovementView {
   unavailableAfter: number;
   /** 退貨收回與檢查對應的退貨申請；其他來源為 null。 */
   returnRequestId: number | null;
+  /** 物流退回收回與檢查對應的物流退回案件；其他來源為 null。 */
+  shipmentReturnId: number | null;
   orderId: number | null;
   actor: string;
   reason: string;
@@ -50,6 +52,7 @@ export async function selectStockMovements(
       unavailableDelta: stockMovements.unavailableDelta,
       unavailableAfter: stockMovements.unavailableAfter,
       returnRequestId: stockMovements.returnRequestId,
+      shipmentReturnId: stockMovements.shipmentReturnId,
       orderId: stockMovements.orderId,
       actor: stockMovements.actor,
       reason: stockMovements.reason,

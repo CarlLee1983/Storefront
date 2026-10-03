@@ -1,6 +1,7 @@
 import { asc, inArray, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { orderLines } from "../orders/schema";
+import { returnedInBatchQuantity } from "../shipment-returns/quantities";
 import type { DeliveryType } from "../shipping/types";
 import { shipmentEvents, shipmentItems, shipments, type DeliveryStatus, type ShipmentEventKind } from "./schema";
 
@@ -17,9 +18,14 @@ export function lostQuantity(orderLineId: SQL): SQL<number> {
   return sql<number>`COALESCE((SELECT SUM(lost.quantity) FROM shipment_loss_items lost WHERE lost.order_line_id = ${orderLineId}), 0)`;
 }
 
-/** 條件：這一批（`shipmentId` 是外層的批次編號運算式）還有未遺失的數量；全數遺失的批次沒有東西可送達，不寄送達通知。 */
-export function hasUnlostQuantity(shipmentId: SQL): SQL {
-  return sql`EXISTS (SELECT 1 FROM shipment_items remain WHERE remain.shipment_id = ${shipmentId} AND remain.quantity > ${lostInBatchQuantity(sql`remain.order_line_id`, shipmentId)})`;
+/** 某筆明細在某一批確認遺失或被物流退回的數量：這些數量不會送達顧客，送達通知與送達數量都扣掉它。 */
+export function undeliverableInBatchQuantity(orderLineId: SQL, shipmentId: SQL): SQL<number> {
+  return sql<number>`(${lostInBatchQuantity(orderLineId, shipmentId)} + ${returnedInBatchQuantity(orderLineId, shipmentId)})`;
+}
+
+/** 條件：這一批（`shipmentId` 是外層的批次編號運算式）還有可送達的數量（未遺失、未被物流退回）；全數遺失或退回的批次沒有東西可送達，不寄送達通知。 */
+export function hasDeliverableQuantity(shipmentId: SQL): SQL {
+  return sql`EXISTS (SELECT 1 FROM shipment_items remain WHERE remain.shipment_id = ${shipmentId} AND remain.quantity > ${undeliverableInBatchQuantity(sql`remain.order_line_id`, shipmentId)})`;
 }
 
 /** 某筆明細在某一批確認遺失的數量（批次層級的上限：該批數量 − 該批自助退貨占用 − 該批已遺失）。 */
@@ -28,8 +34,8 @@ export function lostInBatchQuantity(orderLineId: SQL, shipmentId: SQL): SQL<numb
 }
 
 /**
- * 一筆物流回報。`noticeExpected` 是這筆回報「應該有通知信」（與寫信同一個條件：批次還有未遺失數量時的送達回報；或是批次未送達也沒有確認遺失、且是發生時間最新的配送失敗回報）；
- * `noticeMessageId` 是它對應的通知信，應有而為 null 才是漏通知，給管理員查證；不應有的（再次配送、已被後續回報取代、已送達或已確認遺失）不算缺漏。
+ * 一筆物流回報。`noticeExpected` 是這筆回報「應該有通知信」（與寫信同一個條件：批次還有可送達數量時的送達回報；或是批次未送達也沒有確認遺失或物流退回、且是發生時間最新的配送失敗回報）；
+ * `noticeMessageId` 是它對應的通知信，應有而為 null 才是漏通知，給管理員查證；不應有的（再次配送、已被後續回報取代、已送達、已確認遺失或已物流退回）不算缺漏。
  */
 export interface ShipmentEventView {
   id: number;
@@ -57,7 +63,7 @@ export interface ShipmentView {
   deliveredAt: number | null;
   /** 物流回報（依發生時間，舊的在前）。 */
   events: ShipmentEventView[];
-  items: { orderLineId: number; productName: string; variantLabel: string; quantity: number; /** 這一批這筆明細確認遺失的數量。 */ lostQuantity: number; deliveryType: DeliveryType }[];
+  items: { orderLineId: number; productName: string; variantLabel: string; quantity: number; /** 這一批這筆明細確認遺失的數量。 */ lostQuantity: number; /** 這一批這筆明細被物流退回的數量（登記退回中、已收回、已完成；不含尋回的遺失品）。 */ returnedQuantity: number; deliveryType: DeliveryType }[];
 }
 
 /** 條件：外層以 `alias` 引用的回報，是同一批發生時間最新的回報（同時間則較晚到者為新）。通知的寫入條件與管理端的 `noticeExpected` 共用它。 */
@@ -88,6 +94,7 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
       variantLabel: orderLines.variantLabel,
       quantity: shipmentItems.quantity,
       lostQuantity: lostInBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`),
+      returnedQuantity: returnedInBatchQuantity(sql`${shipmentItems.orderLineId}`, sql`${shipments.id}`),
       deliveryType: orderLines.deliveryType,
     })
     .from(shipments)
@@ -97,14 +104,14 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
     .orderBy(asc(shipments.id), asc(shipmentItems.id));
 
   const byId = new Map<number, ShipmentView>();
-  for (const { orderLineId, productName, variantLabel, quantity, lostQuantity, deliveryType, appointmentStart, appointmentEnd, ...head } of rows) {
+  for (const { orderLineId, productName, variantLabel, quantity, lostQuantity, returnedQuantity, deliveryType, appointmentStart, appointmentEnd, ...head } of rows) {
     let view = byId.get(head.id);
     if (!view) {
       view = { ...head, events: [], appointment: appointmentStart !== null && appointmentEnd !== null ? { start: appointmentStart, end: appointmentEnd } : null, items: [] };
       byId.set(head.id, view);
       result.set(head.orderId, [...(result.get(head.orderId) ?? []), view]);
     }
-    view.items.push({ orderLineId, productName, variantLabel, quantity, lostQuantity, deliveryType });
+    view.items.push({ orderLineId, productName, variantLabel, quantity, lostQuantity, returnedQuantity, deliveryType });
   }
 
   if (!withEvents || byId.size === 0) return result;
@@ -116,9 +123,9 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
       kind: shipmentEvents.kind,
       occurredAt: shipmentEvents.occurredAt,
       recordedAt: shipmentEvents.recordedAt,
-      noticeExpected: sql<boolean>`((shipment_events.kind = 'delivered' AND ${hasUnlostQuantity(sql`shipment_events.shipment_id`)}) OR (
+      noticeExpected: sql<boolean>`((shipment_events.kind = 'delivered' AND ${hasDeliverableQuantity(sql`shipment_events.shipment_id`)}) OR (
         shipment_events.kind = 'delivery_failed'
-        AND (SELECT delivery_status FROM shipments WHERE shipments.id = shipment_events.shipment_id) NOT IN ('delivered', 'lost')
+        AND (SELECT delivery_status FROM shipments WHERE shipments.id = shipment_events.shipment_id) NOT IN ('delivered', 'lost', 'returned')
         AND ${isLatestEvent("shipment_events")}
       ))`.mapWith(Boolean),
       noticeMessageId: sql<number | null>`(SELECT mail.id FROM mail_messages mail WHERE mail.event_key = CASE shipment_events.kind

@@ -50,7 +50,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 出貨通知（#112）：每個出貨批次寫一封 `shipment_dispatched`（商品數量、物流單號、議定時段），見下方「分批出貨與大型配送預約」。
 - 退款成功通知（#115）：每筆成功的退款寄一封 `refund_succeeded`（事件鍵 `refund:<退款編號>`），與退款轉為成功同一個 batch 寫入；重試與重複回呼不重複。
 - 取消審核（#116）與退貨審核、檢查完成（#117）通知：`cancellation_approved`／`cancellation_rejected`、`return_approved`／`return_rejected`／`return_completed`（一案一封，事件鍵 `return:<申請編號>:<approved|rejected|completed>`），都與該決定同一個 batch 寫入；檢查完成的信依退款是否已登記分文案。
-- 尚未涵蓋（後續票）：配送異常（物流退回、遺失）、發票完成等通知。
+- 尚未涵蓋（後續票）：發票完成等通知。
 
 ## 地址簿
 
@@ -112,8 +112,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 每批各自追蹤配送進度（Migration `0022_shipment_delivery.sql`；`apps/app/src/shipments/events.ts`）。物流是模擬服務：管理員在訂單頁的批次清單「記錄物流回報」（RPC `recordShipmentEvent`，輸入 `shipmentId`、物流給的事件識別 `eventKey`、種類 `delivered`／`delivery_failed`／`redelivery`、發生時間 `occurredAt`）。
 
-- 資料：`shipment_events`（只增不改的對帳紀錄，同一批同一 `event_key` 只有一筆；發生時間 `occurred_at` 與系統記錄時間 `recorded_at` 分開存）；`shipments.delivery_status`（`in_transit`／`delivery_failed`／`delivered`／`lost`（#119，見「確認物流遺失」），預設 `in_transit`）與 `shipments.delivered_at`（實際送達時間，逐批記錄，#118 依各批送達日讀它）。進度不接受直接寫入，每次記錄回報都由該批全部事件重新推導，不看到達順序：有送達回報就是已送達（終點），送達時間取發生最早的一筆；否則依發生時間最新的回報，配送失敗 → `delivery_failed`，再次配送或沒有回報 → `in_transit`。所以延遲、重送、亂序都不會偽造送達或打回已確定的進度；已送達後才到的失敗或再次配送回報只留紀錄。
-- 再次配送是同一批原貨再交付：不建新批次、不新增出貨數量、不扣庫、不退款（暫時失敗後送達無退款，設計文件 Q25），也因此不碰 `request_hash` 不變式。確認遺失見下面「確認物流遺失」（#119），物流退回與退回入倉檢查屬 #120，不在這裡。
+- 資料：`shipment_events`（只增不改的對帳紀錄，同一批同一 `event_key` 只有一筆；發生時間 `occurred_at` 與系統記錄時間 `recorded_at` 分開存）；`shipments.delivery_status`（`in_transit`／`delivery_failed`／`delivered`／`lost`（#119，見「確認物流遺失」）／`returned`（#120，見「物流退回入倉檢查後退款」），預設 `in_transit`）與 `shipments.delivered_at`（實際送達時間，逐批記錄，#118 依各批送達日讀它）。進度不接受直接寫入，每次記錄回報都由該批全部事件重新推導，不看到達順序：有送達回報就是已送達（終點），送達時間取發生最早的一筆；否則依發生時間最新的回報，配送失敗 → `delivery_failed`，再次配送或沒有回報 → `in_transit`。所以延遲、重送、亂序都不會偽造送達或打回已確定的進度；已送達後才到的失敗或再次配送回報只留紀錄。
+- 再次配送是同一批原貨再交付：不建新批次、不新增出貨數量、不扣庫、不退款（暫時失敗後送達無退款，設計文件 Q25），也因此不碰 `request_hash` 不變式。確認遺失見下面「確認物流遺失」（#119），物流退回與入倉檢查見「物流退回入倉檢查後退款」（#120）。
 - 驗證：發生時間須不早於該批交運時間（有的話）、不晚於現在，否則 `event_time_invalid`；批次不存在 `shipment_not_found`；同一事件鍵帶不同內容 `event_key_conflict`。同鍵同內容重送回 `replayed: true`。舊批次（0021 補建）沒有可靠送達日，維持運送中、`delivered_at` 為空，不編造。
 - 通知（沿用 #109 outbox，與回報同一個 batch 寫入）：送達通知 `shipment_delivered`（一批一封，`event_key = shipment_delivered:<批次編號>`；信件記載寫信當下的送達時間，之後才到的較早送達回報會更新 `delivered_at`，但不改寫已寄出的信）、配送異常通知 `shipment_delivery_failed`（一次失敗回報一封，`event_key = shipment_delivery_failed:<批次編號>:<回報事件鍵>`；只在該批未送達、且它是發生時間最新的回報時才寄，已送達後才到或已被後續回報取代的失敗回報不寄）；再次配送不寄信。投遞失敗不影響記錄，出現在 `/admin/mail` 待處理，可重送。
 - 查證與補齊：管理員訂單頁每批的「物流回報」列出事件與其通知是否存在：`noticeExpected`（與寫信同一條件）為真而 `noticeMessageId` 為空才標「通知缺漏」，不該寄的（再次配送、已被取代或已送達）顯示「不寄信」；通知遺失時按「補齊通知」以同一事件重送，補回信件且不產生第二封。顧客訂單頁與我的訂單顯示各批配送進度與實際送達時間（顧客路徑不查物流回報）。表單回報時間精度到秒。
@@ -201,7 +201,22 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 讀取：`getMyOrder` 多回傳 `losses`（顧客只看自己的訂單），`getOrderForAdmin` 多回傳 `losses`（含確認人與 `lossKey`），訂單明細多回傳 `lostQuantity`；不認得 `lost` 的舊 Web 顯示「進度未知」。
 - 部署順序：先 migration，再 App，再 Web。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0028_shipment_losses.down.sql`（已有任何確認遺失、遺失退款或 `lost` 批次時守門檢查讓回復失敗，須先確認可以捨棄）。回復順序是 0028 → 0027 → …。0028 重建 `refunds`（CHECK 要加新原因），做法同 0026。
 - 測試：`apps/app/test/shipment-loss.test.ts`（退款與庫存、與物流回報的先後與亂序、數量與退貨互斥含並行、運費互斥與取消／退貨交錯、退款失敗與額度占用的復原、冪等、權限與輸入）、`shipment-losses-migration.test.ts`（遷移、約束與回復）、`apps/web/src/admin/loss-form.test.ts`、`e2e/tests/shipment-loss.spec.ts`（手機與桌機）。
-- 尚未實作：物流退回（#120，若遺失的貨之後被尋回退回屬那一票，本票不擋它延伸）、發票折讓（#121、#122）；ADR 0008 仍待決（本票的退款失敗同取消、退貨，沒有人工結案）。
+### 物流退回入倉檢查後退款（#120）
+
+依 ADR 0006、0007 與設計文件 A6、A7、Q13、Q25（Migration `0029_shipment_returns.sql`；`apps/app/src/shipment-returns/`：`declare.ts`、`receive.ts`、`inspect.ts`、`quantities.ts`、`queries.ts`、`input.ts`，共用庫存轉換在 `stock/conversion.ts`，運費判斷在 `payments/exit-refund.ts`）。物流把尚未送達的商品送回倉庫，與顧客收貨後的退貨申請分開追蹤，三步由管理員在訂單頁操作：**登記**（RPC `declareShipmentReturn`，輸入 `shipmentId`、表單一次提交的冪等鍵 `returnKey`、明細數量與備註）→ **收回**（`recordShipmentReturnReceipt`，每筆明細填實際收到的數量）→ **檢查**（`recordShipmentReturnInspection`，每筆填良品與損壞品數量）。回倉後不恢復原單履約：已交運的數量維持已交運、不從同單補寄，再購須重新下單。
+
+- 資料：`shipment_returns`（一案一列：訂單、批次、`return_key`、內容指紋、進度 `returning`／`received`／`not_received`／`completed`、各步驟操作人與時間與備註、檢查完成時算定的商品款與兩類運費）與 `shipment_return_items`（`quantity` 退回數量、`found_lost_quantity` 尋回的遺失品、收回與檢查的實際數字）；`refunds` 新增原因 `shipment_return` 與 `shipment_return_id`（一案最多一筆，唯一索引）；`stock_movements` 新增 `shipment_return_id` 與來源 `shipment_return_received`、`shipment_return_inspected`；`shipments.delivery_status` 新增 `returned`。
+- 庫存（Q13，與退貨同一套轉換，`stock/conversion.ts` 的 `receiveIntoStock`、`convertInspectedToSellable`，退貨的收回與檢查也改用它，沒有複製第二份）：登記不動庫存與款項；實際收回才增加實體在庫與不可售（待檢，可售不變）；檢查合格把不可售轉可售（在庫不變）、損壞品留在不可售直到報廢（`stock/scrap.ts`，待檢數量含物流退回，不能報廢）。收回與檢查都在同一個 batch 寫流水，並以「這案尚無對應流水」為冪等閘，重送不重複入庫。一件都沒收到則 `not_received` 結案、不動庫存、占用釋出。
+- 批次結局與物流回報的優先序：遺失 > 物流退回（`returned`）> 送達 > 配送失敗 > 再次配送。只能登記尚未送達的批次（已送達是終點，回 `shipment_delivered`）；登記之後才到的送達、失敗、再次配送回報只留紀錄（不改進度、不寄通知；送達回報仍記錄 `delivered_at`）；部分退回之後才送達的批次仍是 `returned`，送達通知只列未退回的數量，全數退回的批次不寄送達通知。登記與送達回報以同一份資料庫條件競爭，先提交的一邊生效；已遺失的批次再登記退回仍是 `lost`。
+- 數量互斥：物流退回、退貨申請（#117／#118）與確認遺失（#119）共用同一份數量，同一句條件寫入互斥：退回 ≤ 該批數量 − 該批已遺失 − 該批自助退貨占用 − 該批已退回，且明細「已遺失 + 退貨占用 + 物流退回占用 + 本次」≤ 已交運數量；退貨申請與確認遺失另扣物流退回占用（`heldByShipmentReturnQuantity`、`returnedInBatchQuantity`）。登記與收回前占用登記的數量，收回後占用實際收到的數量（沒收到的釋出），完成維持實際收到的數量。
+- 與確認遺失的關係：遺失已退款的貨若之後被物流尋回並退回倉庫，登記時在明細填「尋回的遺失品」（不得超過該批已確認遺失、扣掉已尋回的數量；不占新的份額，遺失紀錄與退款不變，仍算遺失、不可再退貨）。收回時照樣入庫（實物回到倉內，可檢查轉可售或隔離），但**不再退款**：商品款只按實際收回的退回數量計算。
+- 運費（Q25，優先於 Q15 的一般全退出規則）：只要這案實際收回的明細裡有某一類，且該類原運費沒被取消、退貨、遺失或別案物流退回退過，就退該類原運費快照一次，即使同類其他商品已送達；各案的運費欄位是「已退過」的共同紀錄，任何先後順序同類最多退一次；物流退回的數量計入「退出履約」，所以取消或退貨補足全退出時也不再重退。
+- 退款與通知：與取消、退貨、遺失相同模式——檢查完成的同一個 batch 內登記退款（`withinQuotaSql` 單句條件寫入），額度不足時檢查結果照樣成立，列進退款待辦（`listRefundsToHandle` 的 `unregisteredShipmentReturns`），重送同一次檢查會再嘗試登記並執行；退款失敗或結果不明不反轉已發生的實物事件，沿用 ADR 0007 的逐筆退款與重試。通知（`shipment_return_declared`、`shipment_return_completed`）與各步驟同一個 batch 寫入，漏掉時重送同一次登記或檢查會補回，完成通知依退款是否已登記、有無應退金額分文案；退款完成另有退款成功通知。
+- 讀取：`getMyOrder` 多回傳 `shipmentReturns`（顧客只看自己的訂單，不含備註、操作人與冪等鍵），`getOrderForAdmin` 多回傳 `shipmentReturns`，訂單明細多回傳 `shipmentReturnedQuantity`，批次明細多回傳 `returnedQuantity`；庫存流水多回傳 `shipmentReturnId`。不認得 `returned` 的舊 Web 顯示「進度未知」。
+- 畫面：後台訂單頁批次清單的「登記物流退回」表單，與「物流退回」區塊（收回、檢查、重新登記退款）；顧客訂單頁「被物流退回倉庫的商品」；退款待辦頁列出未登記退款的物流退回；手機與桌機皆可操作（e2e 驗證）。
+- 部署順序：先 migration，再 App，再 Web。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0029_shipment_returns.down.sql`（已有任何物流退回、物流退回退款、物流退回庫存流水或 `returned` 批次時守門檢查讓回復失敗，須先確認可以捨棄）。回復順序是 0029 → 0028 → 0027 → …。0029 重建 `refunds`（CHECK 要加新原因），做法同 0028；回復時重建 `stock_movements`（含外鍵的欄位不能 DROP COLUMN），並還原只增不改不刪的 trigger。
+- 測試：`apps/app/test/shipment-return.test.ts`（入倉與庫存、損壞品與報廢、未收到與部分收回、運費互斥與取消／退貨／遺失交錯、尋回的遺失品、與物流回報的先後與亂序、數量互斥含並行、退款失敗與額度占用的復原、冪等與漏通知補回、權限與輸入）、`shipment-returns-migration.test.ts`（遷移、約束與回復）、`apps/web/src/admin/shipment-return-form.test.ts`、`e2e/tests/shipment-return.spec.ts`（手機與桌機）。
+- 尚未實作：發票折讓（#121、#122）；ADR 0008 仍待決（本票的退款失敗同取消、退貨、遺失，沒有人工結案）；物流退回案件沒有獨立的待辦清單，管理員從訂單頁處理。
 - 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `returns`，明細多回傳 `returnedQuantity`、`openReturnQuantity`，變體多回傳 `unavailable`，舊 Web 不受影響；0027 只新增一張表，回復腳本 `apps/app/rollback/0027_return_batches.down.sql` 在已有批次對應時守門檢查讓回復失敗，回復順序 0027 → 0026 → …）。0026 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024、0025。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0026_returns.down.sql`；已有任何退貨申請、不可售數量、不可售流水或退貨退款時守門檢查讓回復失敗（收回與檢查已改變實體與不可售，舊版無法表達），須先確認可以捨棄。回復順序是 0026 → 0025 → …。
 - 測試：`apps/app/test/return-request.test.ts`（申請、占用、並行、冪等、權限與輸入、審核）、`return-flow.test.ts`（收回、檢查、報廢、可售算式、運費與取消混合）、`return-refund.test.ts`（退款失敗不反轉實物、額度占用、同單逐筆）、`return-self-service.test.ts`（自助窗口邊界：送達當日、第 7 天 23:59:59、第 8 天 00:00:00，台北日曆日、各批各自期限、送達時間被較早回報改寫、未送達與無送達日、批次數量與並行、冪等、權限）、`returns-migration.test.ts`（遷移、約束與回復，含 0027）、`e2e/tests/returns.spec.ts`（手機與桌機完整流程）、`e2e/tests/return-self-service.spec.ts`（未送達只有人工受理、送達後自助申請、管理員看到自助申請、顧客隔離）。
 

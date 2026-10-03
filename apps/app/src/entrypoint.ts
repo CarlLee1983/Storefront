@@ -405,6 +405,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   confirmShipmentLoss(jwt: string, input: unknown) {
     return this.#admin().confirmShipmentLoss(jwt, input);
   }
+
+  declareShipmentReturn(jwt: string, input: unknown) {
+    return this.#admin().declareShipmentReturn(jwt, input);
+  }
+
+  recordShipmentReturnReceipt(jwt: string, input: unknown) {
+    return this.#admin().recordShipmentReturnReceipt(jwt, input);
+  }
+
+  recordShipmentReturnInspection(jwt: string, input: unknown) {
+    return this.#admin().recordShipmentReturnInspection(jwt, input);
+  }
 }
 
 export default AppEntrypoint;
