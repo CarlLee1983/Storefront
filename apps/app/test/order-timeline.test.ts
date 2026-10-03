@@ -6,13 +6,13 @@ import { selectTimelineFacts } from "../src/orders/timeline-facts";
 import { mintAccessJwt } from "./access";
 import { approveOk, paidMixedOrder, requestCancelOk } from "./cancellation-helpers";
 import { setNow } from "./clock";
-import { resetDb } from "./db";
+import { forceOrderStatus, resetDb } from "./db";
 import { confirmLossOk, shipItems } from "./loss-helpers";
 import { orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
 import { installFakeGateway } from "./fake-gateway";
 import { signInCustomer } from "./customers";
 import { approveReturn, inspectReturn, receiveReturn, requestReturn } from "./return-helpers";
-import { returnAllSellable as shipmentReturnAllSellable } from "./shipment-return-helpers";
+import { declareReturnOk, receiveShipmentReturn, returnAllSellable as shipmentReturnAllSellable } from "./shipment-return-helpers";
 
 import { adminOrder, adminShipment, reportShipmentEvent } from "./shipment-helpers";
 
@@ -201,7 +201,7 @@ describe("付款事件只取套用過的結果", () => {
     }
   });
 
-  it("付款失敗之後晚到的成功事件：時間線的付款事件與付款現況一致，一筆付款只有一筆", async () => {
+  it("付款失敗之後晚到的成功事件：時間線的付款維持失敗，時間線只有一筆付款未完成", async () => {
     const cookie = await signInCustomer("alice");
     const { orderId } = await placeMugOrder(cookie);
     const gateway = installFakeGateway();
@@ -210,8 +210,8 @@ describe("付款事件只取套用過的結果", () => {
     await app.applyPaymentResult({ eventId: "evt_late", gatewayPaymentId, outcome: "succeeded" });
 
     const detail = await adminOrder(orderId);
-    const status = detail.payments[0]!.status;
-    expect(kindsOf(detail.timeline).filter((kind) => kind.startsWith("payment_"))).toEqual([status === "succeeded" ? "payment_succeeded" : "payment_failed"]);
+    expect(detail.payments[0]!.status).toBe("failed");
+    expect(kindsOf(detail.timeline).filter((kind) => kind.startsWith("payment_"))).toEqual(["payment_failed"]);
   });
 });
 
@@ -239,22 +239,76 @@ describe("已送達與只留紀錄的物流回報", () => {
     const sentBack = await shipItems(orderId, [{ orderLineId: mugLine.id, quantity: 1 }]);
     const { shippedAt } = await adminShipment(orderId, sentBack);
     setNow(shippedAt! + 10 * MINUTE);
-    await reportShipmentEvent(delivered, "d-fail-before", "delivery_failed", shippedAt! + 1 * MINUTE);
-    await reportShipmentEvent(delivered, "d-ok", "delivered", shippedAt! + 2 * MINUTE);
+    expect(await reportShipmentEvent(delivered, "d-fail-before", "delivery_failed", shippedAt! + 1 * MINUTE)).toMatchObject({ ok: true });
+    expect(await reportShipmentEvent(delivered, "d-ok", "delivered", shippedAt! + 2 * MINUTE)).toMatchObject({ ok: true });
     await confirmLossOk(lost, [{ orderLineId: mugLine.id, quantity: 1 }]);
     await shipmentReturnAllSellable(sentBack, [{ orderLineId: mugLine.id, quantity: 1 }]).catch(() => undefined);
     const afterLoss = (await adminOrder(orderId)).losses[0]!.confirmedAt;
     const afterReturn = (await adminOrder(orderId)).shipmentReturns[0]!.declaredAt;
     const later = Math.max(afterLoss, afterReturn) + 5 * MINUTE;
     setNow(later + 5 * MINUTE);
-    await reportShipmentEvent(delivered, "d-fail-after", "delivery_failed", shippedAt! + 3 * MINUTE);
-    await reportShipmentEvent(delivered, "d-redo-after", "redelivery", shippedAt! + 4 * MINUTE);
-    await reportShipmentEvent(lost, "l-fail-after", "delivery_failed", later);
-    await reportShipmentEvent(sentBack, "s-redo-after", "redelivery", later);
+    expect(await reportShipmentEvent(delivered, "d-fail-after", "delivery_failed", shippedAt! + 3 * MINUTE)).toMatchObject({ ok: true });
+    expect(await reportShipmentEvent(delivered, "d-redo-after", "redelivery", shippedAt! + 4 * MINUTE)).toMatchObject({ ok: true });
+    expect(await reportShipmentEvent(lost, "l-fail-after", "delivery_failed", later)).toMatchObject({ ok: true });
+    expect(await reportShipmentEvent(sentBack, "s-redo-after", "redelivery", later)).toMatchObject({ ok: true });
 
     for (const detail of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
       const reports = detail.timeline.events.filter((event) => event.kind === "shipment_delivery_failed" || event.kind === "shipment_redelivery");
       expect(reports.map((event) => event.at)).toEqual([shippedAt! + 1 * MINUTE]);
+    }
+  });
+});
+
+describe("全數遺失後送達與物流退回結案", () => {
+  it("全數遺失之後才送達的批次沒有東西送達：不列已送達事件，送達數量為 0", async () => {
+    const { orderId, cookie, mugLine } = await paidMixedOrder();
+    const batch = await shipItems(orderId, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    await confirmLossOk(batch, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    const { shippedAt } = await adminShipment(orderId, batch);
+    setNow(shippedAt! + 180 * MINUTE);
+    expect(await reportShipmentEvent(batch, "evt-all-lost", "delivered", shippedAt! + 60 * MINUTE)).toMatchObject({ ok: true });
+
+    for (const detail of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(kindsOf(detail.timeline)).not.toContain("shipment_delivered");
+      expect(detail.timeline.progress.quantities.delivered).toBe(0);
+    }
+  });
+
+  it("物流退回收回結案為未收到後，登記之後發生的失敗回報重新列出", async () => {
+    const { orderId, cookie, mugLine } = await paidMixedOrder();
+    const batch = await shipItems(orderId, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    const { shippedAt } = await adminShipment(orderId, batch);
+    setNow(shippedAt! + 10 * MINUTE);
+    const returnId = await declareReturnOk(batch, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    const declaredAt = (await adminOrder(orderId)).shipmentReturns[0]!.declaredAt;
+    setNow(declaredAt + 20 * MINUTE);
+    expect(await reportShipmentEvent(batch, "fail-while-returning", "delivery_failed", declaredAt + 5 * MINUTE)).toMatchObject({ ok: true });
+    for (const detail of [await adminOrder(orderId), await orderOf(cookie, orderId)]) expect(kindsOf(detail.timeline)).not.toContain("shipment_delivery_failed");
+
+    expect(await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 0 }])).toMatchObject({ ok: true, data: { status: "not_received" } });
+
+    for (const detail of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(detail.timeline.events.filter((event) => event.kind === "shipment_delivery_failed").map((event) => event.at)).toEqual([declaredAt + 5 * MINUTE]);
+    }
+  });
+});
+
+describe("遲到付款（ADR 0001）", () => {
+  it("逾期後付款成功但保留不到：付款成功事件在前，再有 late_success_unreclaimable 的退款登記與退回，金額一致", async () => {
+    const cookie = await signInCustomer("alice");
+    const { orderId, variantId } = await placeMugOrder(cookie, { onHand: 3, quantity: 2 });
+    const gateway = installFakeGateway();
+    const gatewayPaymentId = await startPaymentFor(cookie, orderId, gateway);
+    await forceOrderStatus(orderId, "expired");
+    await env.DB.prepare("UPDATE product_variants SET unavailable = 2 WHERE id = ?").bind(variantId).run();
+    await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
+
+    for (const detail of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(detail.status).toBe("expired");
+      const events = detail.timeline.events;
+      expect(events.map((event) => event.kind).filter((kind) => ["order_placed", "payment_succeeded", "refund_registered", "refund_succeeded"].includes(kind))).toEqual(["order_placed", "payment_succeeded", "refund_registered", "refund_succeeded"]);
+      expect(events.find((event) => event.kind === "refund_registered")).toMatchObject({ detail: "late_success_unreclaimable", amountTwd: detail.payments[0]!.amountTwd });
+      expect(detail.timeline.progress.money).toMatchObject({ paidTwd: detail.payments[0]!.amountTwd, refundedTwd: detail.payments[0]!.amountTwd, refundOpenTwd: 0 });
     }
   });
 });

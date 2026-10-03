@@ -186,8 +186,9 @@ function collectEvents(source: TimelineSource, admin: boolean): TimelineEvent[] 
   for (const shipment of source.order.shipments) {
     const quantity = sum(shipment.items, (item) => item.quantity);
     add("shipment_dispatched", shipment.id, shipment.shippedAt, { quantity });
-    // 已送達以實際送達時間為準（部分遺失的批次進度是 lost、仍可能已送達）
-    add("shipment_delivered", shipment.id, shipment.deliveredAt, { quantity: sum(shipment.items, (item) => item.quantity - item.lostQuantity - item.returnedQuantity) });
+    // 已送達以實際送達時間為準（部分遺失的批次進度是 lost、仍可能已送達）；全數遺失或退回、沒有東西送達的批次不列
+    const delivered = sum(shipment.items, (item) => item.quantity - item.lostQuantity - item.returnedQuantity);
+    if (delivered > 0) add("shipment_delivered", shipment.id, shipment.deliveredAt, { quantity: delivered });
   }
   // 物流回報：管理員檢視的批次已帶回報（facts 不重查），顧客檢視由 facts 補；兩者只會有一邊有資料
   const reports = [...source.facts.shipmentEvents, ...source.order.shipments.flatMap((shipment) => shipment.events.map((event) => ({ id: event.id, shipmentId: shipment.id, kind: event.kind, occurredAt: event.occurredAt })))];
