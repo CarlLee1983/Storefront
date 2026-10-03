@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type BrowserContext } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts } from "../harness/admin-seed";
+import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 
 const CATEGORY = { slug: "e2e-seo", name: "結構化資料分類", description: "sitemap 與結構化資料測試用的分類" };
@@ -20,7 +20,7 @@ async function post(request: APIRequestContext, path: string, form: Record<strin
   expect(response.status(), `${path} ${JSON.stringify(form)}`).toBe(303);
 }
 
-const unlist = (id: number) => admin.request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+const unlist = (id: number) => unlistProduct(admin.request, id);
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);

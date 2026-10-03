@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { defaultVariantIds, seedListedProducts } from "../harness/admin-seed";
+import { unlistProduct, defaultVariantIds, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL, ADMIN_EMAIL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
@@ -83,7 +83,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       // 沒有經過 Access 的顧客進不了流水頁
       expect((await customerContext.request.get("/admin/stock-movements")).status()).toBe(403);
     } finally {
-      await adminContext.request.post("/admin", { form: { intent: "unlist", id: String(productId) }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      await unlistProduct(adminContext.request, productId);
       await adminContext.close();
       await customerContext.close();
     }

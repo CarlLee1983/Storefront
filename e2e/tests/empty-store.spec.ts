@@ -23,6 +23,19 @@ test("店裡沒有上架商品時，首頁不出現精選區、分類方塊與�
   expect((await new AxeBuilder({ page }).analyze()).violations, "空店面首頁").toEqual([]);
 });
 
+// 桌機 header 的單排版面只在沒有分類的乾淨狀態下有意義：分類是全域狀態、由其他 spec 並行建立，
+// 分類一多導覽列本來就會換行（版面允許），放在一般 project 裡會隨執行順序時過時不過。
+test("桌機 header 為一排主要導覽，含全部商品與購物車件數", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "主要導覽" });
+  await expect(nav.getByRole("link", { name: "全部商品" })).toBeVisible();
+  await expect(page.locator("#cart-count")).toBeVisible();
+  await expect(page.getByRole("button", { name: "開啟選單" })).toBeHidden();
+  const tops = await page.locator(".site-header a:visible, .site-header #cart-count:visible").evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));
+  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(24);
+});
+
 for (const width of [375, 1280]) {
   test(`空分類管理頁仍可建立分類（${width}px）`, async ({ browser }) => {
     const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport: { width, height: 900 } });

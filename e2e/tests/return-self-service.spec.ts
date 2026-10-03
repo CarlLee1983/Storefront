@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts } from "../harness/admin-seed";
+import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
@@ -105,7 +105,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await otherPage.goto(`/orders/${orderId}`);
       await expect(otherPage.getByText("找不到這張訂單")).toBeVisible();
     } finally {
-      await adminContext.request.post("/admin", { form: { intent: "unlist", id: String(productId) }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      await unlistProduct(adminContext.request, productId);
       await adminContext.close();
       await customerContext.close();
       await otherContext.close();

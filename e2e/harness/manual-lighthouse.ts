@@ -3,6 +3,7 @@ import { chromium, expect } from "@playwright/test";
 import { adminAccessHeaders } from "./admin-access";
 import { assignSharedCategory } from "./admin-categories";
 import { BASE_URL } from "./constants";
+import { gotoProductList } from "./admin-list";
 
 // The fixed harness origin deliberately cannot be changed to preview/production.
 const browser = await chromium.launch({ channel: "chrome", headless: false });
@@ -34,7 +35,7 @@ try {
   await admin.getByRole("button", { name: "上傳商品圖片", exact: true }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
   await expect(admin.locator("#product-images img")).toHaveCount(3);
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   await row.getByRole("button", { name: "重新上架", exact: true }).click();
   await row.getByText("上架中", { exact: true }).waitFor();
   await adminContext.close();

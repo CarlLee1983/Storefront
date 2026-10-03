@@ -4,6 +4,7 @@ import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
 
 async function createProduct(admin: Page, name: string, stock: number) {
   await admin.goto("/admin/products/new");
@@ -31,7 +32,7 @@ async function createProduct(admin: Page, name: string, stock: number) {
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   await admin.getByRole("button", { name: "上傳商品圖片" }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByRole("button", { name: "重新上架" }).click();
   await expect(row).toContainText("上架中");

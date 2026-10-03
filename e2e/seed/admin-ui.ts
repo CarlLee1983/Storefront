@@ -144,7 +144,7 @@ export async function createProduct(page: Page, product: DemoProduct) {
  */
 export async function syncProductDetails(page: Page, id: string, product: DemoProduct, categoryName: string): Promise<{ saved: boolean; uploaded: number }> {
   await openAdmin(page, `/admin/products/${id}`);
-  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "儲存", exact: true }) });
+  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "儲存變更", exact: true }) });
   // 以欄位 name 定位：包住 textarea 的 label，其無障礙名稱會連同目前的內容一起計算，精確比對標籤文字會失敗
   const fields: Array<[Locator, string]> = [
     [form.locator('[name="description"]'), product.description],
@@ -158,7 +158,7 @@ export async function syncProductDetails(page: Page, id: string, product: DemoPr
   if (saved) {
     for (const [field, value] of fields) await field.fill(value);
     await category.selectOption({ label: categoryName });
-    await submitAndExpect(page, form.getByRole("button", { name: "儲存", exact: true }), "已儲存商品。");
+    await submitAndExpect(page, form.getByRole("button", { name: "儲存變更", exact: true }), "已儲存商品。");
     await openAdmin(page, `/admin/products/${id}`);
   }
 

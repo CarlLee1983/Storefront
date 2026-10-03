@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts } from "../harness/admin-seed";
+import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
@@ -108,7 +108,8 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await scrap.getByLabel(`${lampName}的報廢原因`).fill("杯口缺角無法修復");
       await scrap.getByRole("button", { name: "報廢" }).click();
       await expect(admin.getByRole("status").filter({ hasText: "已報廢" })).toBeVisible();
-      await expect(admin.getByText("目前沒有不可售的庫存。")).toBeVisible();
+      // 不可售庫存是全域清單（別的 spec 並行時可能還有其他商品）：只斷言這支檯燈已不在其中
+      await expect(admin.getByRole("region", { name: "不可售庫存" }).getByRole("row").filter({ hasText: lampName })).toHaveCount(0);
       await admin.goto(`/admin/stock-movements?orderId=${orderId}`);
       await expect(admin.getByRole("row").filter({ hasText: "報廢" })).toHaveCount(0);
       await admin.goto(ledgerUrl!);
@@ -129,7 +130,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       const forbidden = await customerContext.request.get("/admin/returns", { maxRedirects: 0 });
       expect(forbidden.status()).not.toBe(200);
     } finally {
-      await adminContext.request.post("/admin", { form: { intent: "unlist", id: String(lampId) }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      await unlistProduct(adminContext.request, lampId);
       await adminContext.close();
       await customerContext.close();
     }

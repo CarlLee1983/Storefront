@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts } from "../harness/admin-seed";
+import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 
 const CATEGORY = { slug: "e2e-product-info", name: "商品資訊分類", description: "尺寸材質保養測試用的分類" };
@@ -29,7 +29,7 @@ test.afterAll(async () => {
   // 商品列表是全域狀態：用完下架，不影響其他 spec
   try {
     for (const id of [withInfoId, withoutInfoId]) {
-      await admin.request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      await unlistProduct(admin.request, id);
     }
   } finally { await admin.close(); }
 });

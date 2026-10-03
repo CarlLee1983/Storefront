@@ -4,6 +4,7 @@ import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { gotoProductList } from "../harness/admin-list";
 
 const name = "訂單封面測試商品";
 
@@ -35,7 +36,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "order-cover.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
     await admin.getByRole("button", { name: "上傳商品圖片" }).click();
     await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     await row.getByRole("button", { name: "重新上架" }).click();
     await expect(row).toContainText("上架中");
 
@@ -108,7 +109,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([]);
     await testInfo.attach("admin-order-cover", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
     // Existing orders keep their lines when all images of an unlisted product are removed.
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     await row.getByRole("button", { name: "下架", exact: true }).click();
     await expect(row).toContainText("已下架");
     await row.getByRole("link", { name: "編輯" }).click();

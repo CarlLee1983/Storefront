@@ -54,8 +54,9 @@ test("新增商品驗證保留輸入，舊清單及未知動作不會建立商�
       const rejected = await context.request.post(path, { form: submitted, headers: { origin: BASE_URL }, maxRedirects: 0 });
       expect(rejected.status(), path).toBe(400);
     }
-    const listing = await (await context.request.get("/admin")).text();
-    expect(listing).not.toContain(name);
+    const listing = await (await context.request.get(`/admin?q=${encodeURIComponent(name)}`)).text();
+    expect(listing).toContain("沒有符合篩選條件的商品");
+    expect(listing).not.toContain(`>${name}</a>`);
   } finally {
     await context.close();
   }

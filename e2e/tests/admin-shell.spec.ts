@@ -10,7 +10,7 @@ async function assertShell(page: Page, current: string, width: number) {
   const nav = header.getByRole("navigation", { name: "後台導覽" });
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
   await expect(nav.getByRole("link", { name: current, exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(header.getByRole("link", { name: "Storefront", exact: true })).toHaveAttribute("href", "/admin");
+  await expect(header.getByRole("link", { name: "管理後台 Still Life", exact: true })).toHaveAttribute("href", "/admin");
   await expect(header.getByRole("link", { name: "前往前台", exact: true })).toHaveAttribute("href", "/");
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex");
@@ -30,6 +30,10 @@ async function assertShell(page: Page, current: string, width: number) {
     expect(box.width, await control.evaluate(element => element.outerHTML)).toBeGreaterThanOrEqual(44);
     expect(box.height, await control.evaluate(element => element.outerHTML)).toBeGreaterThanOrEqual(44);
   }
+  // 上傳按鈕在頁面腳本就緒前是停用的，啟用時還有顏色轉場：等它就緒、動畫結束再掃描，否則 axe 會量到轉場中途的顏色
+  const upload = page.getByRole("button", { name: /^上傳(分類|商品)圖片$/ });
+  if (await upload.count()) await expect(upload).toBeEnabled();
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished)));
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 }
 
@@ -37,7 +41,7 @@ async function assertEditForm(page: Page, width: number) {
   const box = (await page.getByRole("textbox", { name: /名稱/ }).first().boundingBox())!;
   expect(box.width).toBeLessThanOrEqual(640);
   if (width === 1280) expect(box.width).toBe(640);
-  const save = (await page.getByRole("button", { name: "儲存", exact: true }).boundingBox())!;
+  const save = (await page.getByRole("button", { name: /^儲存(變更)?$/ }).boundingBox())!;
   const cancel = (await page.getByRole("link", { name: "取消", exact: true }).boundingBox())!;
   expect(cancel.x - (save.x + save.width)).toBeGreaterThanOrEqual(8);
 }
@@ -67,11 +71,14 @@ for (const width of [375, 1280]) {
         await assertShell(admin, current, width);
       }
       const filter = (await admin.getByLabel("訂單狀態").boundingBox())!;
-      const button = (await admin.getByRole("button", { name: "篩選", exact: true }).boundingBox())!;
+      const button = (await admin.getByRole("button", { name: "查找", exact: true }).boundingBox())!;
       expect(filter.width).toBeLessThanOrEqual(240);
       expect(filter.height).toBe(button.height);
-      expect(button.y).toBe(filter.y);
-      expect(button.x - (filter.x + filter.width)).toBeGreaterThanOrEqual(8);
+      // 查找表單有多個欄位且欄位上方有標籤：桌機同一排（底緣對齊、按鈕在欄位右側），手機允許換行
+      if (width === 1280) {
+        expect(button.y + button.height).toBe(filter.y + filter.height);
+        expect(button.x - (filter.x + filter.width)).toBeGreaterThanOrEqual(8);
+      }
 
       await page.context().addCookies([memberSessionCookie()]);
       await page.goto("/cart");

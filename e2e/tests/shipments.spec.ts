@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts } from "../harness/admin-seed";
+import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
@@ -101,7 +101,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await page.goto("/orders");
       await expect(page.getByRole("list", { name: "出貨批次" })).toContainText("第 2 批");
     } finally {
-      for (const id of [lampId, tableId]) await adminContext.request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      for (const id of [lampId, tableId]) await unlistProduct(adminContext.request, id);
       await adminContext.close();
       await customerContext.close();
     }

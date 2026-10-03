@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { gotoProductList } from "./admin-list";
 
 /**
  * 各個 spec 共用的分類：只為了讓商品能上架。名稱刻意很短，導覽列才不會因為分類太多而換行。
@@ -32,20 +33,21 @@ export async function ensureSharedCategory(admin: Page) {
   }
 }
 
-/** 在商品編輯頁選擇分類並儲存；完成時停在 /admin。 */
+/** 在商品編輯頁選擇分類並儲存；完成時停在以商品名稱篩選的商品清單（清單有分頁，後續操作這一列才找得到）。 */
 export async function assignCategory(admin: Page, productName: string, categoryName: string) {
-  await admin.goto("/admin");
+  await gotoProductList(admin, productName);
   await admin.getByRole("row", { name: new RegExp(productName) }).getByRole("link", { name: "編輯" }).click();
   await admin.getByLabel("分類", { exact: true }).selectOption({ label: categoryName });
-  await admin.getByRole("button", { name: "儲存" }).click();
+  await admin.getByRole("button", { name: "儲存變更", exact: true }).click();
   await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
+  await gotoProductList(admin, productName);
 }
 
 /** 讓商品歸到共用分類（必要時先建立）。商品必須已經存在。 */
 export async function assignSharedCategory(admin: Page, productName: string) {
   // 新增商品成功後停在編輯頁；回清單確認商品已建立。
   await expect(admin).toHaveURL(/\/admin\/products\/[1-9]\d*\?saved=created$/);
-  await admin.goto("/admin");
+  await gotoProductList(admin, productName);
   await expect(admin.getByRole("row", { name: new RegExp(productName) })).toBeVisible();
   await ensureSharedCategory(admin);
   await assignCategory(admin, productName, SHARED_CATEGORY.name);

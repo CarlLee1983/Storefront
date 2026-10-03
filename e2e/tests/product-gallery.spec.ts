@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
 
 async function createProduct(page: Page, name: string) {
   await page.goto("/admin/products/new");
@@ -40,7 +41,16 @@ test("gallery multi-upload, keyboard/drag reorder, cover and last-image safety",
     await page.keyboard.press("Enter");
     await expect(items.first()).toHaveAttribute("data-image-id", originals[1]!);
     await expect(page.locator("#product-images button:focus")).toHaveCount(1);
-    await items.nth(2).dragTo(items.first());
+    // 排序儲存中圖片不可拖曳（busy）：等儲存完成再拖，否則拖曳會被忽略
+    await expect(page.locator("#image-status")).toContainText("已儲存商品圖片順序");
+    await expect(items.nth(2)).toHaveAttribute("draggable", "true");
+    // 以 HTML5 拖放事件驅動：瀏覽器自動化的滑鼠拖曳是否真的觸發 dragstart 取決於版面與時序（並行時約三成沒有觸發），
+    // 事件序列本身（dragstart → dragover → drop → dragend）才是這個功能的介面
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    await items.nth(2).dispatchEvent("dragstart", { dataTransfer });
+    await items.first().dispatchEvent("dragover", { dataTransfer });
+    await items.first().dispatchEvent("drop", { dataTransfer });
+    await items.nth(2).dispatchEvent("dragend", { dataTransfer });
     await expect(items.first()).toHaveAttribute("data-image-id", originals[2]!);
     await page.reload(); await expect(items.first()).toHaveAttribute("data-image-id", originals[2]!);
     const coverSrc = await items.first().locator("img").getAttribute("src");
@@ -48,7 +58,7 @@ test("gallery multi-upload, keyboard/drag reorder, cover and last-image safety",
     await page.setViewportSize({ width: 320, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await testInfo.attach("admin-gallery-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await page.goto("/admin");
+    await gotoProductList(page, name);
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row.getByRole("img", { name: name })).toHaveAttribute("src", coverSrc!);
     await row.getByRole("button", { name: "重新上架" }).click();
@@ -60,7 +70,7 @@ test("gallery multi-upload, keyboard/drag reorder, cover and last-image safety",
     await page.getByRole("button", { name: "刪除商品圖片 1", exact: true }).click();
     await expect(page.locator("#image-error")).toContainText("至少需要一張");
     await page.reload(); await expect(items).toHaveCount(1);
-    await page.goto("/admin"); await row.getByRole("button", { name: "下架", exact: true }).click();
+    await gotoProductList(page, name); await row.getByRole("button", { name: "下架", exact: true }).click();
     await page.goto(editPath); await page.getByRole("button", { name: "刪除商品圖片 1", exact: true }).click();
     await expect(items).toHaveCount(0); await page.reload(); await expect(items).toHaveCount(0);
   } finally { await context.close(); }

@@ -1,24 +1,14 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { defaultVariantIds, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { writeFixture } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 
-const ROOT = resolve(import.meta.dirname, "../..");
 const PREFIX = "訂單版面";
 const EMAIL = `${"a".repeat(64)}@members.storefront.invalid`;
 const NAMES = ["實木落地燈", "玻璃桌燈", "手工陶器", "閱讀單椅"].map(name => `${PREFIX}${name}`);
-
-// Use the same E2E-only D1 state and Wrangler configuration that serve.ts creates.
-function writeFixture(sql: string) {
-  const config = resolve(ROOT, ".wrangler/e2e/app/wrangler.json");
-  const database = JSON.parse(readFileSync(config, "utf8")).d1_databases[0].database_name as string;
-  execFileSync("bunx", ["wrangler", "d1", "execute", database, "--local", "-c", config, "--persist-to", resolve(ROOT, ".wrangler/e2e/state-app"), "--command", sql], { cwd: resolve(ROOT, "apps/app"), stdio: "pipe" });
-}
 
 async function assertLayout(page: Page, width: number) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth), "page overflow").toBeLessThanOrEqual(width);
@@ -91,8 +81,9 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
       await assertLayout(admin, width);
       if (width === 1280) {
         const filter = (await admin.getByLabel("訂單狀態").boundingBox())!;
-        const button = (await admin.getByRole("button", { name: "篩選" }).boundingBox())!;
-        expect(button.y).toBe(filter.y);
+        const button = (await admin.getByRole("button", { name: "查找", exact: true }).boundingBox())!;
+        // 欄位上方有標籤，所以以底緣對齊判斷「查找」與欄位在同一排
+        expect(button.y + button.height).toBe(filter.y + filter.height);
       }
       await testInfo.attach(`orders-list-${width}`, { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
       await row.getByRole("link", { name: `#${orderId}`, exact: true }).click();

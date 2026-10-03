@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type BrowserContext } from "@playwright/test";
+import { fetchProductListHtml } from "./admin-list";
 import { BASE_URL } from "./constants";
 
 const WIDTHS = [320, 640, 1280] as const;
@@ -32,8 +33,16 @@ export interface SeedProduct {
 
 /** 表單 POST 要帶同源的 Origin（Astro 的 CSRF 檢查）；不跟隨轉址，成功是 303。 */
 async function post(request: APIRequestContext, path: string, form: Record<string, string>) {
-  const response = await request.post(path, { form, headers: { origin: BASE_URL }, maxRedirects: 0 });
+  const response = await request.post(path, { form, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
   expect(response.status(), `${path} ${JSON.stringify(form)}`).toBe(303);
+}
+
+/**
+ * 下架一件商品（測試收尾用）。收尾請求常在長時間閒置之後才送出，此時 keep-alive 連線可能剛被伺服器關閉而 ECONNRESET
+ * （請求尚未送達伺服器，重送安全）；只對這種網路層錯誤重試，不重試 HTTP 回應。
+ */
+export async function unlistProduct(request: APIRequestContext, id: number | string) {
+  await request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
 }
 
 /** 以管理後台的表單與上傳端點（不開瀏覽器頁面）快速建立分類與上架商品，回傳商品編號，供大量資料的 E2E 使用。 */
@@ -53,8 +62,7 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
   // 依序新增，編號才會跟著名稱順序遞增
   for (const { name, priceTwd } of products) await post(admin, "/admin/products/new", { name, description: `${name}的說明`, priceTwd: String(priceTwd) });
 
-  let html = "";
-  for (let page = 1; page <= 20; page++) { const part = await (await admin.get(`/admin?page=${page}`)).text(); html += part; if (!part.includes(`page=${page + 1}`)) break; }
+  const html = await fetchProductListHtml(admin);
   // 商品編號用在編輯頁與圖片上傳，庫存調整則以預設變體為單位（清單每列的庫存表單帶著 variantId）
   const rows = products.map(({ name }) => {
     const match = new RegExp(`<a href="/admin/products/(\\d+)"[^>]*>${name}</a>[\\s\\S]*?name="variantId" value="(\\d+)"`).exec(html);
@@ -110,8 +118,8 @@ export async function featureProducts(admin: APIRequestContext, ids: number[]) {
  * E2E 共用同一份資料庫，大量資料用完要撤掉。
  */
 export async function unlistProductsByPrefix(admin: APIRequestContext, prefix: string) {
-  const html = await (await admin.get("/admin")).text();
-  const ids = html.split("<tr").filter((row) => new RegExp(`<td[^>]*>${prefix}[^<]*</td>`).test(row) && row.includes("上架中"))
+  const html = await fetchProductListHtml(admin, { q: prefix, status: "listed" });
+  const ids = html.split("<tr").filter((row) => new RegExp(`<a href="/admin/products/\\d+"[^>]*>${prefix}[^<]*</a>`).test(row) && row.includes("上架中"))
     .map((row) => /href="\/admin\/products\/(\d+)"/.exec(row)?.[1]).filter((id): id is string => id !== undefined);
-  await Promise.all(ids.map((id) => post(admin, "/admin", { intent: "unlist", id })));
+  await Promise.all(ids.map((id) => unlistProduct(admin, id)));
 }

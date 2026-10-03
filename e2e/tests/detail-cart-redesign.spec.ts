@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
 
 const CATEGORY = { slug: "e2e-detail", name: "詳情分類", description: "詳情頁與購物車改版測試用的分類" };
 const MAIN = { name: "改版主打花器", priceTwd: 680 };
@@ -32,7 +33,7 @@ async function createListedProduct(admin: Page, name: string, priceTwd: number) 
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   await admin.getByRole("button", { name: "上傳商品圖片" }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   await row.getByRole("button", { name: "重新上架" }).click();
   await expect(row).toContainText("上架中");
 }
@@ -158,7 +159,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(quantity).toHaveValue("2");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   await line.getByRole("button", { name: "移除" }).click();
-  await expect(page.getByText("購物車目前是空的。")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "購物車目前是空的" })).toBeVisible();
   await expect(page.locator("#cart-count")).toHaveText("0");
   await noAxeViolations(page);
 });
@@ -166,7 +167,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
 // 桌機（>= 56.25rem）詳情頁購買區與購物車訂單摘要固定在畫面上方（故事 54、58）；手機維持一般流動版面。
 // sticky 只能在所屬的 grid 容器內移動：測試商品只有一張小圖、左欄比右欄矮，容器沒有多餘高度，元素無處可「黏」，
 // 所以先把左欄（圖片區、購物車品項清單）撐高，模擬圖片多的商品與品項多的購物車，再確認真的捲得動。
-const STICKY_TOP_MAX = 32; // top: var(--space-4)（16px）加上容許誤差
+const STICKY_TOP_MAX = 80; // top: calc(var(--space-8) + 40px)（72px，讓出固定的站台 header）加上容許誤差
 
 const SCROLL_PX = 1000;
 

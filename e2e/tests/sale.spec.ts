@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
 
 const CATEGORY = { slug: "e2e-sale", name: "E2E特價", description: "特價測試用的一行說明" };
 const SALE = { name: "特價測試杯", priceTwd: 320, compareAtPriceTwd: 450 };
@@ -13,15 +14,15 @@ const card = (page: Page, name: string) => page.locator(".product-card").filter(
 const saleNavLink = (page: Page) => page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: "特價", exact: true });
 const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
 const adminCell = (page: Page, name: string, column: "原價" | "狀態") => page.getByRole("row", { name: new RegExp(name) })
-  .locator("td").nth({ 原價: 4, 狀態: 8 }[column]);
+  .locator("td").nth({ 原價: 4, 狀態: 9 }[column]);
 
 /** 在商品編輯頁填寫（空字串為清空）原價並儲存；回傳送出後頁面（成功時是後台清單，被拒時停在編輯頁）。 */
 async function saveCompareAt(admin: Page, name: string, compareAt: string, priceTwd?: number) {
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   await admin.getByRole("row", { name: new RegExp(name) }).getByRole("link", { name: "編輯" }).click();
   if (priceTwd !== undefined) await admin.getByLabel("單價（新台幣整數元）").fill(String(priceTwd));
   await admin.getByLabel("原價（選填）").fill(compareAt);
-  await admin.getByRole("button", { name: "儲存" }).click();
+  await admin.getByRole("button", { name: "儲存變更", exact: true }).click();
 }
 
 // 這支 spec 在獨立的 sale project 裡、等其他 spec 跑完才執行（見 playwright.config.ts）：
@@ -67,7 +68,10 @@ test("管理員拒絕不高於售價的原價，設定合法原價後顧客在�
     await expect(admin.getByRole("alert")).toContainText("原價必須高於這次儲存後的售價");
     await saveCompareAt(admin, SALE.name, String(SALE.compareAtPriceTwd));
     await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
-    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    // 儲存後回到未篩選的第一頁：改用名稱篩選的清單確認
+    await gotoProductList(admin, SALE.name);
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("NT$ 450");
+    await gotoProductList(admin, REGULAR.name);
     await expect(adminCell(admin, REGULAR.name, "原價")).toHaveText("—");
   } finally { await context.close(); }
 
@@ -138,12 +142,12 @@ test("特價商品下架後：後台狀態更新，導覽列不再有「特價�
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await context.newPage();
-    await admin.goto("/admin");
+    await gotoProductList(admin, SALE.name);
     const row = admin.getByRole("row", { name: new RegExp(SALE.name) });
-    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("NT$ 450");
     await row.getByRole("button", { name: "下架" }).click();
     await expect(admin.getByRole("status")).toHaveText("已下架商品。");
-    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("NT$ 450");
     await expect(adminCell(admin, SALE.name, "狀態")).toHaveText("已下架");
 
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -153,7 +157,7 @@ test("特價商品下架後：後台狀態更新，導覽列不再有「特價�
 
     await row.getByRole("button", { name: "重新上架" }).click();
     await expect(admin.getByRole("status")).toHaveText("已重新上架商品。");
-    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("450");
+    await expect(adminCell(admin, SALE.name, "原價")).toHaveText("NT$ 450");
     await expect(adminCell(admin, SALE.name, "狀態")).toHaveText("上架中");
   } finally { await context.close(); }
 });
@@ -164,6 +168,7 @@ test("結束特價：同一次儲存改回售價並清空原價後，導覽列�
     const admin = await context.newPage();
     await saveCompareAt(admin, SALE.name, "", SALE.compareAtPriceTwd);
     await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
+    await gotoProductList(admin, SALE.name);
     await expect(adminCell(admin, SALE.name, "原價")).toHaveText("—");
   } finally { await context.close(); }
 

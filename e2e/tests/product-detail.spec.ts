@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
 
 async function createGallery(admin: Page, name: string) {
   await admin.goto("/admin/products/new");
@@ -28,7 +29,7 @@ async function createGallery(admin: Page, name: string) {
   await admin.getByRole("button", { name: "上移商品圖片 2", exact: true }).click();
   await expect(admin.locator("#image-status")).toContainText("已儲存商品圖片順序");
   const coverSrc = await admin.locator("#product-images img").first().getAttribute("src");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   const row = admin.getByRole("row").filter({ hasText: name });
   await row.getByRole("button", { name: "重新上架", exact: true }).click();
   await expect(row).toContainText("上架中");
@@ -110,7 +111,8 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await page.setViewportSize({ width: 1440, height: 1000 });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await testInfo.attach("product-detail-desktop-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await page.getByRole("link", { name: /購物車（\s*4\s*）/ }).click();
+    await expect(page.locator("#cart-count")).toHaveText("4");
+    await page.locator(".header-cart-link").click();
     await expect(page.getByRole("img", { name: name, exact: true })).toHaveAttribute("src", coverSrc!);
     await page.goBack();
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
@@ -148,7 +150,7 @@ test("商品詳情圖庫在手機與桌機填滿正方形且沒有水平溢出",
     }
   } finally {
     const row = admin.getByRole("row").filter({ hasText: name });
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     if (await row.count()) await row.getByRole("button", { name: "下架" }).click();
     await context.close();
   }

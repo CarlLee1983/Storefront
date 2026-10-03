@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
 
 const MANAGED = { slug: "e2e-managed", name: "E2E管理分類", description: "建立時的說明" };
 const THROWAWAY = { slug: "e2e-throwaway", name: "E2E暫時分類", description: "建錯的分類" };
@@ -30,7 +31,7 @@ async function createListedProduct(admin: Page, name: string, categoryName: stri
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles(await pngFile(admin, "#e5d8c5", "cover.png"));
   await admin.getByRole("button", { name: "上傳商品圖片", exact: true }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   const row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByRole("button", { name: "重新上架" }).click();
   await expect(row).toContainText("上架中");

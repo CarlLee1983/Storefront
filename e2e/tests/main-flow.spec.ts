@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { gotoProductList } from "../harness/admin-list";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { featureProduct } from "../harness/admin-featured";
 import { seedListedProductsInCategory } from "../harness/admin-seed";
@@ -152,8 +153,9 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await testInfo.attach("admin-image-upload", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
   // 儲存原價後回到商品管理
   await admin.getByLabel("原價（選填）").fill(PRODUCT.compareAtPriceTwd);
-  await admin.getByRole("button", { name: "儲存", exact: true }).click();
+  await admin.getByRole("button", { name: "儲存變更", exact: true }).click();
   await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
+  await gotoProductList(admin, PRODUCT.name);
   await admin.getByRole("row", { name: new RegExp(PRODUCT.name) }).getByRole("button", { name: "重新上架" }).click();
   await expect(admin.getByRole("row", { name: new RegExp(PRODUCT.name) })).toContainText("上架中");
   await featureProduct(admin, PRODUCT.name);

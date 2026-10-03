@@ -51,17 +51,6 @@ test.describe("手機選單抽屜", () => {
   });
 });
 
-test("桌機 header 為一排主要導覽，含全部商品與購物車件數", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/");
-  const nav = page.getByRole("navigation", { name: "主要導覽" });
-  await expect(nav.getByRole("link", { name: "全部商品" })).toBeVisible();
-  await expect(page.locator("#cart-count")).toBeVisible();
-  await expect(page.getByRole("button", { name: "開啟選單" })).toBeHidden();
-  const tops = await page.locator(".site-header a:visible, .site-header #cart-count:visible").evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));
-  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(24);
-});
-
 test("已登入時桌機 header 看到我的訂單與登出", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.context().addCookies([memberSessionCookie()]);

@@ -4,6 +4,7 @@ import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { gotoProductList } from "../harness/admin-list";
 
 const TABLE = "變體餐桌";
 const MUG = "變體單品杯";
@@ -182,7 +183,7 @@ for (const viewport of VIEWPORTS) {
       await black.getByLabel("黑的庫存增減量").fill("+4");
       await black.getByLabel("黑的庫存調整原因").fill("E2E 補貨");
       await black.getByRole("button", { name: "調整庫存" }).click();
-      await expect(page.locator(".variant-card").filter({ hasText: "黑" })).toContainText("在庫 4，保留 0，可售 4");
+      await expect(page.locator(".variant-card").filter({ hasText: "黑" })).toContainText("在庫 4，不可售 0，保留 0，可售 4");
       await page.locator(".variant-card").filter({ hasText: "黑" }).getByRole("button", { name: "停賣" }).click();
       await expect(page.locator(".variant-card").filter({ hasText: "黑" })).toContainText("已停賣");
       // 圖庫腳本載入前上傳按鈕是停用的（停用狀態的對比不在此檢查範圍）：等它就緒再掃描
@@ -192,7 +193,7 @@ for (const viewport of VIEWPORTS) {
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
       // 後台清單的多變體商品以彙總呈現，庫存改到編輯頁管理
-      await page.goto("/admin");
+      await gotoProductList(page, product.name);
       const row = page.getByRole("row", { name: new RegExp(product.name) });
       await expect(row.getByRole("link", { name: "管理變體庫存" })).toBeVisible();
     } finally { await context.close(); }
