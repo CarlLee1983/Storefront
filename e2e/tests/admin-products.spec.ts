@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { featureProducts, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { loadCatalog } from "../seed/catalog";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const PREFIX = "桌機示範";
 const LONG_NAME = "桌機長名稱精心挑選的手工實木落地燈與閱讀角落家具以及可以長久使用的居家陳設";
@@ -174,7 +174,7 @@ test("手機商品卡片可完成庫存、上下架與精選操作，768px 回�
       const a = boxes[i]!, b = boxes[j]!;
       expect(Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 0 && Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 0).toBe(false);
     }
-    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(admin)).violations).toEqual([]);
     await admin.screenshot({ path: "/tmp/storefront-admin-products-375.png", fullPage: true });
 
     await card.getByLabel(`${name}的庫存增減量`).fill("+3");

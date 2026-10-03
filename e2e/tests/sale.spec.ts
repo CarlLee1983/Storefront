@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const CATEGORY = { slug: "e2e-sale", name: "E2E特價", description: "特價測試用的一行說明" };
 const SALE = { name: "特價測試杯", priceTwd: 320, compareAtPriceTwd: 450 };
@@ -12,7 +12,7 @@ const SEED_PREFIX = "特價測試";
 
 const card = (page: Page, name: string) => page.locator(".product-card").filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
 const saleNavLink = (page: Page) => page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: "特價", exact: true });
-const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+const audit = async (page: Page, name: string) => expect((await analyzeWhenSettled(page)).violations, name).toEqual([]);
 const adminCell = (page: Page, name: string, column: "原價" | "狀態") => page.getByRole("row", { name: new RegExp(name) })
   .locator("td").nth({ 原價: 4, 狀態: 9 }[column]);
 

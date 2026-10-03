@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function expectStorefrontHead(page: Page) {
   const title = await page.title();
@@ -42,7 +42,7 @@ for (const width of [320, 768, 1280]) {
       await page.keyboard.press("Enter");
       await expect(page.locator("#main-content")).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`${width}-${path.replaceAll("/", "_") || "home"}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     }
     await page.context().addCookies([memberSessionCookie()]);
@@ -52,7 +52,7 @@ for (const width of [320, 768, 1280]) {
       await page.goto(path);
       await expectStorefrontHead(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`${width}-${path.replaceAll("/", "_") || "home"}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     }
   });

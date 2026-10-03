@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext, type BrowserContext, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const TABLE = "變體餐桌";
 const MUG = "變體單品杯";
@@ -94,7 +94,7 @@ for (const viewport of VIEWPORTS) {
     // 加入購物車的提示有淡入動畫：等動畫結束再掃描對比，避免掃到半透明的中間狀態
     await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
     // 購物車：同商品的不同變體各一筆，各自單價與選項
     await page.goto("/cart");
@@ -105,7 +105,7 @@ for (const viewport of VIEWPORTS) {
     await expect(lines.nth(1)).toContainText("120 公分");
     await expect(page.locator("#cart-total")).toHaveText("21,000");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   });
 }
 
@@ -190,7 +190,7 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByRole("button", { name: "上傳商品圖片" })).toBeEnabled();
       await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
       // 後台清單的多變體商品以彙總呈現，庫存改到編輯頁管理
       await gotoProductList(page, product.name);

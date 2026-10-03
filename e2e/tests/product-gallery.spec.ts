@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function createProduct(page: Page, name: string) {
   await page.goto("/admin/products/new");
@@ -54,7 +54,7 @@ test("gallery multi-upload, keyboard/drag reorder, cover and last-image safety",
     await expect(items.first()).toHaveAttribute("data-image-id", originals[2]!);
     await page.reload(); await expect(items.first()).toHaveAttribute("data-image-id", originals[2]!);
     const coverSrc = await items.first().locator("img").getAttribute("src");
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await page.setViewportSize({ width: 320, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await testInfo.attach("admin-gallery-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });

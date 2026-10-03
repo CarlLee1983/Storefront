@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const VIEWPORTS = [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }] as const;
 
@@ -17,7 +17,7 @@ async function assertAccessibleLayout(page: Page, width: number) {
     if (!box) continue;
     expect(box.height, `${await control.textContent()} 高度`).toBeGreaterThanOrEqual(44);
   }
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 async function customerPage(browser: Browser, token: string, viewport: { width: number; height: number }): Promise<{ context: BrowserContext; page: Page }> {

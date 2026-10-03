@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
-import { gotoProductList } from "../harness/admin-list";
+import { gotoOrderList, gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const name = "訂單封面測試商品";
 
@@ -64,14 +64,14 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
       await expect(page.getByRole("region", { name: "訂單進度" })).toContainText("待付款");
       await expect(page.getByRole("region", { name: "收件資訊" })).toContainText("台北市中正區測試地址");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`order-detail-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
       await page.goto("/orders");
       const card = page.locator(".order-card").filter({ has: page.getByRole("link", { name: `訂單 #${id}`, exact: true }) });
       await expect(card.getByRole("img", { name: name })).toHaveAttribute("src", source!);
       await expect(card.getByRole("button", { name: `訂單 #${id} 前往付款` })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`order-list-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
       await card.getByRole("link", { name: `查看訂單 #${id} 詳情` }).click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
@@ -85,7 +85,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
       await page.setViewportSize({ width, height: 900 });
       await expect(page.getByRole("region", { name: "付款資訊" }).getByRole("row")).toHaveCount(2);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`order-payment-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     }
     page.once("dialog", dialog => void dialog.dismiss());
@@ -99,14 +99,14 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     }
-    await admin.goto("/admin/orders");
+    await gotoOrderList(admin, id);
     const orderRow = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${id}`, exact: true }) });
     await expect(orderRow.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", source!);
     await orderRow.getByRole("link", { name: `#${id}`, exact: true }).click();
     await expect(admin.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", source!);
-    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(admin)).violations).toEqual([]);
     await testInfo.attach("admin-order-cover", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
     // Existing orders keep their lines when all images of an unlisted product are removed.
     await gotoProductList(admin, name);
@@ -119,7 +119,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     for (const location of [path, "/orders"]) {
       await page.goto(location);
       await expect(page.getByRole("img", { name: `${name}暫無商品圖片` })).toBeVisible();
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     }
     await admin.goto(`/admin${path}`);
     await expect(admin.getByRole("img", { name: `${name}暫無商品圖片` })).toBeVisible();

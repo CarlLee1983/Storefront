@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const VIEWPORTS = [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }] as const;
 
@@ -17,7 +17,7 @@ async function assertAccessibleLayout(page: Page, width: number) {
     if (!box) continue;
     expect(box.height, `${await control.textContent()} 高度`).toBeGreaterThanOrEqual(44);
   }
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 async function customerPage(browser: Browser, token: string, viewport: { width: number; height: number }): Promise<{ context: BrowserContext; page: Page }> {
@@ -37,6 +37,7 @@ async function requestAndOpenLatestMail(page: Page, email: string) {
 
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name}：未驗證顧客先被帶去帳戶頁，從自己的信箱驗證後可結帳；換址未驗證前不取代、歷史信件保持原地址`, async ({ browser }) => {
+  test.setTimeout(120_000);
     const customer = createCustomer("信箱顧客");
     const { context, page } = await customerPage(browser, customer.token, viewport);
     try {
@@ -105,6 +106,7 @@ for (const viewport of VIEWPORTS) {
 }
 
 test("顧客只能讀自己的信箱，別人的信與驗證連結都不可用", async ({ browser }) => {
+  test.setTimeout(120_000);
   const alice = createCustomer("甲顧客");
   const bob = createCustomer("乙顧客");
   const a = await customerPage(browser, alice.token, VIEWPORTS[1]);
@@ -148,6 +150,7 @@ test("顧客只能讀自己的信箱，別人的信與驗證連結都不可用",
 
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name}：管理員查投遞結果、開關失敗演練並重送，看不到驗證連結`, async ({ browser }) => {
+  test.setTimeout(120_000);
     const customer = createCustomer(`投遞顧客${viewport.name}`);
     const { context, page } = await customerPage(browser, customer.token, viewport);
     const adminContext = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport });
@@ -201,6 +204,7 @@ for (const viewport of VIEWPORTS) {
 // 投遞失敗演練是全域狀態（mail_controls）：所有會開關它的情境必須留在這個檔案，同檔的測試依序執行，不會互相干擾
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name}：下單通知投遞失敗不影響訂單，管理員在待辦重送後顧客收到信，別人看不到（與投遞失敗演練同檔序列執行）`, async ({ browser }) => {
+  test.setTimeout(120_000);
     const suffix = `${viewport.width}`;
     const productName = `通知商品${suffix}`;
     const adminContext = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport });

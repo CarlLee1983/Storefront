@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { loadCatalog } from "../seed/catalog";
+import { analyzeWhenSettled } from "../harness/axe";
 
 test.describe.configure({ mode: "serial" });
 
@@ -24,7 +24,7 @@ test("店裡沒有上架商品時，首頁不出現精選區、分類方塊與�
     await expect(link).toHaveAttribute("href", "/products");
     await expect(link).toHaveText("全部商品");
   }
-  expect((await new AxeBuilder({ page }).analyze()).violations, "空店面首頁").toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations, "空店面首頁").toEqual([]);
 });
 
 for (const width of [375, 1280]) {
@@ -40,7 +40,7 @@ for (const width of [375, 1280]) {
       await expect(page.getByLabel("網址代稱")).toBeEditable();
       await expect(page.getByRole("button", { name: "建立分類" })).toBeEnabled();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     } finally {
       await context.close();
     }
@@ -54,8 +54,10 @@ test("桌機 header 在示範目錄數量的分類下仍為一排主要導覽，
   const catalog = loadCatalog();
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
-    for (const category of catalog.categories) {
-      await seedListedProducts(context, { slug: `header-${category.slug}`, name: category.name, description: category.blurb }, [
+    // 名稱與示範目錄同字數、不同文字：別的 spec 以分類名稱在下拉選單找分類，不能撞到這裡的
+    const names = catalog.categories.map((category, index) => "標頭甲乙丙丁戊己庚辛".slice(index * 2, index * 2 + category.name.length).padEnd(category.name.length, "壬"));
+    for (const [index, category] of catalog.categories.entries()) {
+      await seedListedProducts(context, { slug: `header-${category.slug}`, name: names[index]!, description: category.blurb }, [
         { name: `header-${category.slug}-商品`, priceTwd: 100, stock: 1 },
       ]);
     }
@@ -63,7 +65,7 @@ test("桌機 header 在示範目錄數量的分類下仍為一排主要導覽，
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "主要導覽" });
     await expect(nav.getByRole("link", { name: "全部商品" })).toBeVisible();
-    for (const category of catalog.categories) await expect(nav.getByRole("link", { name: category.name, exact: true })).toBeVisible();
+    for (const name of names) await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
     await expect(page.locator("#cart-count")).toBeVisible();
     await expect(page.getByRole("button", { name: "開啟選單" })).toBeHidden();
     const tops = await page.locator(".site-header a:visible, .site-header #cart-count:visible").evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));

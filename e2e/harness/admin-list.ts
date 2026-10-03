@@ -16,3 +16,8 @@ export async function fetchProductListHtml(admin: APIRequestContext, query: Reco
   }
   return html;
 }
+
+/** 以訂單編號查找後台訂單清單：新單會把舊單擠出第 1 頁，用編號查找才找得到指定的訂單（#123）。 */
+export async function gotoOrderList(admin: Page, orderId: number | string) {
+  return admin.goto(`/admin/orders?orderId=${orderId}`);
+}

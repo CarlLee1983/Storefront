@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const pages = [
   { path: "/about", status: 200, heading: "關於靜物" },
@@ -16,7 +16,7 @@ for (const width of [375, 1280]) {
       expect((await page.goto(path))?.status(), path).toBe(status);
       await expect(page.locator("main").getByRole("heading", { level: 1, name: heading })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations, path).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations, path).toEqual([]);
     }
   });
 }

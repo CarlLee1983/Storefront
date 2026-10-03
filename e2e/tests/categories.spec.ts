@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const LIVING = { slug: "e2e-living", name: "E2E客廳", description: "分類頁測試用的一行說明" };
 
@@ -86,7 +86,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
   await expect(nav.getByRole("link", { name: LIVING.name })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "全部商品" })).not.toHaveAttribute("aria-current", "page");
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await testInfo.attach("category-desktop", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 
   // 手機：抽屜也列出分類，分類頁沒有橫向捲動且 axe 零違規
@@ -97,7 +97,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await expect(page).toHaveURL(/\/categories\/e2e-living$/);
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await testInfo.attach("category-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 });
 
@@ -134,6 +134,6 @@ test("沒有分類不能上架並顯示原因；沒有上架商品的分類不�
     const response = await page.goto(path);
     expect(response?.status(), path).toBe(404);
     await expect(page.getByRole("heading", { level: 1, name: "找不到這個頁面" })).toBeVisible();
-    expect((await new AxeBuilder({ page }).analyze()).violations, path).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations, path).toEqual([]);
   }
 });

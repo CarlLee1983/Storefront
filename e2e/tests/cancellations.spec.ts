@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 /** 無水平捲動、主要區域的操作元件至少 44px、無 axe 違規。 */
 async function assertLayout(page: Page, width: number) {
@@ -14,13 +14,13 @@ async function assertLayout(page: Page, width: number) {
     const box = await control.boundingBox();
     if (box) expect(box.height, `${await control.textContent()} 高度`).toBeGreaterThanOrEqual(44);
   }
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 /** 既有的訂單頁（返回連結、交運按鈕等）有尺寸不足的控制項（不在這張票範圍）：只檢查無水平捲動與 axe 零違規。 */
 async function assertNoOverflowAndAxe(page: Page, width: number) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth), "page overflow").toBeLessThanOrEqual(width);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }]) {

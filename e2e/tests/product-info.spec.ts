@@ -1,8 +1,8 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { unlistProduct, seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const CATEGORY = { slug: "e2e-product-info", name: "商品資訊分類", description: "尺寸材質保養測試用的分類" };
 const WITH_INFO = "資訊齊全邊桌";
@@ -60,7 +60,7 @@ for (const viewport of VIEWPORTS) {
     await expect(specs).toContainText(INFO.material);
     await expect(specs).toContainText(INFO.care);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
     await page.goto(`/products/${withoutInfoId}`);
     await expect(page.getByRole("heading", { level: 1, name: WITHOUT_INFO })).toBeVisible();

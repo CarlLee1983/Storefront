@@ -1,8 +1,8 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { analyzeWhenSettled } from "../harness/axe";
 
 // 名稱前綴獨特，避免與其他 spec 的商品互相干擾；說明由 seed 產生為「{名稱}的說明」
 const SEED_PREFIX = "搜尋測試";
@@ -13,7 +13,7 @@ const SEARCH_PRODUCTS = [
 ];
 const AURORA = SEARCH_PRODUCTS[0]!.name;
 
-const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+const audit = async (page: Page, name: string) => expect((await analyzeWhenSettled(page)).violations, name).toEqual([]);
 const cards = (page: Page) => page.locator(".product-card");
 const headerSearchButton = (page: Page) => page.getByRole("banner").getByRole("button", { name: "搜尋", exact: true });
 

@@ -1,10 +1,11 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { defaultVariantIds, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
+import { gotoOrderList } from "../harness/admin-list";
 import { BASE_URL } from "../harness/constants";
 import { writeFixture } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const PREFIX = "訂單版面";
 const EMAIL = `${"a".repeat(64)}@members.storefront.invalid`;
@@ -22,7 +23,7 @@ async function assertLayout(page: Page, width: number) {
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 test("四品項、長 email 與多筆付款在後台列表和明細完整可見", async ({ browser }, testInfo) => {
@@ -64,7 +65,7 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
 
     for (const width of [1280, 375]) {
       await admin.setViewportSize({ width, height: 900 });
-      await admin.goto("/admin/orders");
+      await gotoOrderList(admin, orderId);
       const list = admin.getByRole("region", { name: "管理資料表" });
       const row = list.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${orderId}`, exact: true }) });
       await expect(row).toContainText(EMAIL);

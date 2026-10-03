@@ -1,16 +1,16 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 // 費率是全域狀態：調整會讓同時進行的結帳 spec 金額失準，所以這支獨立成一個 project，等其他 spec 跑完才序列執行（見 playwright.config.ts）；結束前一定還原。
 
 async function assertLayout(page: Page, width: number) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth), "page overflow").toBeLessThanOrEqual(width);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 async function setRate(page: Page, label: string, amount: string) {

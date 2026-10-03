@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function createGallery(admin: Page, name: string) {
   await admin.goto("/admin/products/new");
@@ -86,7 +86,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await thumbs.nth(1).click();
     await expect(thumbs.nth(1)).toHaveAttribute("aria-current", "true");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await expect(page.locator(".gallery-position")).toHaveText("2 / 3");
     await expect.poll(() => page.locator(".gallery-slide").nth(1).evaluate(slide =>
       Math.abs(slide.getBoundingClientRect().left - slide.parentElement!.getBoundingClientRect().left))).toBeLessThan(2);
@@ -109,7 +109,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await expect(page.locator(".buy-form .cart-status")).toHaveText("已加入購物車，目前 4 件。");
     expect(await page.locator(".buy-form .cart-status").evaluate(el => getComputedStyle(el).animationName)).toBe("none");
     await page.setViewportSize({ width: 1440, height: 1000 });
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await testInfo.attach("product-detail-desktop-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await expect(page.locator("#cart-count")).toHaveText("4");
     await page.locator(".header-cart-link").click();
@@ -123,7 +123,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
       await expect(page.getByRole("heading", { name: "找不到這個頁面" })).toBeVisible();
       await expect(page.getByRole("button", { name: "加入購物車" })).toHaveCount(0);
     }
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   } finally { await context.close(); }
 });
 
@@ -145,7 +145,7 @@ test("商品詳情圖庫在手機與桌機填滿正方形且沒有水平溢出",
       expect(Math.abs(imageBox.width - imageBox.height)).toBeLessThan(2);
       expect(Math.abs(imageBox.width - trackBox.width)).toBeLessThan(2);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`product-gallery-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     }
   } finally {

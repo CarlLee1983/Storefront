@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { defaultVariantIds, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function assertShell(page: Page, current: string, width: number) {
   const header = page.getByRole("banner");
@@ -30,11 +30,7 @@ async function assertShell(page: Page, current: string, width: number) {
     expect(box.width, await control.evaluate(element => element.outerHTML)).toBeGreaterThanOrEqual(44);
     expect(box.height, await control.evaluate(element => element.outerHTML)).toBeGreaterThanOrEqual(44);
   }
-  // 上傳按鈕在頁面腳本就緒前是停用的，啟用時還有顏色轉場：等它就緒、動畫結束再掃描，否則 axe 會量到轉場中途的顏色
-  const upload = page.getByRole("button", { name: /^上傳(分類|商品)圖片$/ });
-  if (await upload.count()) await expect(upload).toBeEnabled();
-  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished)));
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 async function assertEditForm(page: Page, width: number) {

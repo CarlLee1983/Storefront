@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer, writeFixture } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const VIEWPORTS = [{ name: "桌機", width: 1280, height: 900 }, { name: "手機", width: 375, height: 800 }];
 const DAY_MS = 86_400_000;
@@ -12,7 +12,7 @@ const RECENT_ORDERS = 24;
 
 async function assertNoOverflowAndAxe(page: Page, width: number) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth), "page overflow").toBeLessThanOrEqual(width);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 /** 目前列表上的訂單編號（依畫面順序）。 */

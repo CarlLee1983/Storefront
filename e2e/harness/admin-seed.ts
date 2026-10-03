@@ -121,8 +121,8 @@ export async function unlistProductsByPrefix(admin: APIRequestContext, prefix: s
   const html = await fetchProductListHtml(admin, { q: prefix, status: "listed" });
   const ids = html.split("<tr").filter((row) => new RegExp(`<a href="/admin/products/\\d+"[^>]*>${prefix}[^<]*</a>`).test(row) && row.includes("上架中"))
     .map((row) => /href="\/admin\/products\/(\d+)"/.exec(row)?.[1]).filter((id): id is string => id !== undefined);
-  await Promise.all(ids.map(async (id) => {
-    const response = await unlistProduct(admin, id);
-    expect(response.status(), `下架商品 ${id}`).toBe(303);
-  }));
+  // 依序下架：wrangler 的 ProxyWorker 偶爾回 500（Network connection lost）；下架是冪等的，所以重試到 303
+  for (const id of ids) {
+    await expect.poll(async () => (await unlistProduct(admin, id)).status(), { message: `下架商品 ${id}`, timeout: 20_000 }).toBe(303);
+  }
 }

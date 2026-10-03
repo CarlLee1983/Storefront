@@ -1,8 +1,8 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const LISTING = { slug: "e2e-listing", name: "E2E列表", description: "列表測試用的一行說明" };
 const SOLD_OUT = { slug: "e2e-soldout", name: "E2E售完", description: "只有售完商品的分類" };
@@ -17,7 +17,7 @@ const cards = (page: Page) => page.locator(".product-card");
 const firstCardName = (page: Page) => cards(page).first().getByRole("heading", { level: 2 });
 const sortLink = (page: Page, label: string) => page.getByRole("navigation", { name: "排序" }).getByRole("link", { name: label });
 const stockSwitch = (page: Page) => page.getByRole("checkbox", { name: "只看有貨" });
-const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+const audit = async (page: Page, name: string) => expect((await analyzeWhenSettled(page)).violations, name).toEqual([]);
 
 const SEED_PREFIX = "列表";
 

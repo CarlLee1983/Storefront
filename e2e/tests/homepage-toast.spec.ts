@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function createProduct(admin: Page, name: string, stock: number) {
   await admin.goto("/admin/products/new");
@@ -65,7 +65,7 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   await expect(page.locator("#cart-count")).toHaveText("1");
   await expect(page.locator("#cart-count")).toHaveClass("count-bump");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await testInfo.attach("homepage-mobile-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.keyboard.press("Enter");

@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { gotoProductList } from "../harness/admin-list";
@@ -6,6 +5,7 @@ import { createCategory } from "../harness/admin-categories";
 import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { featureProducts, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const HOME = { slug: "e2e-home", name: "E2E首頁", description: "首頁測試用的一行說明" };
 const ALPHA = { name: "首頁精選甲", priceTwd: 1200, stock: 5 };
@@ -40,7 +40,7 @@ const hero = (page: Page) => page.getByRole("region", { name: "主視覺" });
 const heroStatus = (page: Page) => hero(page).locator("#hero-status");
 const featuredSection = (page: Page) => page.getByRole("region", { name: "精選商品" });
 const categorySection = (page: Page) => page.getByRole("region", { name: "依空間選物" });
-const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+const audit = async (page: Page, name: string) => expect((await analyzeWhenSettled(page)).violations, name).toEqual([]);
 
 test("管理員在後台標為精選後，商品出現在首頁精選區", async ({ browser, page }) => {
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });

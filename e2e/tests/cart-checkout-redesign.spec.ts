@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function createProduct(admin: Page, name: string, stock: number) {
   await admin.goto("/admin/products/new");
@@ -68,7 +68,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
     await page.setViewportSize({ width, height: 900 });
     cartTitleHeights.set(width, (await page.getByRole("heading", { level: 1, name: "購物車" }).boundingBox())!.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await testInfo.attach(`cart-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   }
   await page.route("**/images/**", route => route.fulfill({ status: 404 }));
@@ -85,7 +85,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
     await page.setViewportSize({ width, height: 900 });
     expect((await page.getByRole("heading", { level: 1, name: "結帳" }).boundingBox())!.height).toBe(cartTitleHeights.get(width));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await testInfo.attach(`checkout-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   }
   await page.getByLabel("收件人姓名").fill("   ");
@@ -96,7 +96,7 @@ test("購物車封面快照、手機卡片、數量、結帳錯誤關聯與圖�
   await expect(page.locator("#name-error")).toContainText("請填寫收件人姓名。");
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-describedby", "name-error");
   await expect(page.getByLabel("收件人姓名")).toHaveAttribute("aria-invalid", "true");
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await page.getByLabel("收件人姓名").fill("購物車測試");
   await page.getByLabel(/我確認配送地點位於台灣本島/).check();
   await page.getByRole("button", { name: "送出訂單" }).click();

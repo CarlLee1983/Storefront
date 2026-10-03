@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const MANAGED = { slug: "e2e-managed", name: "E2E管理分類", description: "建立時的說明" };
 const THROWAWAY = { slug: "e2e-throwaway", name: "E2E暫時分類", description: "建錯的分類" };
@@ -77,7 +77,7 @@ test("管理員修改分類說明、上傳並更換分類圖片、刪除空分�
     await admin.getByRole("button", { name: "上傳分類圖片", exact: true }).click();
     await expect(image).not.toHaveAttribute("src", first!);
     await expect(admin.locator("#image-status")).toHaveText("已儲存分類圖片。");
-    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(admin)).violations).toEqual([]);
     await admin.reload();
     const second = await image.getAttribute("src");
     expect(second).not.toBe(first);
@@ -93,7 +93,7 @@ test("管理員修改分類說明、上傳並更換分類圖片、刪除空分�
     await expect(admin.getByRole("alert")).toContainText(`無法刪除「${MANAGED.name}」`);
     await expect(admin.getByRole("alert")).toContainText("還有商品");
     await expect(admin.getByRole("row", { name: new RegExp(MANAGED.slug) })).toBeVisible();
-    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(admin)).violations).toEqual([]);
     await testInfo.attach("admin-categories", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
 
     // 空分類可以刪除
@@ -113,7 +113,7 @@ test("管理員修改分類說明、上傳並更換分類圖片、刪除空分�
   await page.getByRole("button", { name: "開啟選單" }).click();
   const drawer = page.getByRole("dialog", { name: "選單" });
   await expect(drawer.getByRole("link", { name: MANAGED.name })).toContainText(NEW_DESCRIPTION);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
   await expect(page.getByRole("navigation", { name: "主要導覽" }).getByRole("link", { name: MANAGED.name })).not.toContainText(NEW_DESCRIPTION);

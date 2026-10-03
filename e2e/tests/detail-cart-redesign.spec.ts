@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const CATEGORY = { slug: "e2e-detail", name: "詳情分類", description: "詳情頁與購物車改版測試用的分類" };
 const MAIN = { name: "改版主打花器", priceTwd: 680 };
@@ -39,7 +39,7 @@ async function createListedProduct(admin: Page, name: string, priceTwd: number) 
 }
 
 const noHorizontalScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
-const noAxeViolations = async (page: Page) => expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+const noAxeViolations = async (page: Page) => expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
