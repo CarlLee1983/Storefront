@@ -627,7 +627,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           shipmentReturns: await selectOrderShipmentReturns(db, orderId),
         };
         // 時間線與待辦由上面各域的檢視推導，不另存
-        const timeline = buildAdminTimeline({ order, ...detail, facts: await selectTimelineFacts(db, orderId) });
+        const timeline = buildAdminTimeline({ order, ...detail, facts: await selectTimelineFacts(db, orderId, { loadShipmentEvents: false }) });
         return ok({ ...order, ...detail, notes: await selectOrderNotes(db, orderId), timeline });
       });
     },

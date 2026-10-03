@@ -27,7 +27,7 @@ const EVENT_TEXT: Record<TimelineKind, (event: TimelineEvent, customer: boolean)
   shipment_return_received: (event) => `物流退回收到 ${count(event.quantity)}`,
   shipment_return_inspected: (event) => `物流退回檢查完成（${count(event.quantity)}）`,
   refund_registered: (event, customer) => `退款登記 ${twd(event.amountTwd)}（${(customer ? customerRefundReasonLabel(event.detail) : refundReasonLabel(event.detail ?? ""))}）`,
-  refund_failed: (event) => `退款明確失敗 ${twd(event.amountTwd)}`,
+  refund_failed: (event) => `退款曾明確失敗（第一次）${twd(event.amountTwd)}`,
   refund_succeeded: (event) => `退款已退回 ${twd(event.amountTwd)}`,
   invoice_issued: (event) => `發票已開立 ${twd(event.amountTwd)}`,
   allowance_issued: (event) => `折讓完成 ${twd(event.amountTwd)}`,

@@ -124,7 +124,7 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const returnBatches = await selectReturnBatches(db, order.id, await readEffectiveNow(db, clock.now()));
       const detail = { payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], invoices: invoices.get(order.id) ?? [], cancellations, returns, losses, shipmentReturns };
       // 時間線與進度由上面各域的檢視推導，不另存；只多查各域檢視沒帶的事實時間
-      const timeline = buildCustomerTimeline({ order, ...detail, facts: await selectTimelineFacts(db, order.id) });
+      const timeline = buildCustomerTimeline({ order, ...detail, facts: await selectTimelineFacts(db, order.id, { loadShipmentEvents: true }) });
       return ok({ ...order, ...detail, returnBatches, timeline });
     },
 

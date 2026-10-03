@@ -152,12 +152,22 @@ export interface TimelineSource {
 
 const sum = <T>(items: T[], pick: (item: T) => number): number => items.reduce((total, item) => total + pick(item), 0);
 
-/** 依時間、種類順序、來源編號排序（同時間的次序固定）；同一個 id 的事件只留一筆。 */
+/** 依時間、種類順序、來源編號排序（同時間的次序固定）。事件 id 由來源保證唯一，不在這裡去重（重複代表來源重複讀取，應讓測試失敗）。 */
 function sortEvents(events: TimelineEvent[]): TimelineEvent[] {
-  const unique = new Map(events.map((event) => [event.id, event]));
-  return [...unique.values()].sort(
+  return [...events].sort(
     (a, b) => a.at - b.at || KIND_RANK.get(a.kind)! - KIND_RANK.get(b.kind)! || a.refId - b.refId || a.id.localeCompare(b.id),
   );
+}
+
+/**
+ * 只留紀錄、不改進度的物流回報（見 `shipments/events.ts`）：發生在實際送達之後，或在確認遺失、登記物流退回之後的失敗與再次配送回報，
+ * 不是業務事件；送達之前的失敗與再次配送照常列出。
+ */
+function isRecordOnly(event: { shipmentId: number; occurredAt: number }, source: TimelineSource): boolean {
+  const shipment = source.order.shipments.find((candidate) => candidate.id === event.shipmentId);
+  if (shipment?.deliveredAt != null && event.occurredAt > shipment.deliveredAt) return true;
+  if (source.losses.some((loss) => loss.shipmentId === event.shipmentId && event.occurredAt > loss.confirmedAt)) return true;
+  return source.shipmentReturns.some((sentBack) => sentBack.shipmentId === event.shipmentId && sentBack.status !== "not_received" && event.occurredAt > sentBack.declaredAt);
 }
 
 function collectEvents(source: TimelineSource, admin: boolean): TimelineEvent[] {
@@ -176,10 +186,13 @@ function collectEvents(source: TimelineSource, admin: boolean): TimelineEvent[] 
   for (const shipment of source.order.shipments) {
     const quantity = sum(shipment.items, (item) => item.quantity);
     add("shipment_dispatched", shipment.id, shipment.shippedAt, { quantity });
+    // 已送達以實際送達時間為準（部分遺失的批次進度是 lost、仍可能已送達）
     add("shipment_delivered", shipment.id, shipment.deliveredAt, { quantity: sum(shipment.items, (item) => item.quantity - item.lostQuantity - item.returnedQuantity) });
   }
-  for (const event of source.facts.shipmentEvents) {
-    if (event.kind === "delivered") continue;
+  // 物流回報：管理員檢視的批次已帶回報（facts 不重查），顧客檢視由 facts 補；兩者只會有一邊有資料
+  const reports = [...source.facts.shipmentEvents, ...source.order.shipments.flatMap((shipment) => shipment.events.map((event) => ({ id: event.id, shipmentId: shipment.id, kind: event.kind, occurredAt: event.occurredAt })))];
+  for (const event of reports) {
+    if (event.kind === "delivered" || isRecordOnly(event, source)) continue;
     add(event.kind === "delivery_failed" ? "shipment_delivery_failed" : "shipment_redelivery", event.id, event.occurredAt, { detail: `shipment:${event.shipmentId}` });
   }
   for (const request of source.cancellations) {
@@ -217,7 +230,7 @@ function buildProgress(source: TimelineSource, admin: boolean): TimelineProgress
   const quantities = {
     ordered: sum(lines, (line) => line.quantity),
     dispatched: sum(lines, (line) => line.shippedQuantity),
-    delivered: sum(shipments.filter((shipment) => shipment.deliveryStatus === "delivered"), (shipment) => sum(shipment.items, (item) => item.quantity - item.lostQuantity - item.returnedQuantity)),
+    delivered: sum(shipments.filter((shipment) => shipment.deliveredAt !== null), (shipment) => sum(shipment.items, (item) => item.quantity - item.lostQuantity - item.returnedQuantity)),
     cancelled: sum(lines, (line) => line.cancelledQuantity),
     pendingCancellation: sum(lines, (line) => line.pendingCancellationQuantity),
     returned: sum(lines, (line) => line.returnedQuantity),
