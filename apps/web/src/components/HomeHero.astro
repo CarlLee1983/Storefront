@@ -255,7 +255,8 @@ interface Props {
     border-top: 1px solid var(--color-border);
     background: var(--color-surface);
   }
-  .hero-controls[hidden] { display: none; }
+  /* 這些元素的 display 由下面的規則設定，會蓋過 UA 的 [hidden]；腳本用 hidden 切換它們，要明確收起 */
+  .hero-controls[hidden], .hero-nav-btn[hidden], .hero-toggle span[hidden] { display: none; }
 
   .hero-pagination {
     display: flex;

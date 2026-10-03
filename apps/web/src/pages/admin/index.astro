@@ -15,6 +15,13 @@ let listingError = "";
 let stockFailureVariantId: number | undefined;
 const LISTING_FAILED = "操作失敗，請稍後再試";
 
+/** 清單操作成功後回到同一份清單：保留搜尋、篩選與頁碼，只換掉成功訊息。 */
+function savedUrl(saved: string) {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  params.set("saved", saved);
+  return `/admin?${params}`;
+}
+
 /** 清單上按鈕（上下架、精選）的失敗：未授權交給頁面回 403，其餘顯示在清單上方。 */
 function failListingAction(result: { reason: string; fields?: Record<string, string[]> }) {
   if (result.reason === "unauthorized") unauthorized = true;
@@ -33,17 +40,17 @@ if (Astro.request.method === "POST") {
     const { action, id } = dispatch;
     const result =
       action === "unlist" ? await env.APP.unlistProduct(jwt, { id }) : await env.APP.relistProduct(jwt, { id });
-    if (result.ok) return Astro.redirect(`/admin?saved=${action}`, 303);
+    if (result.ok) return Astro.redirect(savedUrl(action), 303);
     failListingAction(result);
   } else if (dispatch.kind === "featured") {
     // 清單上的精選切換
     const result = await env.APP.setProductFeatured(jwt, { id: dispatch.id, featured: dispatch.featured });
-    if (result.ok) return Astro.redirect(`/admin?saved=${dispatch.featured ? FEATURE_INTENT : UNFEATURE_INTENT}`, 303);
+    if (result.ok) return Astro.redirect(savedUrl(dispatch.featured ? FEATURE_INTENT : UNFEATURE_INTENT), 303);
     failListingAction(result);
   } else if (dispatch.kind === "stock") {
     // 清單上的庫存調整（增減量）
     const result = await env.APP.adjustStock(jwt, dispatch.input);
-    if (result.ok) return Astro.redirect("/admin?saved=stock", 303);
+    if (result.ok) return Astro.redirect(savedUrl("stock"), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else {
       const described = describeFailure(result, LISTING_FAILED);
@@ -103,6 +110,7 @@ const paginatedProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, 
 
 function paginationUrl(p: number) {
   const params = new URLSearchParams(Astro.url.searchParams);
+  params.delete("saved");
   if (p <= 1) params.delete("page");
   else params.set("page", String(p));
   const qs = params.toString();
@@ -117,7 +125,7 @@ function paginationUrl(p: number) {
     ) : (
       <>
         <div class="admin-toolbar">
-          <a class="button-create" href="/admin/products/new">＋ 新增商品</a>
+          <a class="button-create" href="/admin/products/new"><span aria-hidden="true">＋ </span>新增商品</a>
         </div>
         {savedMessage && <p role="status">{savedMessage}</p>}
         {listingError && <p id="listing-error" class="error" role="alert">{listingError}</p>}
@@ -158,7 +166,7 @@ function paginationUrl(p: number) {
         {products?.ok && products.data.length === 0 && (
           <div class="admin-empty-state">
             <p>目前還沒有任何商品。</p>
-            <a class="button-create" href="/admin/products/new">＋ 建立第一件商品</a>
+            <a class="button-create" href="/admin/products/new"><span aria-hidden="true">＋ </span>建立第一件商品</a>
           </div>
         )}
         {products?.ok && products.data.length > 0 && filteredProducts.length === 0 && (

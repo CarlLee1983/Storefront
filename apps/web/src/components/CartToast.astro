@@ -20,8 +20,9 @@
     animation: toast-enter var(--duration-normal) var(--ease-spring);
   }
   @keyframes toast-enter {
-    from { transform: translateY(1rem) scale(0.95); opacity: 0; }
-    to { transform: translateY(0) scale(1); opacity: 1; }
+    /* 只動位移與縮放：狀態文字不能用淡入，淡入期間對比會低於 AA（見 homepage-toast.spec.ts） */
+    from { transform: translateY(1rem) scale(0.95); }
+    to { transform: translateY(0) scale(1); }
   }
   @media (prefers-reduced-motion: reduce) { .cart-status:not(:empty) { animation: none; } }
 </style>
