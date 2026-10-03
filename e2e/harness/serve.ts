@@ -119,7 +119,8 @@ async function waitForGateway(gateway: Subprocess): Promise<void> {
 // 殺整個群組（process.kill(-pid)）才收得乾淨。所以一 spawn 就要登記，任何後續失敗都走 stopAll。
 const children: Subprocess[] = [];
 function spawnWorker(cmd: string[], cwd: string): Subprocess {
-  const child = Bun.spawn(cmd, { cwd, stdout: "inherit", stderr: "inherit", detached: true });
+  // X_LOCAL_EXPLORER：夾具（customer-fixture.ts）依賴 wrangler dev 的 Local Explorer 實驗端點，明確開啟而不靠預設值；關閉遙測避免測試連外
+  const child = Bun.spawn(cmd, { cwd, stdout: "inherit", stderr: "inherit", detached: true, env: { ...process.env, X_LOCAL_EXPLORER: "true", WRANGLER_SEND_METRICS: "false" } });
   children.push(child);
   return child;
 }

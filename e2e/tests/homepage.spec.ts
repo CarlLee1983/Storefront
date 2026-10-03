@@ -165,7 +165,7 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await expect(heroStatus(page)).toHaveText("2 / 3");
   await expect(slides.nth(0)).toHaveJSProperty("inert", true);
   await expect(slides.nth(1)).not.toHaveJSProperty("inert", true);
-  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => Math.round(track.scrollLeft / track.clientWidth))).toBe(1);
+  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => track.scrollLeft - track.clientWidth)).toBeCloseTo(0, 1);
   await carousel.getByRole("button", { name: "上一張" }).focus();
   await page.keyboard.press("Enter");
   await expect(heroStatus(page)).toHaveText("1 / 3");
@@ -241,7 +241,7 @@ test("減少動態效果時主視覺不自動輪播、不顯示暫停按鈕", as
   // 手動切換仍可用，而且沒有轉場：下一張立即到位
   await carousel.getByRole("button", { name: "下一張" }).click();
   await expect(heroStatus(page)).toHaveText("2 / 3");
-  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => Math.round(track.scrollLeft / track.clientWidth))).toBe(1);
+  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => track.scrollLeft - track.clientWidth)).toBeCloseTo(0, 1);
 });
 
 test.describe("沒有 JavaScript", () => {

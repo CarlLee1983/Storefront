@@ -33,16 +33,16 @@ export interface SeedProduct {
 
 /** 表單 POST 要帶同源的 Origin（Astro 的 CSRF 檢查）；不跟隨轉址，成功是 303。 */
 async function post(request: APIRequestContext, path: string, form: Record<string, string>) {
-  const response = await request.post(path, { form, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
+  const response = await request.post(path, { form, headers: { origin: BASE_URL }, maxRedirects: 0 });
   expect(response.status(), `${path} ${JSON.stringify(form)}`).toBe(303);
 }
 
 /**
- * 下架一件商品（測試收尾用）。收尾請求常在長時間閒置之後才送出，此時 keep-alive 連線可能剛被伺服器關閉而 ECONNRESET
- * （請求尚未送達伺服器，重送安全）；只對這種網路層錯誤重試，不重試 HTTP 回應。
+ * 下架一件商品（測試收尾用，下架是冪等的）。收尾請求常在長時間閒置之後才送出，此時 keep-alive 連線可能剛被伺服器關閉而 ECONNRESET
+ * （多半發生在請求送達前）；只對這種網路層錯誤重試（maxRetries），不重試 HTTP 回應。只有冪等請求可以這樣做，所以 `post()` 不重試。
  */
 export async function unlistProduct(request: APIRequestContext, id: number | string) {
-  await request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
+  return request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
 }
 
 /** 以管理後台的表單與上傳端點（不開瀏覽器頁面）快速建立分類與上架商品，回傳商品編號，供大量資料的 E2E 使用。 */
@@ -121,5 +121,8 @@ export async function unlistProductsByPrefix(admin: APIRequestContext, prefix: s
   const html = await fetchProductListHtml(admin, { q: prefix, status: "listed" });
   const ids = html.split("<tr").filter((row) => new RegExp(`<a href="/admin/products/\\d+"[^>]*>${prefix}[^<]*</a>`).test(row) && row.includes("上架中"))
     .map((row) => /href="\/admin\/products\/(\d+)"/.exec(row)?.[1]).filter((id): id is string => id !== undefined);
-  await Promise.all(ids.map((id) => unlistProduct(admin, id)));
+  await Promise.all(ids.map(async (id) => {
+    const response = await unlistProduct(admin, id);
+    expect(response.status(), `下架商品 ${id}`).toBe(303);
+  }));
 }

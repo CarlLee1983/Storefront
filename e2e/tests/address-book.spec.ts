@@ -106,6 +106,8 @@ for (const viewport of VIEWPORTS) {
       await homeForm.getByRole("button", { name: /^儲存修改/ }).click();
       await expect(page.getByRole("status")).toHaveText("已儲存修改。");
       await page.getByRole("link", { name: `刪除：${OFFICE.name}／${OFFICE.address}` }).click();
+      // 點連結後頁面還在導覽：等確認頁出現再量測，否則 evaluate 會落在換頁空檔
+      await expect(page.getByRole("button", { name: `確認刪除：${OFFICE.name}／${OFFICE.address}` })).toBeVisible();
       await assertAccessibleLayout(page, viewport.width);
       await page.getByRole("button", { name: `確認刪除：${OFFICE.name}／${OFFICE.address}` }).click();
       await expect(page.getByRole("status")).toHaveText("已刪除地址。");

@@ -57,6 +57,8 @@ test("桌機商品表格容納 32 件商品，操作與庫存錯誤維持可用�
     await gotoProductList(admin, PREFIX);
     await expect(table.locator("thead th")).toHaveText(["封面", "商品名稱", "分類", "售價", "原價", "在庫", "不可售", "保留", "可售", "狀態", "精選", "操作"]);
     await expect(table.locator("tbody tr")).toHaveCount(15);
+    const firstPage = await table.evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
+    expect(firstPage.scrollWidth, `第 1 頁（15 列）width=${firstPage.width} scrollWidth=${firstPage.scrollWidth}`).toBeLessThanOrEqual(firstPage.width);
     await expect(admin.getByRole("navigation", { name: "商品列表分頁" })).toBeVisible();
     await admin.goto(`/admin?q=${encodeURIComponent(PREFIX)}&page=3`);
     await expect(table.locator("tbody tr")).toHaveCount(2);
@@ -202,6 +204,41 @@ test("手機商品卡片可完成庫存、上下架與精選操作，768px 回�
     await admin.screenshot({ path: "/tmp/storefront-admin-products-768.png", fullPage: true });
   } finally {
     await unlistProductsByPrefix(context.request, "手機卡片");
+    await context.close();
+  }
+});
+
+test("清單操作成功後保留搜尋、狀態篩選與頁碼", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const PRESERVE = "保留篩選";
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport: { width: 1280, height: 900 } });
+  const admin = await context.newPage();
+  try {
+    await seedListedProducts(context, { slug: "admin-preserve", name: "保留篩選分類", description: "清單操作保留篩選" },
+      Array.from({ length: 17 }, (_, index) => ({ name: `${PRESERVE}${String(index).padStart(2, "0")}`, priceTwd: 100, stock: 1 })));
+    const url = `/admin?q=${encodeURIComponent(PRESERVE)}&status=listed&page=2`;
+    await admin.goto(url);
+    const table = admin.getByRole("region", { name: "管理資料表" });
+    await expect(table.locator("tbody tr")).toHaveCount(2);
+    const expectPreserved = async (saved: string) => {
+      const current = new URL(admin.url());
+      expect(current.pathname).toBe("/admin");
+      expect(Object.fromEntries(current.searchParams)).toEqual({ q: PRESERVE, status: "listed", page: "2", saved });
+    };
+    // 下架第 2 頁的一件：回到同一份清單（仍是第 2 頁），訊息顯示在上方
+    await table.locator("tbody tr").first().getByRole("button", { name: "下架", exact: true }).click();
+    await expect(admin.getByRole("status")).toHaveText("已下架商品。");
+    await expectPreserved("unlist");
+    await expect(table.locator("tbody tr")).toHaveCount(1);
+    // 庫存調整也一樣（不測精選：精選是全域名額，會干擾首頁 spec）
+    const row = table.locator("tbody tr").first();
+    await row.getByLabel(/的庫存增減量/).fill("+1");
+    await row.getByLabel(/的庫存調整原因/).fill("E2E 補貨");
+    await row.getByRole("button", { name: "調整庫存" }).click();
+    await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
+    await expectPreserved("stock");
+  } finally {
+    await unlistProductsByPrefix(context.request, PRESERVE);
     await context.close();
   }
 });

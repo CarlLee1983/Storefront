@@ -9,6 +9,9 @@ const D1_RAW_URL = `${BASE_URL}/cdn-cgi/local/explorer/api/d1/database/DB/raw`;
  * 對 E2E 專用的 App D1 執行 SQL，只用來安排顧客等前置資料，斷言一律走畫面。
  * 經受測伺服器自己的 Local Explorer 端點寫入，不從別的行程直接開 SQLite 檔：外部行程的寫入會與 workerd 內的
  * 查詢爭用檔案鎖，讓伺服器的 D1 查詢以 internal error 失敗、夾具本身也會 SQLITE_BUSY；從行程內寫入就沒有跨行程爭用。
+ * 依賴兩件事（wrangler 升級時先檢查）：(1) Local Explorer 是實驗功能，serve.ts 以 X_LOCAL_EXPLORER=true 明確開啟，端點路徑與回應格式可能改變；
+ * (2) URL 裡的 D1 識別 `DB` 是 App 的 D1 binding 名稱（Local Explorer 以 `database_id ?? binding` 當 namespace，
+ * 這個 repo 的 wrangler.jsonc 沒有設 database_id，所以是 binding 名稱；若之後設了 database_id，這裡要跟著改）。
  * 維持同步（用 curl）：夾具在測試裡是同步呼叫，且一次呼叫的多個語句在同一個請求內依序執行。
  */
 export function writeFixture(sql: string): void {
