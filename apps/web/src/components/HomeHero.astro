@@ -107,6 +107,12 @@ interface Props {
     let focusWithin = false;
     let timer: number | undefined;
     let settle: number | undefined;
+    // 程式觸發的導覽正在捲向的張；捲到才清除，使用者自己操作捲動軌道時也立刻清除，逾時保底
+    let pendingTarget: number | undefined;
+    let pendingTimer: number | undefined;
+    // 最新一次導覽是否已下達捲動：等圖片解碼期間，上一趟捲動的 scrollend 不能拿來校正張數
+    let scrollIssued = false;
+    const supportsScrollEnd = "onscrollend" in window;
 
     const slides = [...track.children] as HTMLElement[];
     let navigation = 0;
@@ -145,11 +151,18 @@ interface Props {
 
     const goTo = async (next: number) => {
       const ticket = ++navigation;
+      scrollIssued = false;
       showIndex(next);
       sync();
       // 圖片最多等 1.5 秒，網路太慢時寧可先切過去
       await Promise.race([warm(next), new Promise((resolve) => window.setTimeout(resolve, 1500))]);
       if (ticket !== navigation) return;
+      // 程式觸發的捲動途中，scroll 事件的暫停（settle）不能依目前位置覆寫張數：慢裝置上捲動會停頓超過 settle 時間
+      pendingTarget = next;
+      scrollIssued = true;
+      window.clearTimeout(pendingTimer);
+      // 有 scrollend 的瀏覽器由它收尾；沒有的才用逾時保底（逾時以真實時間，不是捲動是否完成）
+      if (!supportsScrollEnd) pendingTimer = window.setTimeout(() => { pendingTarget = undefined; }, 2000);
       track.scrollTo({ left: next * track.clientWidth, behavior: reduced.matches ? "auto" : "smooth" });
     };
 
@@ -184,7 +197,20 @@ interface Props {
     });
 
     // 使用者以捲動或觸控滑動換張時，等捲動停下來再更新張數，避免平滑捲動途中閃過中間幾張
+    const releaseNavigation = () => { pendingTarget = undefined; window.clearTimeout(pendingTimer); };
+    for (const type of ["pointerdown", "wheel", "touchstart", "keydown"]) track.addEventListener(type, releaseNavigation, { passive: true });
+    // 捲動真正停下來：程式導覽結束（或被打斷），以停下的位置為準校正張數
+    track.addEventListener("scrollend", () => {
+      if (pendingTarget === undefined || !scrollIssued) return;
+      releaseNavigation();
+      showIndex(indexFromScroll(track.scrollLeft, track.clientWidth, count));
+    });
     track.addEventListener("scroll", () => {
+      if (pendingTarget !== undefined) {
+        window.clearTimeout(settle);
+        if (Math.abs(track.scrollLeft - pendingTarget * track.clientWidth) < 1) releaseNavigation();
+        return;
+      }
       window.clearTimeout(settle);
       settle = window.setTimeout(() => showIndex(indexFromScroll(track.scrollLeft, track.clientWidth, count)), 120);
     });

@@ -300,6 +300,6 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
   .related h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); font-weight: 700; }
   @media (min-width: 56.25rem) {
     .product-detail { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-8); }
-    .product-information { position: sticky; top: calc(var(--space-8) + 40px); }
+    .product-information { position: sticky; top: var(--site-header-offset); }
   }
 </style>

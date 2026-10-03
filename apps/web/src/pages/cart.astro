@@ -296,7 +296,7 @@ export const prerender = false;
   :global(#cart-lines .line-remove:hover) { background: var(--color-panel); color: var(--color-error); border-color: var(--color-error); }
   @media (min-width: 56.25rem) {
     .cart-layout { grid-template-columns: minmax(0, 1fr) 22rem; gap: var(--space-8); }
-    .cart-summary { position: sticky; top: calc(var(--space-8) + 40px); }
+    .cart-summary { position: sticky; top: var(--site-header-offset); }
     :global(#cart-lines .cart-line) { grid-template-columns: 100px minmax(0, 1fr) auto; }
     :global(#cart-lines .line-cover) { grid-row: 1; }
     :global(#cart-lines .line-subtotal) { grid-column: 3; grid-row: 1; }
