@@ -139,3 +139,17 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
   for (const { shipmentId, ...event } of events) byId.get(shipmentId)?.events.push(event);
   return result;
 }
+
+/**
+ * 批次配送進度的推導（SQL 運算式，外層是 `UPDATE shipments`，以 `shipments.id` 引用該批）：優先序遺失 > 物流退回 > 送達 > 失敗 > 再次配送。
+ * 物流退回只算還有效的案件（`not_received` 已結案、數量釋出，不再讓批次停在退回）。記錄物流回報與物流退回收回結案都用它重算，結果一致。
+ */
+export const derivedDeliveryStatusSql: SQL = sql`CASE
+  WHEN EXISTS (SELECT 1 FROM shipment_losses lost WHERE lost.shipment_id = shipments.id) THEN 'lost'
+  WHEN EXISTS (SELECT 1 FROM shipment_returns sent_back WHERE sent_back.shipment_id = shipments.id AND sent_back.status <> 'not_received') THEN 'returned'
+  WHEN EXISTS (SELECT 1 FROM shipment_events event WHERE event.shipment_id = shipments.id AND event.kind = 'delivered') THEN 'delivered'
+  ELSE COALESCE((
+    SELECT CASE event.kind WHEN 'delivery_failed' THEN 'delivery_failed' ELSE 'in_transit' END
+    FROM shipment_events event WHERE event.shipment_id = shipments.id ORDER BY event.occurred_at DESC, event.id DESC LIMIT 1
+  ), 'in_transit')
+END`;

@@ -21,7 +21,7 @@ export interface ShipmentReturnItemView {
   /** 檢查結果：良品轉可售、損壞品隔離的數量；尚未檢查為 null。 */
   sellableQuantity: number | null;
   damagedQuantity: number | null;
-  /** 按原實付單價的商品款小計（登記退回的數量）。 */
+  /** 按原實付單價的商品款小計：收回前是登記退回的數量，收回後是實際收到的數量（完成時即實際退款的商品款）。 */
   amountTwd: number;
 }
 
@@ -101,7 +101,7 @@ async function selectViews(db: DrizzleD1Database, where: SQL | undefined, limit?
       receivedFoundLostQuantity: shipmentReturnItems.receivedFoundLostQuantity,
       sellableQuantity: shipmentReturnItems.sellableQuantity,
       damagedQuantity: shipmentReturnItems.damagedQuantity,
-      amountTwd: sql<number>`${shipmentReturnItems.quantity} * ${orderLines.unitPriceTwd}`,
+      amountTwd: sql<number>`COALESCE(${shipmentReturnItems.receivedQuantity}, ${shipmentReturnItems.quantity}) * ${orderLines.unitPriceTwd}`,
     })
     .from(shipmentReturnItems)
     .innerJoin(orderLines, eq(orderLines.id, shipmentReturnItems.orderLineId))

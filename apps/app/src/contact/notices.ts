@@ -113,7 +113,7 @@ export function insertDeliveredNotice(shipmentId: number): SQL {
       '送達時間：' || strftime('%Y-%m-%d %H:%M', shipments.delivered_at / 1000, 'unixepoch', '+8 hours') || '（台灣時間）。' ||
       CASE WHEN EXISTS (SELECT 1 FROM shipment_loss_items WHERE loss_id IN (SELECT id FROM shipment_losses WHERE shipment_id = shipments.id))
         THEN '這一批另有商品經物流確認遺失，已另行通知退款事宜，上面只列實際送達的數量。' ELSE '' END ||
-      CASE WHEN EXISTS (SELECT 1 FROM shipment_returns WHERE shipment_id = shipments.id)
+      CASE WHEN EXISTS (SELECT 1 FROM shipment_returns WHERE shipment_id = shipments.id AND status <> 'not_received')
         THEN '這一批另有商品被物流退回倉庫，已另行通知，上面只列實際送達的數量。' ELSE '' END ||
       '送達隔日起 7 天內可在訂單頁自助申請退貨。各批出貨進度請至訂單頁查看。',
       'shipment_delivered:' || shipments.id, ${effectiveNow}
@@ -275,7 +275,10 @@ export function insertShipmentReturnDeclaredNotice(returnId: number | SQL): SQL 
     INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
     SELECT orders.customer_id, 'shipment_return_declared', '訂單 #' || orders.id || ' 有商品被物流退回倉庫',
       '訂單 #' || orders.id || ' 有商品因配送異常被物流退回倉庫：' || ${shipmentReturnItemsText} || '。' ||
-      '商品實際收到並檢查後會退款，退款金額與進度會另行通知；這些商品不會從這張訂單補寄，如需再購買請重新下單。',
+      CASE WHEN EXISTS (SELECT 1 FROM shipment_return_items WHERE return_id = sr.id AND quantity > 0)
+        THEN '商品實際收到並檢查後會退款，退款金額與進度會另行通知；'
+        ELSE '這些是先前確認遺失並已退款的商品，入倉後不會再退款；' END ||
+      '這些商品不會從這張訂單補寄，如需再購買請重新下單。',
       'shipment_return:' || sr.id || ':declared', ${effectiveNow}
     FROM shipment_returns sr JOIN orders ON orders.id = sr.order_id
     WHERE sr.id = ${returnId}

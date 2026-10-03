@@ -353,6 +353,117 @@ describe("物流退回：與物流回報的先後與批次結局", () => {
   });
 });
 
+describe("物流退回：未收到結案後批次進度重算", () => {
+  it("登記、未收到結案、之後送達：進度是已送達，送達信不含退回字樣、列全部數量", async () => {
+    const { cookie, orderId, mugLine, mugA } = await shippedInBatches();
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 0 }]);
+    expect(await adminShipment(orderId, mugA)).toMatchObject({ deliveryStatus: "in_transit" });
+
+    expect(await reportAfter(orderId, mugA, "ev-d", "delivered", 30)).toMatchObject({ ok: true, data: { deliveryStatus: "delivered" } });
+
+    const body = await bodyOf(cookie, "shipment_delivered");
+    expect(body).toContain("× 2");
+    expect(body).not.toContain("退回");
+  });
+
+  it("未收到結案後的配送失敗會寄信、進度是配送失敗", async () => {
+    const { cookie, orderId, mugLine, mugA } = await shippedInBatches();
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 0 }]);
+
+    expect(await reportAfter(orderId, mugA, "ev-f", "delivery_failed", 30)).toMatchObject({ ok: true, data: { deliveryStatus: "delivery_failed" } });
+
+    expect((await mailOf(cookie)).filter((message) => message.kind === "shipment_delivery_failed")).toHaveLength(1);
+    expect((await adminShipment(orderId, mugA)).events).toMatchObject([{ eventKey: "ev-f", noticeExpected: true, noticeMessageId: expect.any(Number) }]);
+  });
+
+  it("未收到結案後同批的其餘數量仍可再登記，進度回到退回", async () => {
+    const { orderId, mugLine, mugA } = await shippedInBatches();
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 0 }]);
+
+    await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+
+    expect(await adminShipment(orderId, mugA)).toMatchObject({ deliveryStatus: "returned" });
+  });
+});
+
+describe("物流退回：占用的邊界（跨批與部分收回）", () => {
+  it("該批已遺失的數量加本次超過該批數量被擋（批次層）", async () => {
+    const { mugLine, mugA } = await shippedInBatches();
+    await confirmLossOk(mugA, [{ orderLineId: mugLine.id, quantity: 1 }]);
+
+    expect(await declareReturn(mugA, [{ orderLineId: mugLine.id, quantity: 2 }])).toEqual({ ok: false, reason: "return_quantity_exceeded" });
+    expect(await declareReturn(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toMatchObject({ ok: true });
+  });
+
+  it("別批的遺失與退貨占用合計用完明細數量時，這一批即使批次層有空間也被擋（明細層）", async () => {
+    const { cookie, orderId, mugLine, mugA, mugB } = await shippedInBatches();
+    await confirmLossOk(mugB, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    await requestReturnOk(cookie, orderId, [{ orderLineId: mugLine.id, quantity: 2 }]);
+
+    expect(await declareReturn(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toEqual({ ok: false, reason: "return_quantity_exceeded" });
+  });
+
+  it("別批的物流退回與退貨占用合計用完明細數量時，確認這一批遺失被擋（明細層）", async () => {
+    const { cookie, orderId, mugLine, mugA, mugB } = await shippedInBatches();
+    await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await requestReturnOk(cookie, orderId, [{ orderLineId: mugLine.id, quantity: 1 }]);
+
+    expect(await confirmLoss(mugB, [{ orderLineId: mugLine.id, quantity: 1 }])).toEqual({ ok: false, reason: "loss_quantity_exceeded" });
+  });
+
+  it("部分收回後只占用實際收到的數量：同批與跨批的新登記、遺失用掉釋出的部分才成功，再多就被擋", async () => {
+    const { mugLine, mugA, mugB } = await shippedInBatches();
+    await confirmLossOk(mugB, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 1 }]);
+
+    // 已遺失 1、收回 1：明細還剩 1，批次 A 也剩 1
+    expect(await declareReturn(mugA, [{ orderLineId: mugLine.id, quantity: 2 }])).toEqual({ ok: false, reason: "return_quantity_exceeded" });
+    expect(await declareReturn(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toMatchObject({ ok: true });
+    expect(await confirmLoss(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toEqual({ ok: false, reason: "loss_quantity_exceeded" });
+  });
+
+  it("部分收回後釋出的數量可以確認遺失", async () => {
+    const { mugLine, mugA } = await shippedInBatches();
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 1 }]);
+
+    expect(await confirmLoss(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toMatchObject({ ok: true });
+    expect(await confirmLoss(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toEqual({ ok: false, reason: "loss_quantity_exceeded" });
+  });
+});
+
+describe("物流退回：庫存轉換只成立一次", () => {
+  it("並行收回（同內容）：入庫與流水只成立一次，兩邊都回成功", async () => {
+    const { tableVariantId, tableLine, table } = await shippedInBatches();
+    const before = await stockDetail(tableVariantId);
+    const returnId = await declareReturnOk(table, [{ orderLineId: tableLine.id, quantity: 1 }]);
+
+    const results = await Promise.all([0, 1].map(() => receiveShipmentReturn(returnId, [{ orderLineId: tableLine.id, receivedQuantity: 1 }])));
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await stockDetail(tableVariantId)).toMatchObject({ onHand: before.onHand + 1, unavailable: before.unavailable + 1 });
+    expect((await movementsOf(tableVariantId)).filter((movement) => movement.kind === "shipment_return_received")).toHaveLength(1);
+  });
+
+  it("已完成的案件同內容重送檢查：庫存數字與流水都不再變動", async () => {
+    const { mugVariantId, mugLine, mugA } = await shippedInBatches();
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 2 }]);
+    const items = [{ orderLineId: mugLine.id, sellableQuantity: 1, damagedQuantity: 1 }];
+    await inspectShipmentReturn(returnId, items);
+    const after = await stockDetail(mugVariantId);
+
+    expect(await inspectShipmentReturn(returnId, items)).toMatchObject({ ok: true, data: { replayed: true } });
+
+    expect(await stockDetail(mugVariantId)).toEqual(after);
+    expect((await movementsOf(mugVariantId)).filter((movement) => movement.kind === "shipment_return_inspected")).toHaveLength(1);
+  });
+});
+
 describe("物流退回：數量與退貨、遺失互斥", () => {
   it("明細不在這一批、超過該批數量、已被占用的數量都被擋下；不存在的批次回 shipment_not_found", async () => {
     const { mugLine, tableLine, mugA, mugB } = await shippedInBatches();
@@ -532,6 +643,31 @@ describe("物流退回：權限與輸入", () => {
     expect(await app.declareShipmentReturn(jwt, { shipmentId: table, returnKey: "k", items: [{ orderLineId: 1, quantity: 0 }] })).toMatchObject({ ok: false, reason: "invalid_input" });
     expect(await app.recordShipmentReturnReceipt(jwt, { returnId: 999999, items: [{ orderLineId: 1, receivedQuantity: 1 }] })).toEqual({ ok: false, reason: "shipment_return_not_found" });
     expect(await app.recordShipmentReturnInspection(jwt, { returnId: 999999, items: [{ orderLineId: 1, sellableQuantity: 1, damagedQuantity: 0 }] })).toEqual({ ok: false, reason: "shipment_return_not_found" });
+  });
+
+  it("顧客檢視在收回並檢查完成後，仍不含管理員備註與操作人", async () => {
+    const { cookie, orderId, mugLine, mugA } = await shippedInBatches();
+    const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 1 }], "外箱破損");
+    await inspectShipmentReturn(returnId, [{ orderLineId: mugLine.id, sellableQuantity: 1, damagedQuantity: 0 }], "品相良好");
+
+    const mine = await app.getMyOrder(cookie, { orderId });
+
+    expect(mine.ok && mine.data.shipmentReturns).toMatchObject([{ status: "completed" }]);
+    const view = mine.ok ? mine.data.shipmentReturns[0]! : {};
+    for (const key of ["note", "actor", "returnKey", "receivedBy", "inspectedBy", "receiptNote", "inspectionNote"]) expect(view, key).not.toHaveProperty(key);
+    expect((await adminOrder(orderId)).shipmentReturns).toMatchObject([{ receivedBy: "admin@example.com", inspectedBy: "admin@example.com", receiptNote: "外箱破損", inspectionNote: "品相良好" }]);
+  });
+
+  it("只有尋回品的登記通知不承諾退款", async () => {
+    const { cookie, mugLine, mugA } = await shippedInBatches();
+    await confirmLossOk(mugA, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 0, foundLostQuantity: 1 }]);
+
+    const body = await bodyOf(cookie, "shipment_return_declared");
+
+    expect(body).not.toContain("檢查後會退款");
+    expect(body).toContain("不會再退款");
   });
 
   it("收回與檢查要依序：退回中不能檢查，已收回不能再登記收回成別的數字", async () => {

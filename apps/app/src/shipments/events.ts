@@ -3,6 +3,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { insertDeliveredNotice, insertDeliveryFailedNotice } from "../contact/notices";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
+import { derivedDeliveryStatusSql } from "./queries";
 import type { DeliveryStatus, ShipmentEventKind } from "./schema";
 
 export interface ShipmentEventRequest {
@@ -27,7 +28,7 @@ export type ShipmentEventResult =
  * 進度與實際送達時間一律由全部事件推導，不看到達順序，所以延遲、重送、亂序都不會偽造送達或破壞已確定的進度：
  * - 管理員已確認遺失（`shipment_losses`，見 `shipments/loss.ts`）的批次是 `lost`，優先於所有回報：確認時款項已退、數量已不可再退貨，所以確認之後才到的送達、失敗、再次配送回報只留紀錄
  *   （不改進度、不寄通知；送達回報仍記錄實際送達時間，但遺失的數量不因此回到可退貨或可交付）；確認遺失只看批次有沒有實際送達時間（`delivered_at`）：部分遺失之後才送達的批次，進度仍是 `lost`，但已送達，不能再確認遺失；其餘（未遺失）的數量照常寄送達通知，全數遺失的批次不寄。
- * - 其次，管理員登記物流退回（`shipment_returns`，見 `shipment-returns/declare.ts`）的批次是 `returned`，同樣優先於送達、失敗與再次配送回報（優先序：遺失 > 物流退回 > 送達 > 失敗 > 再次配送）：
+ * - 其次，管理員登記物流退回（`shipment_returns`，見 `shipment-returns/declare.ts`；收回結案為 `not_received` 的不算，批次進度重算）的批次是 `returned`，同樣優先於送達、失敗與再次配送回報（優先序：遺失 > 物流退回 > 送達 > 失敗 > 再次配送）：
  *   登記時批次尚未送達，之後才到的回報只留紀錄、不改進度、不寄通知；送達回報仍記錄實際送達時間（已送達的批次不能再登記物流退回），其餘（未退回）的數量照常寄送達通知，全數退回的批次不寄。
  * - 其餘，只要有送達回報就是已送達（終點），實際送達時間取發生最早的一筆；之後才到的失敗、再次配送回報只留紀錄。
  * - 尚未送達時，依發生時間最新的一筆決定：配送失敗 → `delivery_failed`；再次配送或沒有回報 → `in_transit`。
@@ -56,15 +57,7 @@ export async function recordShipmentEvent(
     sql`
       UPDATE shipments SET
         delivered_at = (SELECT MIN(event.occurred_at) FROM shipment_events event WHERE event.shipment_id = shipments.id AND event.kind = 'delivered'),
-        delivery_status = CASE
-          WHEN EXISTS (SELECT 1 FROM shipment_losses lost WHERE lost.shipment_id = shipments.id) THEN 'lost'
-          WHEN EXISTS (SELECT 1 FROM shipment_returns sent_back WHERE sent_back.shipment_id = shipments.id) THEN 'returned'
-          WHEN EXISTS (SELECT 1 FROM shipment_events event WHERE event.shipment_id = shipments.id AND event.kind = 'delivered') THEN 'delivered'
-          ELSE COALESCE((
-            SELECT CASE event.kind WHEN 'delivery_failed' THEN 'delivery_failed' ELSE 'in_transit' END
-            FROM shipment_events event WHERE event.shipment_id = shipments.id ORDER BY event.occurred_at DESC, event.id DESC LIMIT 1
-          ), 'in_transit')
-        END
+        delivery_status = ${derivedDeliveryStatusSql}
       WHERE id = ${shipmentId}
     `,
     insertDeliveredNotice(shipmentId),

@@ -54,6 +54,30 @@ describe("並行：實物事件只成立一次", () => {
     expect((await movements(mugVariantId)).filter((movement) => movement.kind === "return_received")).toMatchObject([{ delta: winner, unavailableAfter: winner }]);
   });
 
+  it("並行收回（同內容）：入庫與流水只成立一次，兩邊都回成功", async () => {
+    const { mugVariantId, mugLine, requestId } = await receivedMugs(3);
+    const before = await stockDetail(mugVariantId);
+
+    const results = await Promise.all([0, 1].map(() => receiveReturn(requestId, [{ orderLineId: mugLine.id, receivedQuantity: 3 }])));
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await stockDetail(mugVariantId)).toMatchObject({ onHand: before.onHand + 3, unavailable: 3 });
+    expect((await movements(mugVariantId)).filter((movement) => movement.kind === "return_received")).toHaveLength(1);
+  });
+
+  it("已完成的案件同內容重送檢查：庫存數字與流水都不再變動", async () => {
+    const { mugVariantId, mugLine, requestId } = await receivedMugs(3);
+    await receiveReturn(requestId, [{ orderLineId: mugLine.id, receivedQuantity: 3 }]);
+    const items = [{ orderLineId: mugLine.id, sellableQuantity: 2, damagedQuantity: 1 }];
+    await inspectReturn(requestId, items);
+    const after = await stockDetail(mugVariantId);
+
+    expect(await inspectReturn(requestId, items)).toMatchObject({ ok: true, data: { replayed: true } });
+
+    expect(await stockDetail(mugVariantId)).toEqual(after);
+    expect((await movements(mugVariantId)).filter((movement) => movement.kind === "return_inspected")).toHaveLength(1);
+  });
+
   it("並行檢查（不同結果）：只有一個成立，轉可售與退款各只一次，不可售等於成立結果的損壞數", async () => {
     const { mugVariantId, mugLine, orderId, requestId } = await receivedMugs(3);
     await receiveReturn(requestId, [{ orderLineId: mugLine.id, receivedQuantity: 3 }]);

@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
+import { derivedDeliveryStatusSql } from "../shipments/queries";
 import { receiveIntoStock, type StockReturnCase } from "../stock/conversion";
 import type { RecordShipmentReturnReceiptInput } from "./input";
 import { shipmentReturnItems, shipmentReturns, type ShipmentReturnStatus } from "./schema";
@@ -16,6 +17,7 @@ export type RecordShipmentReturnReceiptResult =
  * 管理員記錄一案物流退回的收回（ADR 0006，與顧客退貨同一套庫存轉換，見 `stock/conversion.ts`）：收到實物才增加實體在庫與不可售（待檢，不可販售）。單一 batch，同成同敗：
  * 1. 退回中 → 已收回（一件都沒收到則為「未收到」結案，不動庫存，占用的數量釋出）；每筆明細都要填實際收到的數量與其中尋回的遺失品數量，各不超過登記的數量。
  * 2. 寫各明細實際收到的數量（只在還沒記錄時）。
+ * 未收到結案時同 batch 重算該批配送進度（不再停在退回）。
  * 3. 實體在庫與不可售各加收到的總數（含尋回的遺失品）、4. 寫庫存流水 `shipment_return_received`：只在這案還沒有收回流水時執行，所以同內容重送不會重複入庫。
  * 收回只記實物，不動款項；款項在檢查完成時登記（`shipment-returns/inspect.ts`）。未收到的尋回遺失品仍算遺失，之後還可以再登記尋回。
  * 狀態不是退回中（且不是同內容的重送）回 `shipment_return_wrong_state`，明細與登記對不上或超過登記數量回 `shipment_return_item_invalid`。
@@ -73,6 +75,11 @@ export async function recordShipmentReturnReceipt(
         received_found_lost_quantity = (SELECT json_extract(item.value, '$.receivedFoundLostQuantity') FROM json_each(${itemsJson}) item WHERE json_extract(item.value, '$.orderLineId') = shipment_return_items.order_line_id)
       WHERE return_id = ${returnId} AND received_quantity IS NULL
         AND EXISTS (SELECT 1 FROM shipment_returns WHERE id = ${returnId} AND status IN ('received', 'not_received'))
+    `,
+    // 一件都沒收到而結案：不再有有效的物流退回，該批進度依其餘事實重算（與記錄物流回報同一個推導）
+    sql`
+      UPDATE shipments SET delivery_status = ${derivedDeliveryStatusSql}
+      WHERE id = (SELECT shipment_id FROM shipment_returns WHERE id = ${returnId}) AND EXISTS (SELECT 1 FROM shipment_returns WHERE id = ${returnId} AND status = 'not_received')
     `,
     ...receiveIntoStock(stockCase, actor, reason),
   ]);
