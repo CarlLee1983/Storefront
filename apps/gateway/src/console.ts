@@ -3,6 +3,7 @@ import type { Clock } from "./clock";
 import { escapeHtml, htmlResponse } from "./html";
 import { failure, safeEqual } from "./http";
 import type { GatewayConfig } from "./config";
+import { readInvoiceConsole, toggleInvoiceControl } from "./invoices";
 import { effectiveStatus, findPayment, makeDb, toggleFailNextRefund } from "./payments";
 import { deliveries, events, payments, refunds } from "./schema";
 import { deliverEvent } from "./webhooks";
@@ -84,10 +85,19 @@ async function renderConsole(env: Env, clock: Clock): Promise<Response> {
 </section>`;
   });
 
-  return htmlResponse(`<h1>模擬金流閘道主控頁</h1>\n${sections.join("\n") || "<p>還沒有付款。</p>"}`, "主控頁");
+  const invoice = await readInvoiceConsole(env);
+  const invoiceItems = invoice.recent.map((row) => `<li><code>${escapeHtml(row.invoiceKey)}</code> ${escapeHtml(row.invoiceNumber)} NT$ ${escapeHtml(row.amountTwd)}（訂單參考 ${escapeHtml(row.merchantReference)}，${formatTime(row.issuedAt)}）</li>`).join("\n");
+  const invoiceSection = `<section>
+<h2>模擬發票</h2>
+<form method="post" action="/console/invoices/toggle-failure">下一次開立發票失敗：${invoice.failNext ? "是" : "否"} <button type="submit">切換</button></form>
+<form method="post" action="/console/invoices/toggle-lost-response">下一次開立已成立但回應遺失：${invoice.loseNextResponse ? "是" : "否"} <button type="submit">切換</button></form>
+<p>最近開立的發票：</p><ul>${invoiceItems || "<li>尚無發票</li>"}</ul>
+</section>`;
+
+  return htmlResponse(`<h1>模擬金流閘道主控頁</h1>\n${sections.join("\n") || "<p>還沒有付款。</p>"}\n${invoiceSection}`, "主控頁");
 }
 
-/** GET /console、POST /console/events/:id/send、POST /console/payments/:id/toggle-refund-failure。 */
+/** GET /console、POST /console/events/:id/send、POST /console/payments/:id/toggle-refund-failure、POST /console/invoices/toggle-failure、POST /console/invoices/toggle-lost-response。 */
 export async function handleConsole(
   request: Request,
   pathname: string,
@@ -97,8 +107,9 @@ export async function handleConsole(
 ): Promise<Response | undefined> {
   const send = /^\/console\/events\/([A-Za-z0-9_]+)\/send$/.exec(pathname);
   const toggle = /^\/console\/payments\/([A-Za-z0-9_]+)\/toggle-refund-failure$/.exec(pathname);
+  const invoiceToggle = /^\/console\/invoices\/(toggle-failure|toggle-lost-response)$/.exec(pathname);
   const isList = request.method === "GET" && pathname === "/console";
-  if (!isList && !((send || toggle) && request.method === "POST")) return undefined;
+  if (!isList && !((send || toggle || invoiceToggle) && request.method === "POST")) return undefined;
 
   if (!(await hasBasicKey(request, config.apiKey))) return challenge();
   if (isList) return renderConsole(env, clock);
@@ -107,6 +118,11 @@ export async function handleConsole(
   const origin = request.headers.get("Origin");
   if (origin !== null && origin !== new URL(request.url).origin) {
     return failure(403, "forbidden_origin", "不接受跨站來源的請求");
+  }
+
+  if (invoiceToggle) {
+    await toggleInvoiceControl(env, invoiceToggle[1] === "toggle-failure" ? "failNext" : "loseNextResponse");
+    return new Response(null, { status: 303, headers: { Location: "/console" } });
   }
 
   const db = makeDb(env);

@@ -1,4 +1,5 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const payments = sqliteTable("payments", {
   id: text("id").primaryKey(),
@@ -61,3 +62,35 @@ export const refunds = sqliteTable("refunds", {
   status: text("status", { enum: ["succeeded", "failed"] }).notNull(),
   createdAt: integer("created_at").notNull(),
 });
+
+/**
+ * 模擬發票：以呼叫端給的 `invoice_key` 為冪等鍵，同一個鍵重送回同一張發票（同金額），不會重複開立。
+ * 發票號碼由閘道的自增編號推得，開立之後不再改變；只演練一般個人消費發票，沒有統編、載具或捐贈。
+ */
+export const invoices = sqliteTable(
+  "invoices",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    invoiceKey: text("invoice_key").notNull(),
+    merchantReference: text("merchant_reference").notNull(),
+    /** 原額，新台幣整數元。 */
+    amountTwd: integer("amount_twd").notNull(),
+    invoiceNumber: text("invoice_number").notNull(),
+    issuedAt: integer("issued_at").notNull(),
+  },
+  (table) => [uniqueIndex("invoices_invoice_key_uidx").on(table.invoiceKey)],
+);
+
+/**
+ * 模擬發票服務的演練控制，單列表（`id` 恆為 1，沒有這一列等於一切正常）：
+ * `fail_next` 為 1 時下一次開立明確失敗（不開立、旗標用完即清）；`lose_next_response` 為 1 時下一次開立已成立、但回應遺失（回 504，呼叫端須查證）。
+ */
+export const invoiceControls = sqliteTable(
+  "invoice_controls",
+  {
+    id: integer("id").primaryKey(),
+    failNext: integer("fail_next").notNull().default(0),
+    loseNextResponse: integer("lose_next_response").notNull().default(0),
+  },
+  (table) => [check("invoice_controls_check", sql`${table.id} = 1 AND ${table.failNext} IN (0, 1) AND ${table.loseNextResponse} IN (0, 1)`)],
+);

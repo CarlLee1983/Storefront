@@ -1,4 +1,5 @@
 import { cancelPayment, createPayment, getPayment, getRefund, refundPayment } from "./api";
+import { getInvoice, issueInvoice } from "./invoices";
 import { type Clock, systemClock } from "./clock";
 import { handleConsole } from "./console";
 import { type GatewayConfig, readConfig } from "./config";
@@ -17,6 +18,8 @@ const routes = {
   cancelPayment: route("POST", `/v1/payments/${PAYMENT_ID}/cancel`),
   refundPayment: route("POST", `/v1/payments/${PAYMENT_ID}/refunds`),
   getRefund: route("GET", `/v1/payments/${PAYMENT_ID}/refunds/([A-Za-z0-9_-]+)`),
+  issueInvoice: route("POST", "/v1/invoices"),
+  getInvoice: route("GET", "/v1/invoices/([A-Za-z0-9_-]+)"),
   showPayPage: route("GET", `/pay/${PAYMENT_ID}`),
   submitPayPage: route("POST", `/pay/${PAYMENT_ID}`),
 };
@@ -34,6 +37,9 @@ async function handleApi(request: Request, pathname: string, env: Env, clock: Cl
   if (refund) return refundPayment(refund[0]!, request, env, clock);
   const lookup = routes.getRefund(request, pathname);
   if (lookup) return getRefund(lookup[0]!, lookup[1]!, env);
+  if (routes.issueInvoice(request, pathname)) return issueInvoice(request, env, clock);
+  const invoice = routes.getInvoice(request, pathname);
+  if (invoice) return getInvoice(invoice[0]!, env);
   return undefined;
 }
 
