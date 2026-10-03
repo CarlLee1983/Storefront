@@ -159,13 +159,13 @@ interface Props {
       if (ticket !== navigation) return;
       // 程式觸發的捲動途中，scroll 事件的暫停（settle）不能依目前位置覆寫張數：慢裝置上捲動會停頓超過 settle 時間
       scrollIssued = true;
-      // 已經在目標位置就不會有 scroll／scrollend，不設 pendingTarget 才不會卡住
-      if (Math.abs(track.scrollLeft - next * track.clientWidth) < 1) return;
-      pendingTarget = next;
+      // 已經在目標位置就不會有 scroll／scrollend，不設 pendingTarget 才不會卡住；仍下 scrollTo 以中斷進行中的平滑捲動
+      const atTarget = Math.abs(track.scrollLeft - next * track.clientWidth) < 1;
+      pendingTarget = atTarget ? undefined : next;
       window.clearTimeout(pendingTimer);
       // 有 scrollend 的瀏覽器由它收尾；沒有的才用逾時保底（逾時以真實時間，不是捲動是否完成）
-      if (!supportsScrollEnd) pendingTimer = window.setTimeout(() => { pendingTarget = undefined; }, 2000);
-      track.scrollTo({ left: next * track.clientWidth, behavior: reduced.matches ? "auto" : "smooth" });
+      if (!atTarget && !supportsScrollEnd) pendingTimer = window.setTimeout(() => { pendingTarget = undefined; }, 2000);
+      track.scrollTo({ left: next * track.clientWidth, behavior: reduced.matches || atTarget ? "auto" : "smooth" });
     };
 
     // 自動輪播只在：沒被使用者暫停、滑鼠與焦點都不在輪播內、沒有要求減少動態效果、分頁可見時進行
