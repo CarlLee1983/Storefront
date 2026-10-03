@@ -74,6 +74,7 @@ const RPC_METHODS = [
   "scheduled",
   "scrapUnavailableStock",
   "setCategoryImage",
+  "setLowStockThreshold",
   "setMailDeliveryFailure",
   "setProductFeatured",
   "setProductOptions",

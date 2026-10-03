@@ -2,12 +2,13 @@ import { toNumber, toText } from "../shared/form-values";
 import { compareAtPriceFromInput, deliveryTypeFromInput, parseProductId, stockAdjustFormToInput } from "./product-form";
 
 /** 變體管理表單的 intent；商品編輯頁的表單用這組值區分要做什麼（沒有 intent 就是儲存商品基本資訊）。 */
-export const VARIANT_INTENTS = ["set-options", "create-variant", "update-variant", "discontinue-variant", "resume-variant", "adjust-variant-stock"] as const;
+export const VARIANT_INTENTS = ["set-options", "create-variant", "update-variant", "set-low-stock", "discontinue-variant", "resume-variant", "adjust-variant-stock"] as const;
 
 export type VariantFormDispatch =
   | { kind: "set-options"; input: { id: number; optionNames: string[]; defaultVariantValues?: string[] } }
   | { kind: "create-variant"; input: { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number; deliveryType?: string; lowStockThreshold?: number } }
   | { kind: "update-variant"; input: { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null; deliveryType?: string; lowStockThreshold?: number | null } }
+  | { kind: "set-low-stock"; input: { variantId: number; lowStockThreshold: number | null } }
   | { kind: "discontinue"; input: { variantId: number; discontinued: boolean } }
   | { kind: "adjust-stock"; input: ReturnType<typeof stockAdjustFormToInput> }
   | { kind: "invalid" };
@@ -81,6 +82,7 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
       },
     };
   }
+  if (intent === "set-low-stock") return { kind: "set-low-stock", input: { variantId, lowStockThreshold: lowStockThresholdFromInput(form.get("lowStockThreshold")) ?? null } };
   if (intent === "discontinue-variant" || intent === "resume-variant") return { kind: "discontinue", input: { variantId, discontinued: intent === "discontinue-variant" } };
   if (intent === "adjust-variant-stock") return { kind: "adjust-stock", input: stockAdjustFormToInput(form, variantId) };
   return { kind: "invalid" };

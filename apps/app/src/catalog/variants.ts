@@ -147,3 +147,14 @@ export async function setVariantDiscontinued(
     .where(eq(productVariants.id, variantId)).returning({ id: productVariants.id });
   return updated ? ok({ id: updated.id }) : fail("variant_not_found");
 }
+
+/** 只改低庫存門檻（null = 不提醒）；不碰價格等其他欄位，所以沒有選項的商品的門檻表單不會把舊價寫回。 */
+export async function setLowStockThreshold(
+  db: DrizzleD1Database,
+  variantId: number,
+  lowStockThreshold: number | null,
+): Promise<{ ok: true; data: { id: number } } | VariantNotFound> {
+  const [updated] = await db.update(productVariants).set({ lowStockThreshold })
+    .where(eq(productVariants.id, variantId)).returning({ id: productVariants.id });
+  return updated ? ok({ id: updated.id }) : fail("variant_not_found");
+}

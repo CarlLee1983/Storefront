@@ -10,17 +10,13 @@ import { createOptionListing } from "./variant-helpers";
 const app = exports.default;
 
 async function setThreshold(variantId: number, lowStockThreshold: number | null) {
-  const jwt = await mintAccessJwt();
-  const listed = await app.listProductsForAdmin(jwt);
-  if (!listed.ok) throw new Error("讀取商品失敗");
-  const variant = listed.data.flatMap((product) => product.variants).find((candidate) => candidate.id === variantId)!;
-  return app.updateVariant(jwt, { variantId, optionValues: variant.optionValues, priceTwd: variant.priceTwd, lowStockThreshold });
+  return app.setLowStockThreshold(await mintAccessJwt(), { variantId, lowStockThreshold });
 }
 
 async function lowStock() {
   const result = await app.listLowStockVariants(await mintAccessJwt());
   if (!result.ok) throw new Error(`讀取低庫存失敗：${result.reason}`);
-  return result.data;
+  return result.data.items;
 }
 
 describe("低庫存提醒", () => {
@@ -123,6 +119,55 @@ describe("低庫存提醒", () => {
   it("沒有管理員身分不能讀低庫存清單，也不能設門檻", async () => {
     const { variantId } = await createStockedListing("馬克杯", 320, 1);
     expect(await app.listLowStockVariants("not-a-jwt")).toMatchObject({ ok: false, reason: "unauthorized" });
+    expect(await app.setLowStockThreshold("not-a-jwt", { variantId, lowStockThreshold: 3 })).toMatchObject({ ok: false, reason: "unauthorized" });
     expect(await app.updateVariant("not-a-jwt", { variantId, optionValues: [], priceTwd: 320, lowStockThreshold: 3 })).toMatchObject({ ok: false, reason: "unauthorized" });
+  });
+
+  it("只設門檻不動價格：先改價再單獨送門檻，價格不會被改回", async () => {
+    const jwt = await mintAccessJwt();
+    const { productId, variantId } = await createStockedListing("馬克杯", 320, 1);
+    await app.updateProduct(jwt, { id: productId, name: "馬克杯", description: "說明", priceTwd: 450 });
+    expect(await setThreshold(variantId, 3)).toMatchObject({ ok: true });
+
+    expect(await app.getProductForAdmin(jwt, { id: productId })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ priceTwd: 450, lowStockThreshold: 3 })] } });
+  });
+
+  it("設定不存在的變體回 variant_not_found", async () => {
+    expect(await setThreshold(999_999, 3)).toMatchObject({ ok: false, reason: "variant_not_found" });
+  });
+
+  it("下架商品仍列入（下架期間可補貨待重新上架）", async () => {
+    const jwt = await mintAccessJwt();
+    const { productId, variantId } = await createStockedListing("馬克杯", 320, 1);
+    await setThreshold(variantId, 3);
+    await app.unlistProduct(jwt, { id: productId });
+    expect(await lowStock()).toEqual([expect.objectContaining({ variantId })]);
+  });
+
+  it("門檻 0：可售 1 不列入，賣完（可售 0）才列入", async () => {
+    const jwt = await mintAccessJwt();
+    const { variantId } = await createStockedListing("馬克杯", 320, 1);
+    await setThreshold(variantId, 0);
+    expect(await lowStock()).toEqual([]);
+
+    await app.adjustStock(jwt, { variantId, delta: -1, reason: "盤損" });
+    expect(await lowStock()).toEqual([expect.objectContaining({ variantId, available: 0 })]);
+  });
+
+  it("超過上限時只回可售最少的前 200 筆並標示 truncated", async () => {
+    const jwt = await mintAccessJwt();
+    const { productId } = await createStockedListing("馬克杯", 320, 0);
+    const listed = await app.getProductForAdmin(jwt, { id: productId });
+    if (!listed.ok) throw new Error("讀取商品失敗");
+    // 直接寫資料列補足 201 個有門檻的變體（選項值唯一即可），避免走 RPC 的二次方變慢
+    await env.DB.batch(Array.from({ length: 201 }, (_, index) =>
+      env.DB.prepare("INSERT INTO product_variants (product_id, is_default, price_twd, on_hand, option1_value, low_stock_threshold) VALUES (?, 0, 100, ?, ?, 1000)").bind(productId, index + 1, `v${index}`)));
+
+    const result = await app.listLowStockVariants(jwt);
+    if (!result.ok) throw new Error("讀取低庫存失敗");
+    expect(result.data.truncated).toBe(true);
+    expect(result.data.items).toHaveLength(200);
+    expect(result.data.items[0]!.available).toBe(1);
+    expect(result.data.items[199]!.available).toBe(200);
   });
 });

@@ -266,4 +266,7 @@ export const setShippingRateInput = z.object({
   feeTwd: wholeNumber("運費").min(0, "運費不可為負").max(MAX_SHIPPING_FEE_TWD, `運費不可超過 ${MAX_SHIPPING_FEE_TWD}`),
 });
 
+/** 只設定低庫存門檻：`null` 表示不提醒。 */
+export const setLowStockThresholdInput = z.object({ variantId, lowStockThreshold: lowStockThreshold.nullable() });
+
 export const setVariantDiscontinuedInput = z.object({ variantId, discontinued: z.boolean({ error: "停賣必須是布林值" }) });

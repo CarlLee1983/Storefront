@@ -17,16 +17,17 @@ if (!lowStock.ok) Astro.response.status = 403;
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
-        <p>販售中、已設低庫存門檻且可售數量不高於門檻的變體，可售少的在前。可售 = 在庫 − 不可售 − 保留，所以被訂單保留或待檢退貨占住的數量不算可售。補貨或盤損請在商品編輯頁調整庫存，調整後這份清單會同步更新，變動可在庫存流水依變體對回。</p>
-        {lowStock.data.length === 0 && <p>目前沒有低庫存的變體。</p>}
+        <p>未停賣（含下架商品）、已設低庫存門檻且可售數量不高於門檻的變體，可售少的在前。可售 = 在庫 − 不可售 − 保留，所以被訂單保留或待檢退貨占住的數量不算可售。補貨或盤損請在商品編輯頁調整庫存，調整後這份清單會同步更新，變動可在庫存流水依變體對回。</p>
+        {lowStock.data.truncated && <p role="status">低庫存變體超過上限，僅列出最急（可售最少）的 {lowStock.data.items.length} 筆。</p>}
+        {lowStock.data.items.length === 0 && <p>目前沒有低庫存的變體。</p>}
         {
-          lowStock.data.length > 0 && (
+          lowStock.data.items.length > 0 && (
             <div class="table-scroll admin-stock-ledger admin-low-stock" tabindex="0" role="region" aria-label="低庫存資料表"><table>
               <thead>
                 <tr><th>商品</th><th class="col-num">門檻</th><th class="col-num">在庫</th><th class="col-num">不可售</th><th class="col-num">保留</th><th class="col-num">可售</th><th>操作</th></tr>
               </thead>
               <tbody>
-                {lowStock.data.map((item) => (
+                {lowStock.data.items.map((item) => (
                   <tr>
                     <td data-label="商品"><a href={`/admin/products/${item.productId}#variant-${item.variantId}`}>{item.productName}{item.optionValues.length > 0 && `（${item.optionValues.join(" / ")}）`}</a></td>
                     <td class="col-num" data-label="門檻">{item.threshold}</td>

@@ -66,7 +66,7 @@ export const productVariants = sqliteTable("product_variants", {
    */
   deliveryType: text("delivery_type").$type<DeliveryType>().notNull().default("standard"),
   /**
-   * 低庫存門檻：販售中的變體可售數量（`catalog/stock.ts`）降到這個數量以下（含）就列入低庫存提醒；null 表示不提醒（初始值）。
+   * 低庫存門檻：未停賣（含下架商品）的變體可售數量（`catalog/stock.ts`）降到這個數量以下（含）就列入低庫存提醒；null 表示不提醒（初始值）。
    * 提醒是從可售數量與這個門檻即時推導的，沒有另存「已提醒」狀態，庫存一變動提醒就同步更新。
    */
   lowStockThreshold: integer("low_stock_threshold"),

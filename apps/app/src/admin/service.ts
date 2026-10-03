@@ -5,7 +5,7 @@ import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/querie
 import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
 import { selectLowStockVariants } from "../catalog/low-stock";
-import { createVariant, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
+import { createVariant, setLowStockThreshold, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
 import { deliverNoticeSafely } from "../contact/notify";
 import { resendMessage, selectMailForAdmin, setDeliveryFailure } from "../contact/admin";
 import { mailMessageIdInput, setMailDeliveryFailureInput } from "../contact/input";
@@ -54,7 +54,7 @@ import { recordReturnReceipt } from "../returns/receive";
 import { scrapUnavailable } from "../stock/scrap";
 import { selectApprovedWithoutRefund, selectCancellationsToReview, selectOrderCancellations } from "../cancellations/queries";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { addOrderNoteInput, adjustStockInput, scrapUnavailableInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
+import { addOrderNoteInput, adjustStockInput, scrapUnavailableInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setLowStockThresholdInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
 /** 補查一筆付款（見 `createPaymentService().reconcilePayment`）；由 entrypoint 接上，管理服務自己不碰金流閘道。 */
 export type ReconcilePayment = ReturnType<typeof createPaymentService>["reconcilePayment"];
@@ -300,6 +300,11 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, setShippingRateInput, input, async (_actor, { deliveryType, feeTwd }) => ok(await updateShippingRate(db, deliveryType, feeTwd)));
     },
 
+    /** 只設定或清除（`null`）變體的低庫存門檻，不動其他欄位。 */
+    setLowStockThreshold(jwt: unknown, input: unknown) {
+      return authorized(jwt, setLowStockThresholdInput, input, (_actor, { variantId, lowStockThreshold }) => setLowStockThreshold(db, variantId, lowStockThreshold));
+    },
+
     /** 停賣或恢復販售變體：停賣後不接受新購買，變體與歷史保留；重複操作冪等。 */
     setVariantDiscontinued(jwt: unknown, input: unknown) {
       return authorized(jwt, setVariantDiscontinuedInput, input, (_actor, { variantId, discontinued }) => setVariantDiscontinued(db, variantId, discontinued, clock.now()));
@@ -318,7 +323,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, scrapUnavailableInput, input, (actor, { variantId, quantity, reason }) => scrapUnavailable(d1, { variantId, quantity, reason, actor: actor.email }, clock.now()));
     },
 
-    /** 低庫存提醒：販售中、已設門檻且可售數量不高於門檻的變體，可售少的在前；補貨與盤損走 `adjustStock`，流水可依變體對回。 */
+    /** 低庫存提醒：未停賣（含下架商品）、已設門檻且可售數量不高於門檻的變體，可售少的在前，超過上限時 `truncated` 為 true；補貨與盤損走 `adjustStock`，流水可依變體對回。 */
     async listLowStockVariants(jwt: unknown) {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;

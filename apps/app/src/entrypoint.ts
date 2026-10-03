@@ -295,6 +295,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().setShippingRate(jwt, input);
   }
 
+  setLowStockThreshold(jwt: string, input: unknown) {
+    return this.#admin().setLowStockThreshold(jwt, input);
+  }
+
   setVariantDiscontinued(jwt: string, input: unknown) {
     return this.#admin().setVariantDiscontinued(jwt, input);
   }

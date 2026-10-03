@@ -71,4 +71,10 @@ describe("dispatchVariantForm", () => {
     expect(dispatchVariantForm(formOf({ ...created, lowStockThreshold: "" }), 7)).toEqual({ kind: "create-variant", input: { productId: 7, optionValues: ["白"], priceTwd: 800 } });
     expect(dispatchVariantForm(formOf({ ...created, lowStockThreshold: "2" }), 7)).toMatchObject({ input: { lowStockThreshold: 2 } });
   });
+
+  it("只設門檻：不帶價格，留白是不提醒", () => {
+    expect(dispatchVariantForm(formOf({ intent: "set-low-stock", variantId: "3", lowStockThreshold: "4" }), 7)).toEqual({ kind: "set-low-stock", input: { variantId: 3, lowStockThreshold: 4 } });
+    expect(dispatchVariantForm(formOf({ intent: "set-low-stock", variantId: "3", lowStockThreshold: " " }), 7)).toEqual({ kind: "set-low-stock", input: { variantId: 3, lowStockThreshold: null } });
+    expect(dispatchVariantForm(formOf({ intent: "set-low-stock", lowStockThreshold: "4" }), 7)).toEqual({ kind: "invalid" });
+  });
 });

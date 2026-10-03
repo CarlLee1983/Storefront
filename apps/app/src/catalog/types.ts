@@ -61,6 +61,6 @@ export interface AdminVariant {
   imageId: string | null;
   /** 配送類型；改它只影響之後的訂單。 */
   deliveryType: DeliveryType;
-  /** 低庫存門檻：販售中且可售數量降到這個數量以下（含）會列入低庫存提醒；null 表示不提醒。 */
+  /** 低庫存門檻：未停賣（含下架商品）且可售數量降到這個數量以下（含）會列入低庫存提醒；null 表示不提醒。 */
   lowStockThreshold: number | null;
 }
