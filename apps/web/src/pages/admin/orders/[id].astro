@@ -234,7 +234,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
             <ul class="admin-cancellations admin-returns" aria-label="退貨申請">
               {order.returns.map((request) => (
                 <li id={`return-${request.id}`}>
-                  <p><strong>申請 #{request.id}・{returnStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）</p>
+                  <p><strong>申請 #{request.id}・{returnStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）{request.selfService ? "・自助申請（在窗口內）" : "・人工受理"}</p>
                   <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}・{DELIVERY_TYPE_LABELS[item.deliveryType]}・NT$ {priceFormat.format(item.amountTwd)}{item.receivedQuantity !== null && `；實際收到 ${item.receivedQuantity}`}{item.sellableQuantity !== null && `（良品 ${item.sellableQuantity}、損壞 ${item.damagedQuantity}）`}</li>)}</ul>
                   {request.reason && <p>顧客原因：{request.reason}</p>}
                   {

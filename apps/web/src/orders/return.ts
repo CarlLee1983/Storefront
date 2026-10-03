@@ -1,4 +1,5 @@
 import { toNumber, toText } from "../shared/form-values";
+import { formatDateTime } from "./labels";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待審核",
@@ -37,16 +38,30 @@ export function returnableQuantity(line: { shippedQuantity: number; returnedQuan
 }
 
 /**
- * 申請退貨表單 → RPC 輸入。數量欄位名稱是 `return-<訂單明細編號>`，留空或 0 表示不退該明細；
- * 其餘（負數、超量、非數字）原樣交給 App 驗證。
+ * 申請退貨表單 → RPC 輸入。人工受理的數量欄位名稱是 `return-<訂單明細編號>`，自助申請（逐批）是 `return-<訂單明細編號>-<出貨批次編號>`，
+ * 留空或 0 表示不退；其餘（負數、超量、非數字）原樣交給 App 驗證。
  */
 export function returnFormToInput(form: FormData, orderId: number) {
   const items = [...form.entries()].flatMap(([key, value]) => {
-    const match = /^return-(\d+)$/.exec(key);
+    const match = /^return-(\d+)(?:-(\d+))?$/.exec(key);
     if (!match || toText(value).trim() === "" || toNumber(value) === 0) return [];
-    return [{ orderLineId: Number(match[1]), quantity: toNumber(value) }];
+    return [{ orderLineId: Number(match[1]), ...(match[2] === undefined ? {} : { shipmentId: Number(match[2]) }), quantity: toNumber(value) }];
   });
   return { orderId, requestKey: toText(form.get("requestKey")), items, reason: toText(form.get("reason")) };
+}
+
+/** App 回的一批自助窗口（`getMyOrder` 的 `returnBatches`）。 */
+export interface ReturnBatch {
+  deliveredAt: number | null;
+  windowEndsAt: number | null;
+  state: "not_delivered" | "open" | "closed";
+}
+
+/** 一批的自助退貨窗口說明：開放時說明期限，逾期與未送達都指向人工受理（不自動否決）。 */
+export function returnBatchNote(batch: ReturnBatch): string {
+  if (batch.state === "open" && batch.windowEndsAt !== null) return `可自助申請，至 ${formatDateTime(batch.windowEndsAt - 1)} 止（送達隔日起算 7 天）`;
+  if (batch.state === "closed" && batch.windowEndsAt !== null) return `已超過自助申請期限（${formatDateTime(batch.windowEndsAt - 1)}），仍可用下方人工受理申請，由客服審核`;
+  return "這批尚未送達或沒有可靠的送達日期，不能自助申請；仍可用下方人工受理申請，由客服審核";
 }
 
 /** 申請退貨失敗結果 → 頁面上顯示的訊息；`unauthorized` 由頁面另外處理（導去登入）。 */
@@ -57,6 +72,9 @@ export function describeReturnRequestFailure(result: { reason: string; fields?: 
     order_not_returnable: "這張訂單目前沒有已出貨的商品可以退貨",
     return_line_invalid: "選擇的明細不屬於這張訂單，請重新整理後再填",
     return_quantity_exceeded: "數量超過這筆明細還能退貨的數量（可能已有其他申請或已退過），請重新整理後再填",
+    return_batch_invalid: "選擇的批次不屬於這張訂單，請重新整理後再填",
+    shipment_not_delivered: "這批商品尚未送達，不能自助申請；請改用人工受理",
+    return_window_closed: "這批已超過自助申請期限，請改用人工受理，由客服審核",
     request_key_conflict: "這次提交的內容與同一份表單先前送出的不同，請重新整理頁面後再填",
   };
   return { message: messages[result.reason] ?? "申請退貨失敗，請稍後再試", fields: result.fields ?? {} };

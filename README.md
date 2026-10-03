@@ -179,7 +179,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 ### 退貨（人工受理、收回、檢查與逐案退款）
 
-依 ADR 0006、0007 與設計文件 A6、A7（Migration `0026_returns.sql`；`apps/app/src/returns/`、`stock/scrap.ts`、`payments/exit-refund.ts`）。顧客對**已交運**的明細數量提出退貨申請（人工受理入口，不依自助退貨期限擋下，期限與送達日顯示由 #118 加上；換貨走退貨退款再下單，不補寄、不補差價），管理員審核、記錄收回、記錄檢查，檢查完成才按實際收到的數量退款。實物與款項分開記錄：任何一邊失敗都不反轉另一邊已發生的事實。
+依 ADR 0006、0007 與設計文件 A6、A7（Migration `0026_returns.sql`；`apps/app/src/returns/`、`stock/scrap.ts`、`payments/exit-refund.ts`）。顧客對**已交運**的明細數量提出退貨申請（人工受理入口不依自助退貨期限擋下；逐批自助申請見下面「自助退貨窗口」；換貨走退貨退款再下單，不補寄、不補差價），管理員審核、記錄收回、記錄檢查，檢查完成才按實際收到的數量退款。實物與款項分開記錄：任何一邊失敗都不反轉另一邊已發生的事實。
 
 - 資料：`return_requests`（訂單、冪等鍵與內容指紋、進度 `pending`／`approved`／`rejected`／`received`／`not_received`／`completed`、審核／收回／檢查各自的操作人、時間與備註、檢查完成時算定的退款拆分）與 `return_request_items`（明細：申請數量、實際收到、良品、損壞品，CHECK 保證良品加損壞等於實收且不超過申請）；`refunds` 新增原因 `return` 與 `return_request_id`（一案一筆的唯一索引）；`product_variants.unavailable` 與庫存流水的不可售欄位（見「庫存」）。
 - 數量：退貨數量以「已交運且未退貨」為上限。占用（`returns/queries.ts` 的 `heldByReturnQuantity`）：待審與核准占用申請數量，收回後占用實際收到的數量（沒收到的釋出），檢查完成維持已退貨，拒絕與未收到釋出。申請（`requestReturn`）用一句條件寫入保證「占用 + 本次 ≤ 已交運」，所以重複、並行與已退過的數量被擋下。取消申請只動未交運的數量、退貨只動已交運的數量，兩者是明細數量的互斥部分，不會重複占用。
@@ -188,9 +188,10 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 金額：商品款 = 實際收到數量 × 下單時的單價快照（良品與損壞品都退；收回運費由商家負擔，不向顧客收）。某配送類型的原運費只在「該類每筆明細都全數退出（核准取消 + 完成檢查的退貨）」時退一次（`payments/exit-refund.ts`，取消核准與退貨檢查共用同一份判斷），且訂單上沒有其他已核准的取消或已完成的退貨退過該類運費；所以取消與退貨混合、任何先後順序，同類運費最多退一次，部分不退，待審、在途與待檢的數量尚未算退出。
 - 退款：與取消相同，登記在檢查完成的同一個 batch（額度共用 `withinQuotaSql`），之後才向閘道執行；退款失敗、被前筆阻擋或額度被占用都不反轉收回與庫存轉換，退款留在退款待辦（額度不足而未登記的列在 `listRefundsToHandle` 的 `unregisteredReturns`，訂單頁「重新登記退款」＝重送同一份檢查結果）。
 - 顧客：訂單頁「退貨申請」表單與紀錄（進度、審核說明、實際收到數量、退款），明細顯示「已退貨」「退貨處理中」；RPC `requestReturn`、`getMyOrder`（多回傳 `returns`）永遠限定本人。管理員：`/admin/returns`（導覽「退貨處理」，RPC `listReturnsToHandle`）列出待審、待收回、待檢查的申請與不可售庫存（含報廢表單），在訂單頁審核、記錄收回與檢查；庫存流水頁顯示在庫與不可售的增減。
-- 尚未實作：自助退貨期限與依各批送達日的判斷（#118）、物流退回與遺失（#119、#120）、發票折讓（#121、#122）；ADR 0008 仍待決。
-- 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `returns`，明細多回傳 `returnedQuantity`、`openReturnQuantity`，變體多回傳 `unavailable`，舊 Web 不受影響）。0026 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024、0025。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0026_returns.down.sql`；已有任何退貨申請、不可售數量、不可售流水或退貨退款時守門檢查讓回復失敗（收回與檢查已改變實體與不可售，舊版無法表達），須先確認可以捨棄。回復順序是 0026 → 0025 → …。
-- 測試：`apps/app/test/return-request.test.ts`（申請、占用、並行、冪等、權限與輸入、審核）、`return-flow.test.ts`（收回、檢查、報廢、可售算式、運費與取消混合）、`return-refund.test.ts`（退款失敗不反轉實物、額度占用、同單逐筆）、`returns-migration.test.ts`（遷移、約束與回復）、`e2e/tests/returns.spec.ts`（手機與桌機完整流程）。
+- 自助退貨窗口（#118，Migration `0027_return_batches.sql`；`returns/window.ts`、`returns/batches.ts`）：`requestReturn` 的明細帶 `shipmentId` 是自助申請（逐批，同一次提交要嘛全帶要嘛全不帶），不帶是人工受理。窗口以**各批**實際送達時間（`shipments.delivered_at`）計算：送達日（台北日曆日，UTC+8）的隔日為第 1 天，第 7 天 23:59:59 之後（第 8 天 00:00:00）關閉；送達當日本身可申請。窗口、該批「數量 − 該批已被自助占用」與明細層占用條件在同一句 INSERT 裡檢查，所以並行與重複申請不會超量；批次對應記在 `return_request_batches`（人工受理沒有批次列）。逾期回 `return_window_closed`、批次未送達或沒有可靠送達日（遷移補建的舊批次，不補假日期）回 `shipment_not_delivered`、批次不屬於這張訂單或不含該明細回 `return_batch_invalid`；這三種都不是否決，顧客用不帶批次的人工受理仍可申請並由客服審核。送達時間被較早的回報改寫時，期限隨之提前，只影響之後的申請（已成立的申請與同鍵重送不受影響）。`getMyOrder` 多回傳 `returnBatches`（各批窗口狀態、結束時間與各明細可自助數量），退貨申請多回傳 `selfService`；訂單頁分「依各批送達日自助申請」與「人工受理」兩個表單。批次不分開記錄實際收回數量，所以部分收回後未收到的部分在明細層釋出、該批的自助占用維持申請數量（之後走人工受理）。
+- 尚未實作：物流退回與遺失（#119、#120）、發票折讓（#121、#122）；ADR 0008 仍待決。
+- 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `returns`，明細多回傳 `returnedQuantity`、`openReturnQuantity`，變體多回傳 `unavailable`，舊 Web 不受影響；0027 只新增一張表，回復腳本 `apps/app/rollback/0027_return_batches.down.sql` 在已有批次對應時守門檢查讓回復失敗，回復順序 0027 → 0026 → …）。0026 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024、0025。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0026_returns.down.sql`；已有任何退貨申請、不可售數量、不可售流水或退貨退款時守門檢查讓回復失敗（收回與檢查已改變實體與不可售，舊版無法表達），須先確認可以捨棄。回復順序是 0026 → 0025 → …。
+- 測試：`apps/app/test/return-request.test.ts`（申請、占用、並行、冪等、權限與輸入、審核）、`return-flow.test.ts`（收回、檢查、報廢、可售算式、運費與取消混合）、`return-refund.test.ts`（退款失敗不反轉實物、額度占用、同單逐筆）、`return-self-service.test.ts`（自助窗口邊界：送達當日、第 7 天 23:59:59、第 8 天 00:00:00，台北日曆日、各批各自期限、送達時間被較早回報改寫、未送達與無送達日、批次數量與並行、冪等、權限）、`returns-migration.test.ts`（遷移、約束與回復，含 0027）、`e2e/tests/returns.spec.ts`（手機與桌機完整流程）、`e2e/tests/return-self-service.spec.ts`（未送達只有人工受理、送達後自助申請、管理員看到自助申請、顧客隔離）。
 
 ## 模擬金流閘道
 

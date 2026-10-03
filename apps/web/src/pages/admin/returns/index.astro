@@ -60,7 +60,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <tbody>
               {listing.data.returns.map((request) => (
                 <tr>
-                  <td data-label="申請">#{request.id}<br />{returnStatusLabel(request.status)}<br />{formatDateTime(request.requestedAt)}</td>
+                  <td data-label="申請">#{request.id}<br />{returnStatusLabel(request.status)}<br />{formatDateTime(request.requestedAt)}<br />{request.selfService ? "自助申請" : "人工受理"}</td>
                   <td data-label="訂單"><a href={`/admin/orders/${request.orderId}#return-${request.id}`}>#{request.orderId}（前往處理）</a></td>
                   <td data-label="顧客">{request.customerEmail}</td>
                   <td data-label="退貨明細">

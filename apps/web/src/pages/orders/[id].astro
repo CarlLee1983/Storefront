@@ -8,7 +8,7 @@ import OrderLines from "../../orders/OrderLines.astro";
 import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
 import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
-import { customerReturnNote, describeReturnRequestFailure, returnFormToInput, returnStatusLabel, returnableQuantity } from "../../orders/return";
+import { customerReturnNote, describeReturnRequestFailure, returnBatchNote, returnFormToInput, returnStatusLabel, returnableQuantity } from "../../orders/return";
 import { formToRecord } from "../../shared/form-values";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
@@ -24,7 +24,8 @@ if (entry.kind === "redirect") {
 const orderId = parseOrderId(Astro.params.id);
 const cookie = Astro.request.headers.get("cookie") ?? "";
 
-// POST 有三種：申請取消已付款未交運的數量（intent=request-cancellation）、申請退貨已交運的數量（intent=request-return），或取消待付款訂單。
+// POST 有四種：申請取消已付款未交運的數量（intent=request-cancellation）、申請退貨已交運的數量（人工受理 intent=request-return，
+// 逐批自助 intent=request-self-service-return），或取消待付款訂單。
 // 取消訂單：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
 // 讓顧客看到最新狀態；進行中的付款處理不了（閘道連不上等）回本頁並帶上原因，訂單維持待付款。找不到訂單則落到下面顯示 404
 let cancellationFailure: ReturnType<typeof describeCancellationFailure> | undefined;
@@ -38,7 +39,7 @@ if (orderId !== null && Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/orders/${orderId}?cancellation=requested`, 303);
     if (result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
     if (result.reason !== "order_not_found") cancellationFailure = describeCancellationFailure(result);
-  } else if (form.get("intent") === "request-return") {
+  } else if (form.get("intent") === "request-return" || form.get("intent") === "request-self-service-return") {
     submitted = formToRecord(form);
     const result = await env.APP.requestReturn(cookie, returnFormToInput(form, orderId));
     if (result.ok) return Astro.redirect(`/orders/${orderId}?return=requested`, 303);
@@ -70,12 +71,16 @@ const cancellationRequested = Astro.url.searchParams.get("cancellation") === "re
 // 兩個申請表單各自只回填自己送出的內容與冪等鍵
 const cancelSubmitted = submitted.intent === "request-cancellation" ? submitted : {};
 const returnSubmitted = submitted.intent === "request-return" ? submitted : {};
+const selfServiceSubmitted = submitted.intent === "request-self-service-return" ? submitted : {};
 const requestKey = cancelSubmitted.requestKey || crypto.randomUUID();
 const returnKey = returnSubmitted.requestKey || crypto.randomUUID();
+const selfServiceKey = selfServiceSubmitted.requestKey || crypto.randomUUID();
 const canRequestCancellation = (order?.status === "paid" || order?.status === "partially_shipped") && order.lines.some((line) => cancellableQuantity(line) > 0);
 const returnRequested = Astro.url.searchParams.get("return") === "requested";
 const canRequestReturn = (order?.status === "partially_shipped" || order?.status === "shipped") && order.lines.some((line) => returnableQuantity(line) > 0);
 const returnFieldErrors = returnFailure?.fields.items ?? [];
+const returnBatches = order?.returnBatches ?? [];
+const hasSelfServiceQuantity = returnBatches.some((batch) => batch.items.some((item) => item.selfServiceQuantity > 0));
 const cancellationFieldErrors = cancellationFailure?.fields.items ?? [];
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
@@ -171,8 +176,42 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <section class="order-detail-section" aria-labelledby="return-title">
               <h2 id="return-title">退貨申請</h2>
               {returnFailure && <p class="error" role="alert">{returnFailure.message}{Object.values(returnFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+              {canRequestReturn && returnBatches.length > 0 && (
+                <div class="return-batches">
+                  <h3>依各批送達日自助申請</h3>
+                  <p class="cancellation-hint">每一批從實際送達的隔天起算 7 天內可以自助申請；不同批的期限各自計算。逾期、送達日不明或商品有瑕疵時，請用下方的人工受理，客服會審核，不會因為逾期就直接拒絕。</p>
+                  {hasSelfServiceQuantity ? (
+                    <form method="post" class="cancellation-form return-form" onsubmit="return confirm('確定要申請退貨嗎？核准後請依客服指示寄回商品，我們收到並檢查後才會退款。')">
+                      <input type="hidden" name="intent" value="request-self-service-return" />
+                      <input type="hidden" name="requestKey" value={selfServiceKey} />
+                      {returnBatches.map((batch, index) => (
+                        <fieldset>
+                          <legend>第 {index + 1} 批{batch.deliveredAt !== null && `（${formatDateTime(batch.deliveredAt)} 送達）`}</legend>
+                          <p class="cancellation-hint">{returnBatchNote(batch)}</p>
+                          {batch.items.filter((item) => item.selfServiceQuantity > 0).map((item) => (
+                            <label>
+                              <span>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}・本批可自助退貨 {item.selfServiceQuantity}</span>
+                              <input type="number" inputmode="numeric" name={`return-${item.orderLineId}-${batch.shipmentId}`} min="0" max={item.selfServiceQuantity} step="1" value={selfServiceSubmitted[`return-${item.orderLineId}-${batch.shipmentId}`] ?? ""} />
+                            </label>
+                          ))}
+                        </fieldset>
+                      ))}
+                      <label>
+                        退貨原因（選填）
+                        <input name="reason" maxlength="200" value={selfServiceSubmitted.reason ?? ""} />
+                      </label>
+                      <button type="submit" class="button-secondary">送出自助退貨</button>
+                    </form>
+                  ) : (
+                    <ul class="cancellation-list" aria-label="各批自助退貨期限">
+                      {returnBatches.map((batch, index) => <li>第 {index + 1} 批：{returnBatchNote(batch)}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
               {canRequestReturn && (
                 <form method="post" class="cancellation-form return-form" onsubmit="return confirm('確定要申請退貨嗎？核准後請依客服指示寄回商品，我們收到並檢查後才會退款。')">
+                  <h3>人工受理（逾期、送達日不明或商品有瑕疵）</h3>
                   <input type="hidden" name="intent" value="request-return" />
                   <input type="hidden" name="requestKey" value={returnKey} />
                   <fieldset>
