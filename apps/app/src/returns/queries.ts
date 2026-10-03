@@ -16,6 +16,14 @@ export function heldByReturnQuantity(orderLineId: SQL): SQL<number> {
   return sql<number>`COALESCE((SELECT SUM(CASE WHEN held_request.status IN ('pending', 'approved') THEN held.quantity ELSE COALESCE(held.received_quantity, 0) END) FROM return_request_items held JOIN return_requests held_request ON held_request.id = held.request_id WHERE held.order_line_id = ${orderLineId} AND held_request.status IN ('pending', 'approved', 'received', 'completed')), 0)`;
 }
 
+/**
+ * 某批某筆明細被自助退貨占用的數量（`return_request_batches`）：待審、核准、已收回、已完成的申請都算（拒絕與未收到釋出）。
+ * 批次沒有分開記錄實際收到的數量，所以部分收回後未收到的部分在明細層釋出（`heldByReturnQuantity`），但該批的自助占用維持申請數量，之後走人工受理。
+ */
+export function heldByReturnBatchQuantity(orderLineId: SQL, shipmentId: SQL): SQL<number> {
+  return sql<number>`COALESCE((SELECT SUM(held_batch.quantity) FROM return_request_batches held_batch JOIN return_requests held_batch_request ON held_batch_request.id = held_batch.request_id WHERE held_batch.order_line_id = ${orderLineId} AND held_batch.shipment_id = ${shipmentId} AND held_batch_request.status IN ('pending', 'approved', 'received', 'completed')), 0)`;
+}
+
 /** 某筆訂單明細已完成收回檢查的退貨數量（實際收到並檢查完成）；與核准取消合稱「退出履約」，見 `payments/exit-refund.ts`。 */
 export function completedReturnedQuantity(orderLineId: SQL): SQL<number> {
   return sql<number>`COALESCE((SELECT SUM(returned.received_quantity) FROM return_request_items returned JOIN return_requests returned_request ON returned_request.id = returned.request_id WHERE returned.order_line_id = ${orderLineId} AND returned_request.status = 'completed'), 0)`;
@@ -67,6 +75,8 @@ export interface ReturnView {
   shippingTwd: number | null;
   /** 檢查完成後登記的退款；尚未登記為 null。 */
   refund: { id: number; amountTwd: number; status: RefundStatus } | null;
+  /** 這案是自助申請（逐批在窗口內）；否則是人工受理入口。 */
+  selfService: boolean;
   items: ReturnItemView[];
 }
 
@@ -99,6 +109,7 @@ async function selectViews(db: DrizzleD1Database, where: SQL | undefined, limit?
       goodsTwd: returnRequests.goodsTwd,
       standardShippingTwd: returnRequests.standardShippingTwd,
       largeShippingTwd: returnRequests.largeShippingTwd,
+      selfService: sql<boolean>`EXISTS (SELECT 1 FROM return_request_batches WHERE return_request_batches.request_id = ${returnRequests.id})`.mapWith(Boolean),
       customerEmail: user.email,
       refundId: refunds.id,
       refundAmountTwd: refunds.amountTwd,

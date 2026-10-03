@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { orderLines, orders } from "../orders/schema";
+import { shipments } from "../shipments/schema";
 
 /**
  * 退貨申請的進度：待審 → 核准或拒絕；核准後管理員記錄收回（`received`，或一件都沒收到而 `not_received` 結案），
@@ -81,5 +82,26 @@ export const returnRequestItems = sqliteTable(
       "return_request_items_inspection_check",
       sql`(${table.sellableQuantity} IS NULL) = (${table.damagedQuantity} IS NULL) AND (${table.sellableQuantity} IS NULL OR (${table.sellableQuantity} >= 0 AND ${table.damagedQuantity} >= 0 AND ${table.sellableQuantity} + ${table.damagedQuantity} = ${table.receivedQuantity}))`,
     ),
+  ],
+);
+
+/**
+ * 自助退貨的批次對應（#118）：自助申請的數量逐批判斷期限，所以每筆明細的申請數量要記到是哪一批的（`shipment_id`），
+ * 同一明細同一批最多一列；各批的自助占用 = 這些列在待審、核准、已收回、已完成的申請上的加總（批次不超過該批交運數量，見 `returns/queries.ts` 的 `heldByReturnBatchQuantity`）。
+ * 人工受理的申請沒有批次列，不受期限限制；明細層的總量上限仍由 `return_request_items` 的占用條件把關。
+ */
+export const returnRequestBatches = sqliteTable(
+  "return_request_batches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    requestId: integer("request_id").notNull().references(() => returnRequests.id),
+    orderLineId: integer("order_line_id").notNull().references(() => orderLines.id),
+    shipmentId: integer("shipment_id").notNull().references(() => shipments.id),
+    quantity: integer("quantity").notNull(),
+  },
+  (table) => [
+    uniqueIndex("return_request_batches_request_line_shipment_uidx").on(table.requestId, table.orderLineId, table.shipmentId),
+    index("return_request_batches_shipment_idx").on(table.shipmentId, table.orderLineId),
+    check("return_request_batches_quantity_check", sql`${table.quantity} > 0`),
   ],
 );

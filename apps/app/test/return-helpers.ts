@@ -28,7 +28,7 @@ export async function stockDetail(variantId: number): Promise<{ onHand: number; 
 }
 
 /** 顧客申請退貨；`key` 不給就用新的冪等鍵。回傳 RPC 結果原樣。 */
-export function requestReturn(cookie: string, orderId: number, items: { orderLineId: number; quantity: number }[], extra: Record<string, unknown> = {}) {
+export function requestReturn(cookie: string, orderId: number, items: { orderLineId: number; shipmentId?: number; quantity: number }[], extra: Record<string, unknown> = {}) {
   return app.requestReturn(cookie, { orderId, requestKey: newKey(), items, ...extra });
 }
 

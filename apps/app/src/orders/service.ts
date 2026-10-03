@@ -6,6 +6,7 @@ import { requestCancellationInput } from "../cancellations/input";
 import { selectMyCancellations } from "../cancellations/queries";
 import { requestCancellation } from "../cancellations/request";
 import { requestReturnInput } from "../returns/input";
+import { selectReturnBatches } from "../returns/batches";
 import { selectMyReturns } from "../returns/queries";
 import { requestReturn } from "../returns/request";
 import { deliverNoticeSafely } from "../contact/notify";
@@ -111,11 +112,13 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const refunds = await selectRefundSummaries(db, customerId, order.id);
       const cancellations = await selectMyCancellations(db, customerId, order.id);
       const returns = await selectMyReturns(db, customerId, order.id);
-      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns });
+      const returnBatches = await selectReturnBatches(db, order.id, clock.now());
+      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns, returnBatches });
     },
 
     /**
-     * 申請退貨自己已交運的指定數量（人工受理入口，不依自助退貨期限擋下）。別人的或不存在的訂單一律 `order_not_found`；
+     * 申請退貨自己已交運的指定數量。明細不帶 `shipmentId` 是人工受理入口，不依自助退貨期限擋下；帶 `shipmentId`（逐批）是自助申請，
+     * 該批尚未送達（含沒有可靠送達日）回 `shipment_not_delivered`、已過送達隔日起算 7 天（台北日曆日）回 `return_window_closed`、批次不屬於這張訂單或不含該明細回 `return_batch_invalid`。別人的或不存在的訂單一律 `order_not_found`；
      * 訂單還沒有任何已交運數量回 `order_not_returnable`，明細不屬於這張訂單回 `return_line_invalid`，
      * 數量超過「已交運且未被其他退貨占用」的數量回 `return_quantity_exceeded`（含同一明細重複申請、已退過），同鍵不同內容回 `request_key_conflict`。
      * 審核、收回、檢查與退款由管理員接手（見管理 RPC `decideReturn`、`recordReturnReceipt`、`recordReturnInspection`）。

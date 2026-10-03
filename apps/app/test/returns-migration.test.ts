@@ -1,11 +1,14 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
+import rollback0027Sql from "../rollback/0027_return_batches.down.sql?raw";
 import rollbackSql from "../rollback/0026_returns.down.sql?raw";
 
 const db = env.MIGRATION_DB;
 const THROUGH_0025 = 26;
-const rollbackStatements = () => rollbackSql.split("--> statement-breakpoint").map((statement) => db.prepare(statement));
+const splitStatements = (sql: string) => sql.split("--> statement-breakpoint").map((statement) => db.prepare(statement));
+// 回復順序由新到舊：0027（批次對應表）先於 0026
+const rollbackStatements = () => [...splitStatements(rollback0027Sql), ...splitStatements(rollbackSql)];
 const rows = async (query: string) => (await db.prepare(query).all()).results;
 
 /** 每個測試從空白資料庫開始（遷移會改結構，整個砍掉重來）。 */
@@ -116,4 +119,25 @@ it("已有退貨申請、不可售數量或不可售流水時，回復的守門�
   await db.prepare("INSERT INTO return_requests (order_id, request_key, request_hash, requested_at) VALUES (1, 'k', 'h', 1)").run();
   await expect(db.batch(rollbackStatements())).rejects.toThrow();
   expect(await rows("SELECT count(*) AS n FROM return_requests")).toEqual([{ n: 1 }]);
+});
+
+it("0027 的批次對應表：同一申請同明細同批只能一列、數量大於 0；有批次對應時回復被守門檢查擋下，清空後可回復", async () => {
+  await seed0025();
+  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await db.batch([
+    db.prepare("INSERT INTO order_lines (id, order_id, product_id, variant_id, product_name, quantity, unit_price_twd) VALUES (1, 1, 1, 1, 'x', 3, 100)"),
+    db.prepare("INSERT INTO shipments (id, order_id, dispatch_key, actor, delivery_status, delivered_at) VALUES (1, 1, 'k', 'a@example.test', 'delivered', 1000)"),
+    db.prepare("INSERT INTO return_requests (id, order_id, request_key, request_hash, requested_at) VALUES (1, 1, 'k', 'h', 1)"),
+    db.prepare("INSERT INTO return_request_batches (request_id, order_line_id, shipment_id, quantity) VALUES (1, 1, 1, 2)"),
+  ]);
+  const insert = (quantity: number) => db.prepare(`INSERT INTO return_request_batches (request_id, order_line_id, shipment_id, quantity) VALUES (1, 1, 1, ${quantity})`);
+  await expect(insert(1).run()).rejects.toThrow();
+  await db.prepare("INSERT INTO shipments (id, order_id, dispatch_key, actor) VALUES (2, 1, 'k2', 'a@example.test')").run();
+  await expect(db.prepare("INSERT INTO return_request_batches (request_id, order_line_id, shipment_id, quantity) VALUES (1, 1, 2, 0)").run()).rejects.toThrow();
+
+  await expect(db.batch(splitStatements(rollback0027Sql))).rejects.toThrow();
+  await db.prepare("DELETE FROM return_request_batches").run();
+  await db.batch(splitStatements(rollback0027Sql));
+  expect(await rows("SELECT name FROM sqlite_master WHERE name LIKE 'return_request_batches%'")).toEqual([]);
+  expect(await rows("SELECT id FROM return_requests")).toEqual([{ id: 1 }]);
 });
