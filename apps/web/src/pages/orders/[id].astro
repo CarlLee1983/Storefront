@@ -8,6 +8,7 @@ import OrderLines from "../../orders/OrderLines.astro";
 import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
 import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
+import { customerReturnNote, describeReturnRequestFailure, returnFormToInput, returnStatusLabel, returnableQuantity } from "../../orders/return";
 import { formToRecord } from "../../shared/form-values";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
@@ -23,10 +24,11 @@ if (entry.kind === "redirect") {
 const orderId = parseOrderId(Astro.params.id);
 const cookie = Astro.request.headers.get("cookie") ?? "";
 
-// POST 有兩種：申請取消已付款未交運的數量（intent=request-cancellation），或取消待付款訂單。
+// POST 有三種：申請取消已付款未交運的數量（intent=request-cancellation）、申請退貨已交運的數量（intent=request-return），或取消待付款訂單。
 // 取消訂單：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
 // 讓顧客看到最新狀態；進行中的付款處理不了（閘道連不上等）回本頁並帶上原因，訂單維持待付款。找不到訂單則落到下面顯示 404
 let cancellationFailure: ReturnType<typeof describeCancellationFailure> | undefined;
+let returnFailure: ReturnType<typeof describeReturnRequestFailure> | undefined;
 let submitted: Record<string, string> = {};
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -36,6 +38,12 @@ if (orderId !== null && Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/orders/${orderId}?cancellation=requested`, 303);
     if (result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
     if (result.reason !== "order_not_found") cancellationFailure = describeCancellationFailure(result);
+  } else if (form.get("intent") === "request-return") {
+    submitted = formToRecord(form);
+    const result = await env.APP.requestReturn(cookie, returnFormToInput(form, orderId));
+    if (result.ok) return Astro.redirect(`/orders/${orderId}?return=requested`, 303);
+    if (result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+    if (result.reason !== "order_not_found") returnFailure = describeReturnRequestFailure(result);
   } else {
     const cancelled = await env.APP.cancelOrder(cookie, { orderId });
     if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
@@ -59,8 +67,15 @@ const cancelError = cancelErrorMessage(Astro.url.searchParams.get("cancel_error"
 const paymentUnconfirmed = Astro.url.searchParams.get("payment") === "unconfirmed";
 const cancellationRequested = Astro.url.searchParams.get("cancellation") === "requested";
 // 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一案
-const requestKey = submitted.requestKey || crypto.randomUUID();
+// 兩個申請表單各自只回填自己送出的內容與冪等鍵
+const cancelSubmitted = submitted.intent === "request-cancellation" ? submitted : {};
+const returnSubmitted = submitted.intent === "request-return" ? submitted : {};
+const requestKey = cancelSubmitted.requestKey || crypto.randomUUID();
+const returnKey = returnSubmitted.requestKey || crypto.randomUUID();
 const canRequestCancellation = (order?.status === "paid" || order?.status === "partially_shipped") && order.lines.some((line) => cancellableQuantity(line) > 0);
+const returnRequested = Astro.url.searchParams.get("return") === "requested";
+const canRequestReturn = (order?.status === "partially_shipped" || order?.status === "shipped") && order.lines.some((line) => returnableQuantity(line) > 0);
+const returnFieldErrors = returnFailure?.fields.items ?? [];
 const cancellationFieldErrors = cancellationFailure?.fields.items ?? [];
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
@@ -75,6 +90,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {paymentError && <p class="error" role="alert">{paymentError}</p>}
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
         {cancellationRequested && <p role="status">已送出取消申請：審核期間這些商品暫停出貨，審核結果會通知你。</p>}
+        {returnRequested && <p role="status">已送出退貨申請：審核結果會通知你，核准後請依客服指示寄回商品。</p>}
         {paymentUnconfirmed && <p role="status">目前無法確認付款結果，請稍後重新整理訂單頁。</p>}
         {order.status === "paid" && <p role="status">已收到付款，訂單目前為已付款。</p>}
         <div class="order-overview">
@@ -120,14 +136,14 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     {order.lines.filter((line) => cancellableQuantity(line) > 0).map((line) => (
                       <label>
                         <span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`}・可取消 {cancellableQuantity(line)}</span>
-                        <input type="number" inputmode="numeric" name={`cancel-${line.id}`} min="0" max={cancellableQuantity(line)} step="1" value={submitted[`cancel-${line.id}`] ?? ""} />
+                        <input type="number" inputmode="numeric" name={`cancel-${line.id}`} min="0" max={cancellableQuantity(line)} step="1" value={cancelSubmitted[`cancel-${line.id}`] ?? ""} />
                       </label>
                     ))}
                     {cancellationFieldErrors.map((m) => <span class="error">{m}</span>)}
                   </fieldset>
                   <label>
                     申請原因（選填）
-                    <input name="reason" maxlength="200" value={submitted.reason ?? ""} />
+                    <input name="reason" maxlength="200" value={cancelSubmitted.reason ?? ""} />
                   </label>
                   <p class="cancellation-hint">核准後依原實付單價退回商品款；同一類配送商品全部取消時，一併退回該類原運費。</p>
                   <button type="submit" class="button-secondary">申請取消</button>
@@ -142,6 +158,50 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                       {request.reason && <p>申請原因：{request.reason}</p>}
                       {request.decisionNote && <p>審核說明：{request.decisionNote}</p>}
                       <p class="cancellation-note">{customerCancellationNote(request.status)}</p>
+                      {request.refund && <p>退款 NT$ {priceFormat.format(request.refund.amountTwd)}：{customerRefundStatusLabel(request.refund.status)}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        }
+        {
+          (canRequestReturn || order.returns.length > 0) && (
+            <section class="order-detail-section" aria-labelledby="return-title">
+              <h2 id="return-title">退貨申請</h2>
+              {returnFailure && <p class="error" role="alert">{returnFailure.message}{Object.values(returnFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+              {canRequestReturn && (
+                <form method="post" class="cancellation-form return-form" onsubmit="return confirm('確定要申請退貨嗎？核准後請依客服指示寄回商品，我們收到並檢查後才會退款。')">
+                  <input type="hidden" name="intent" value="request-return" />
+                  <input type="hidden" name="requestKey" value={returnKey} />
+                  <fieldset>
+                    <legend>選擇要退貨的數量（只能退已出貨的數量；0 或留空表示不退）</legend>
+                    {order.lines.filter((line) => returnableQuantity(line) > 0).map((line) => (
+                      <label>
+                        <span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`}・可退貨 {returnableQuantity(line)}</span>
+                        <input type="number" inputmode="numeric" name={`return-${line.id}`} min="0" max={returnableQuantity(line)} step="1" value={returnSubmitted[`return-${line.id}`] ?? ""} />
+                      </label>
+                    ))}
+                    {returnFieldErrors.map((m) => <span class="error">{m}</span>)}
+                  </fieldset>
+                  <label>
+                    退貨原因（選填，瑕疵請說明狀況）
+                    <input name="reason" maxlength="200" value={returnSubmitted.reason ?? ""} />
+                  </label>
+                  <p class="cancellation-hint">收回運費由商家負擔；收到並檢查後依原實付單價退款，同一類配送商品全部退出（含取消）時，一併退回該類原運費。換貨請先退貨退款，再重新下單。</p>
+                  <button type="submit" class="button-secondary">申請退貨</button>
+                </form>
+              )}
+              {order.returns.length > 0 && (
+                <ul class="cancellation-list" aria-label="退貨申請紀錄">
+                  {order.returns.map((request) => (
+                    <li>
+                      <p><strong>申請 #{request.id}・{returnStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）</p>
+                      <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}{item.receivedQuantity !== null && `，實際收到 ${item.receivedQuantity}`}</li>)}</ul>
+                      {request.reason && <p>申請原因：{request.reason}</p>}
+                      {request.decisionNote && <p>審核說明：{request.decisionNote}</p>}
+                      <p class="cancellation-note">{customerReturnNote(request.status)}</p>
                       {request.refund && <p>退款 NT$ {priceFormat.format(request.refund.amountTwd)}：{customerRefundStatusLabel(request.refund.status)}</p>}
                     </li>
                   ))}

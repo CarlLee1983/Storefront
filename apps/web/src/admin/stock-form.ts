@@ -3,6 +3,9 @@ const MOVEMENT_KIND_LABELS: Record<string, string> = {
   adjustment: "庫存調整",
   dispatch: "交運扣庫",
   migration: "遷移加回",
+  return_received: "退貨收回入倉",
+  return_inspected: "退貨檢查合格轉可售",
+  scrap: "報廢",
 };
 
 export function movementKindLabel(kind: string): string {

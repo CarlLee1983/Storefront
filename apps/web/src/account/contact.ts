@@ -35,6 +35,9 @@ const MAIL_KIND_LABELS: Record<string, string> = {
   shipment_dispatched: "出貨通知",
   cancellation_approved: "取消核准通知",
   cancellation_rejected: "取消未獲核准通知",
+  return_approved: "退貨核准通知",
+  return_rejected: "退貨未獲核准通知",
+  return_completed: "退貨檢查完成通知",
   shipment_delivered: "送達通知",
   shipment_delivery_failed: "配送異常通知",
 };

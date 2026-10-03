@@ -6,6 +6,7 @@ export interface ProductVariantSummary {
   minPriceTwd: number;
   maxPriceTwd: number;
   onHand: number;
+  unavailable: number;
   reserved: number;
   available: number;
 }
@@ -18,6 +19,7 @@ export function summarizeVariants(product: { variants: readonly AdminVariant[] }
     minPriceTwd: Math.min(...variants.map((variant) => variant.priceTwd)),
     maxPriceTwd: Math.max(...variants.map((variant) => variant.priceTwd)),
     onHand: variants.reduce((sum, variant) => sum + variant.onHand, 0),
+    unavailable: variants.reduce((sum, variant) => sum + variant.unavailable, 0),
     reserved: variants.reduce((sum, variant) => sum + variant.reserved, 0),
     available: variants.reduce((sum, variant) => sum + variant.available, 0),
   };

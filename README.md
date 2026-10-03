@@ -49,7 +49,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 0018 只新增兩個可為空的欄位與一個唯一索引，部署順序同樣先 migration、再 App、再 Web；新 App 的下單與付款 batch 會寫 `event_key`，0018 缺欄位時下單與付款會整批失敗，所以 migration 必須先套用。回復：先停止寫入，再執行 `apps/app/rollback/0018_transaction_notifications.down.sql`（已有交易通知或處理紀錄時守門檢查讓回復失敗，須先確認這些資料可以捨棄）；回復順序是 0018 → 0017 → 0016，且回復前須一併回復會呼叫這些 RPC 的 Web 與 App。測試見 `apps/app/test/order-notifications.test.ts`、`transaction-migration.test.ts`；手機與桌機的操作併在 `e2e/tests/contact-mailbox.spec.ts`（投遞失敗演練是全域狀態，會開關它的情境必須留在同一檔序列執行）。
 - 出貨通知（#112）：每個出貨批次寫一封 `shipment_dispatched`（商品數量、物流單號、議定時段），見下方「分批出貨與大型配送預約」。
 - 退款成功通知（#115）：每筆成功的退款寄一封 `refund_succeeded`（事件鍵 `refund:<退款編號>`），與退款轉為成功同一個 batch 寫入；重試與重複回呼不重複。
-- 尚未涵蓋（後續票）：取消審核、配送異常、退貨審核、發票完成等通知。
+- 取消審核（#116）與退貨審核、檢查完成（#117）通知：`cancellation_approved`／`cancellation_rejected`、`return_approved`／`return_rejected`／`return_completed`（一案一封，事件鍵 `return:<申請編號>:<approved|rejected|completed>`），都與該決定同一個 batch 寫入；檢查完成的信依退款是否已登記分文案。
+- 尚未涵蓋（後續票）：配送異常（物流退回、遺失）、發票完成等通知。
 
 ## 地址簿
 
@@ -72,7 +73,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 ## 庫存保留與庫存流水
 
-依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)：可售 = 在庫數 − 不可售 − 待付款保留 − 已付款待出貨保留（不可售目前恆為 0，由退貨入倉檢查票（#117／#120）加入；`apps/app/src/catalog/stock.ts`），保留由訂單狀態推導（待付款、已付款與部分出貨訂單中「尚未交運」的明細數量，即明細數量減各批已交運數量與已核准取消的數量，沒有另外的保留表）。
+依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)：可售 = 在庫數 − 不可售 − 待付款保留 − 已付款待出貨保留（不可售是在庫中待檢與損壞的退貨，由 #117 加入、另列不是另一份庫存，物流退回入倉（#120）沿用；`product_variants.unavailable`，算式只在 `apps/app/src/catalog/stock.ts`），保留由訂單狀態推導（待付款、已付款與部分出貨訂單中「尚未交運」的明細數量，即明細數量減各批已交運數量與已核准取消的數量，沒有另外的保留表）。
 
 | 事件 | 在庫數 | 保留 | 可售 |
 | --- | --- | --- | --- |
@@ -81,9 +82,12 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 | 逾期、取消 | 不變 | 釋放 | + |
 | 交運一批（`shipOrder`） | − 該批數量 | 消耗該批的已付款保留 | 不變 |
 | 庫存調整 | ± | 不變 | ± |
+| 退貨實際收回（`recordReturnReceipt`） | + 收到數量（另增不可售） | 不變 | 不變 |
+| 退貨檢查合格（`recordReturnInspection`） | 不變 | 不變 | + 良品數量（不可售轉可售）；損壞品留在不可售 |
+| 損壞品報廢（`scrapUnavailableStock`） | − 報廢數量（同減不可售） | 不變 | 不變 |
 
 - 付款 batch（`payments/queries.ts` 的 `applyPaymentEvent`）不再扣庫，原本的第 3 句（扣在庫數）已移除，結果索引由尾端倒數取值所以不受影響；交運（`shipments/dispatch.ts` 的 `dispatchShipment`）每批一個 batch：建立批次、寫批次明細、扣在庫、寫流水、轉訂單狀態、寫出貨通知，細節見下一節。
-- 庫存流水（`stock_movements`，Migration `0020_stock_ledger.sql`）：在庫數的每一次變動，只增不改不刪，記來源（`adjustment` 調整、`dispatch` 交運、`migration` 遷移加回）、增減量、調整後在庫數、訂單、操作人（管理員 email）、原因與有效時間。流水與改動在庫數的那句同一個 batch、同一個條件寫入，被拒絕的調整不留紀錄。保留的變化（下單、付款、逾期、取消）可由訂單推導，不重複寫入流水。後續票（#124 低庫存提醒）讀這張表，新增來源（退貨入倉、報廢）時加新的 `kind`；`kind` 沒有 CHECK，合法值由寫入端限定。
+- 庫存流水（`stock_movements`，Migration `0020_stock_ledger.sql`）：在庫數的每一次變動，只增不改不刪，記來源（`adjustment` 調整、`dispatch` 交運、`migration` 遷移加回，#117 起另有 `return_received` 退貨收回入倉、`return_inspected` 檢查合格轉可售、`scrap` 報廢）、在庫增減量與調整後在庫數、不可售增減量與調整後不可售（#117 的 `unavailable_delta`、`unavailable_after`，舊流水為 0）、訂單、操作人（管理員 email）、原因與有效時間。流水與改動在庫數的那句同一個 batch、同一個條件寫入，被拒絕的調整不留紀錄。保留的變化（下單、付款、逾期、取消）可由訂單推導，不重複寫入流水。後續票（#124 低庫存提醒）讀這張表，新增來源時加新的 `kind`；`kind` 沒有 CHECK，合法值由寫入端限定。
 - 庫存調整現在必填原因（`adjustStock` 的 `reason`，trim 後 1–200 字）；後台商品列表與變體表單都有原因欄位。唯讀 RPC `listStockMovements`（可依變體或訂單篩選，以 `nextBeforeId` 游標翻頁）與後台「庫存流水」頁（`/admin/stock-movements`，訂單明細頁有連結）供核對。
 - 舊資料遷移（Q22 保留式遷移）：舊系統在付款時就扣了在庫數，`0020` 對每張狀態為「已付款」的舊單，逐單逐變體把數量加回在庫數並寫一筆 `migration` 流水；已出貨的不加回；因為已付款本身就是保留，可售量不變。遷移只信訂單狀態、不編造物流證據。套用後執行 `wrangler d1 execute <DB> --file apps/app/scripts/verify-0020-stock.sql`（加 `--local`／`--remote`／`--env`）核對例外，每個查詢回傳的列都需要人工處理，全為空才算通過：已付款卻沒有成功付款紀錄、可售為負、流水與在庫數對不上。
 - 部署順序：**先停止寫入（結帳、付款、出貨、庫存調整）**，再 migration、再 App、再 Web。舊 App 搭配新 migration 會多出可售量（舊 App 不把已付款算進保留，加回的數量變成可售）；新 App 搭配舊資料則會在出貨時再扣一次，所以兩者之間不要放行流量。
@@ -169,9 +173,24 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 金額：商品款 = 取消數量 × 下單時的單價快照（`order_lines.unit_price_twd`，即成交的實付單價；本專案沒有優惠券或滿額折扣，特價已反映在售價，改價不影響）。某配送類型的原運費（取自訂單的運費快照）只在「該類每筆明細都已全數取消」的那一案退，且訂單上沒有其他已核准的案件退過該類運費（以核准時寫在案件上的運費欄位為準，所以任何核准順序下同類最多退一次）；部分取消不退運費，舊單運費為零就退零。
 - 顧客：訂單頁「取消申請」表單（每筆可取消的明細一個數量欄，表單渲染時產生冪等鍵）與申請紀錄（進度、審核說明、退款），明細顯示「已取消」「取消審核中」；審核與退款結果寄 `cancellation_approved`／`cancellation_rejected`／`refund_succeeded` 通知。管理員：`/admin/cancellations`（導覽「取消審核」，RPC `listCancellationsToReview`）列出待審案件，在訂單頁核准或拒絕並寫備註；訂單頁與退款待辦顯示各案與各筆退款。顧客 RPC `requestCancellation`、`getMyOrder` 永遠限定本人。
 - 狀態轉換：`paid` 新增可轉 `cancelled`（全部數量核准取消）；顧客自行取消訂單仍只限待付款（`cancelOrder` 與 `cancelPendingOrder` 另外限定來源）。
-- 尚未實作：ADR 0008（明確失敗的退款能否人工結案）仍是待決，本票不提供人工結案；退貨、物流異常與發票折讓是後續票。
+- 尚未實作：ADR 0008（明確失敗的退款能否人工結案）仍是待決，本票不提供人工結案；物流異常與發票折讓是後續票（退貨見下一節）。
 - 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `cancellations`，明細多回傳 `cancelledQuantity`、`pendingCancellationQuantity`，舊 Web 不受影響）。0025 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024（備份、砍表、建表、寫回並還原 AUTOINCREMENT 計數）。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0025_cancellations.down.sql`；已有任何取消申請或取消退款時守門檢查讓回復失敗（核准的取消已停止履約並釋放保留，舊版無法表達），須先確認可以捨棄。回復順序是 0025 → 0024 → …。
 - 測試：`apps/app/test/cancellation-request.test.ts`（申請凍結交運、與交運及重複申請的並行、冪等、權限與輸入）、`cancellation-decide.test.ts`（拒絕解凍、核准釋放與實付單價、運費一次、退款失敗不恢復出貨、同單逐筆、額度、重複核准）、`cancellations-migration.test.ts`；Web 的表單解析與文案在 `apps/web/src/orders/cancellation.test.ts`、`admin/cancellation-form.test.ts`，手機與桌機操作由 `e2e/tests/cancellations.spec.ts` 驗證（375／1280 寬，含無障礙掃描與顧客不能進審核頁）。
+
+### 退貨（人工受理、收回、檢查與逐案退款）
+
+依 ADR 0006、0007 與設計文件 A6、A7（Migration `0026_returns.sql`；`apps/app/src/returns/`、`stock/scrap.ts`、`payments/exit-refund.ts`）。顧客對**已交運**的明細數量提出退貨申請（人工受理入口，不依自助退貨期限擋下，期限與送達日顯示由 #118 加上；換貨走退貨退款再下單，不補寄、不補差價），管理員審核、記錄收回、記錄檢查，檢查完成才按實際收到的數量退款。實物與款項分開記錄：任何一邊失敗都不反轉另一邊已發生的事實。
+
+- 資料：`return_requests`（訂單、冪等鍵與內容指紋、進度 `pending`／`approved`／`rejected`／`received`／`not_received`／`completed`、審核／收回／檢查各自的操作人、時間與備註、檢查完成時算定的退款拆分）與 `return_request_items`（明細：申請數量、實際收到、良品、損壞品，CHECK 保證良品加損壞等於實收且不超過申請）；`refunds` 新增原因 `return` 與 `return_request_id`（一案一筆的唯一索引）；`product_variants.unavailable` 與庫存流水的不可售欄位（見「庫存」）。
+- 數量：退貨數量以「已交運且未退貨」為上限。占用（`returns/queries.ts` 的 `heldByReturnQuantity`）：待審與核准占用申請數量，收回後占用實際收到的數量（沒收到的釋出），檢查完成維持已退貨，拒絕與未收到釋出。申請（`requestReturn`）用一句條件寫入保證「占用 + 本次 ≤ 已交運」，所以重複、並行與已退過的數量被擋下。取消申請只動未交運的數量、退貨只動已交運的數量，兩者是明細數量的互斥部分，不會重複占用。
+- 流程（管理 RPC，沿用 Access 驗證，都是單一 batch、冪等）：`decideReturn` 核准或拒絕（不動庫存與款項，寫通知）；`recordReturnReceipt` 每筆明細填實際收到數量（不超過申請），**收到實物才**在庫與不可售各加收到數量（流水 `return_received`），全部填 0 則記為「未收到」結案、不動庫存；`recordReturnInspection` 良品加損壞品等於實收，良品由不可售轉可售（在庫不變，流水 `return_inspected`）、損壞品留在不可售，並在同一個 batch 算定退款、登記該案退款、寫完成通知。重送同內容回 `replayed: true`，不同內容回 `return_wrong_state`；收回與檢查的庫存轉換靠「這案還沒有對應流水」只做一次。
+- 報廢：`scrapUnavailableStock`（變體、數量、必填原因）同時減少實體在庫與不可售，可售不變，寫 `scrap` 流水；只能報廢「不可售 − 待檢」，也就是已檢查確認的損壞品，已收回但尚未檢查的退貨不能報廢。
+- 金額：商品款 = 實際收到數量 × 下單時的單價快照（良品與損壞品都退；收回運費由商家負擔，不向顧客收）。某配送類型的原運費只在「該類每筆明細都全數退出（核准取消 + 完成檢查的退貨）」時退一次（`payments/exit-refund.ts`，取消核准與退貨檢查共用同一份判斷），且訂單上沒有其他已核准的取消或已完成的退貨退過該類運費；所以取消與退貨混合、任何先後順序，同類運費最多退一次，部分不退，待審、在途與待檢的數量尚未算退出。
+- 退款：與取消相同，登記在檢查完成的同一個 batch（額度共用 `withinQuotaSql`），之後才向閘道執行；退款失敗、被前筆阻擋或額度被占用都不反轉收回與庫存轉換，退款留在退款待辦（額度不足而未登記的列在 `listRefundsToHandle` 的 `unregisteredReturns`，訂單頁「重新登記退款」＝重送同一份檢查結果）。
+- 顧客：訂單頁「退貨申請」表單與紀錄（進度、審核說明、實際收到數量、退款），明細顯示「已退貨」「退貨處理中」；RPC `requestReturn`、`getMyOrder`（多回傳 `returns`）永遠限定本人。管理員：`/admin/returns`（導覽「退貨處理」，RPC `listReturnsToHandle`）列出待審、待收回、待檢查的申請與不可售庫存（含報廢表單），在訂單頁審核、記錄收回與檢查；庫存流水頁顯示在庫與不可售的增減。
+- 尚未實作：自助退貨期限與依各批送達日的判斷（#118）、物流退回與遺失（#119、#120）、發票折讓（#121、#122）；ADR 0008 仍待決。
+- 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `returns`，明細多回傳 `returnedQuantity`、`openReturnQuantity`，變體多回傳 `unavailable`，舊 Web 不受影響）。0026 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024、0025。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0026_returns.down.sql`；已有任何退貨申請、不可售數量、不可售流水或退貨退款時守門檢查讓回復失敗（收回與檢查已改變實體與不可售，舊版無法表達），須先確認可以捨棄。回復順序是 0026 → 0025 → …。
+- 測試：`apps/app/test/return-request.test.ts`（申請、占用、並行、冪等、權限與輸入、審核）、`return-flow.test.ts`（收回、檢查、報廢、可售算式、運費與取消混合）、`return-refund.test.ts`（退款失敗不反轉實物、額度占用、同單逐筆）、`returns-migration.test.ts`（遷移、約束與回復）、`e2e/tests/returns.spec.ts`（手機與桌機完整流程）。
 
 ## 模擬金流閘道
 

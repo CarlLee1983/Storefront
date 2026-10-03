@@ -10,6 +10,8 @@ import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { decideFormToInput, describeDecideFailure, describeDecideOutcome } from "../../../admin/cancellation-form";
 import { cancellationStatusLabel, cancellableQuantity } from "../../../orders/cancellation";
+import { describeReturnFailure, describeReturnOutcome, inspectionFormToInput, receiptFormToInput } from "../../../admin/return-form";
+import { returnStatusLabel } from "../../../orders/return";
 import { formToRecord } from "../../../shared/form-values";
 import { formatDateTime, parseOrderId, paymentStatusLabel, refundAttemptLabel, refundReasonLabel, refundStatusLabel } from "../../../orders/labels";
 
@@ -23,9 +25,10 @@ let submittedEvent: { shipmentId: number; eventKey: string } | undefined;
 let eventFailure: ReturnType<typeof describeShipmentEventFailure> | undefined;
 let submitted: Record<string, string> = {};
 let decideFailure: ReturnType<typeof describeDecideFailure> | undefined;
+let returnFailure: (ReturnType<typeof describeReturnFailure> & { requestId: number }) | undefined;
 let unauthorized = false;
 
-// POST 有三種：審核取消申請（intent=decide-cancellation）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
+// POST 有七種：審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   if (form.get("intent") === "decide-cancellation") {
@@ -36,6 +39,24 @@ if (orderId !== null && Astro.request.method === "POST") {
     }
     if (result.reason === "unauthorized") unauthorized = true;
     else decideFailure = describeDecideFailure(result);
+  } else if (form.get("intent") === "decide-return") {
+    const input = decideFormToInput(form);
+    const result = await env.APP.decideReturn(jwt, input);
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=${result.data.decision === "approved" ? "return-approved" : "return-rejected"}#returns`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
+  } else if (form.get("intent") === "record-return-receipt") {
+    const input = receiptFormToInput(form);
+    const result = await env.APP.recordReturnReceipt(jwt, input);
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=${result.data.status === "received" ? "return-received" : "return-not-received"}#returns`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
+  } else if (form.get("intent") === "record-return-inspection") {
+    const input = inspectionFormToInput(form);
+    const result = await env.APP.recordReturnInspection(jwt, input);
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=return-inspected&refund=${result.data.refund?.status ?? "none"}#returns`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
   } else if (form.get("intent") === "shipment-event") {
     const input = shipmentEventFormToInput(form);
     const result = await env.APP.recordShipmentEvent(jwt, input);
@@ -64,6 +85,7 @@ if (view === "not_found") Astro.response.status = 404;
 const shipped = Astro.url.searchParams.get("saved") === "shipped";
 const eventSaved = Astro.url.searchParams.get("saved") === "event";
 const decideSaved = describeDecideOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
+const returnSaved = describeReturnOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const priceFormat = new Intl.NumberFormat("zh-TW");
 // 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一批
 const dispatchKey = submitted.dispatchKey || crypto.randomUUID();
@@ -83,6 +105,8 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
         {eventSaved && <p role="status">已記錄物流回報。</p>}
         {decideSaved && <p role="status">{decideSaved}</p>}
         {decideFailure && <p class="error" role="alert">{decideFailure.message}</p>}
+        {returnSaved && <p role="status">{returnSaved}</p>}
+        {returnFailure && <p class="error" role="alert">退貨申請 #{returnFailure.requestId}：{returnFailure.message}</p>}
         {eventFailure && <p class="error" role="alert">{eventFailure.message}{Object.values(eventFailure.fields).flat().map((m) => ` ${m}`)}</p>}
         <div class="admin-card-section">
           <h2>訂單狀態與基本資訊</h2>
@@ -139,7 +163,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
         {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
-            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>已取消</th><th>取消審核中</th><th>配送類型</th><th>小計</th></tr>
+            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>已取消</th><th>取消審核中</th><th>已退貨</th><th>退貨處理中</th><th>配送類型</th><th>小計</th></tr>
           </thead>
           <tbody>
             {order.lines.map((line) => (
@@ -150,6 +174,8 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                 <td data-label="已交運">{line.shippedQuantity}</td>
                 <td data-label="已取消">{line.cancelledQuantity}</td>
                 <td data-label="取消審核中">{line.pendingCancellationQuantity}</td>
+                <td data-label="已退貨">{line.returnedQuantity}</td>
+                <td data-label="退貨處理中">{line.openReturnQuantity}</td>
                 <td data-label="配送類型">{DELIVERY_TYPE_LABELS[line.deliveryType]}</td>
                 <td data-label="小計">NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
               </tr>
@@ -193,6 +219,94 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                           <button type="submit" class="button-secondary">重新登記退款</button>
                         </form>
                       )}
+                      </>
+                    )
+                  }
+                </li>
+              ))}
+            </ul>
+          )
+        }
+        <h2 id="returns">退貨申請</h2>
+        {order.returns.length === 0 && <p>沒有退貨申請。</p>}
+        {
+          order.returns.length > 0 && (
+            <ul class="admin-cancellations admin-returns" aria-label="退貨申請">
+              {order.returns.map((request) => (
+                <li id={`return-${request.id}`}>
+                  <p><strong>申請 #{request.id}・{returnStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）</p>
+                  <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}・{DELIVERY_TYPE_LABELS[item.deliveryType]}・NT$ {priceFormat.format(item.amountTwd)}{item.receivedQuantity !== null && `；實際收到 ${item.receivedQuantity}`}{item.sellableQuantity !== null && `（良品 ${item.sellableQuantity}、損壞 ${item.damagedQuantity}）`}</li>)}</ul>
+                  {request.reason && <p>顧客原因：{request.reason}</p>}
+                  {
+                    request.status === "pending" && (
+                      <form method="post" class="admin-cancellation-decision">
+                        <input type="hidden" name="intent" value="decide-return" />
+                        <input type="hidden" name="requestId" value={request.id} />
+                        <label>審核備註（選填，會寄給顧客）<input name="note" maxlength="200" /></label>
+                        <p><small>核准：數量維持占用，等待收回；不動庫存與款項。拒絕：數量釋出，顧客可再申請。</small></p>
+                        <div class="admin-actions">
+                          <button type="submit" name="decision" value="approve" class="button-primary">核准退貨</button>
+                          <button type="submit" name="decision" value="reject" class="button-secondary" onclick="return confirm('確定拒絕這案退貨申請嗎？')">拒絕</button>
+                        </div>
+                      </form>
+                    )
+                  }
+                  {request.decidedAt !== null && <p>{formatDateTime(request.decidedAt)} 由 {request.decidedBy} 審核{request.decisionNote && `：${request.decisionNote}`}</p>}
+                  {
+                    request.status === "approved" && (
+                      <form method="post" class="admin-cancellation-decision" onsubmit="return confirm('確定記錄收回嗎？實際收到的數量會計入實體在庫與不可售（待檢），無法撤回。')">
+                        <input type="hidden" name="intent" value="record-return-receipt" />
+                        <input type="hidden" name="requestId" value={request.id} />
+                        <fieldset>
+                          <legend>記錄收回：每筆明細實際收到幾件（沒收到填 0）</legend>
+                          {request.items.map((item) => (
+                            <label>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}・申請 {item.quantity}<input type="number" inputmode="numeric" name={`received-${item.orderLineId}`} min="0" max={item.quantity} step="1" value={item.quantity} required /></label>
+                          ))}
+                        </fieldset>
+                        <label>收回備註（選填）<input name="note" maxlength="200" /></label>
+                        <p><small>收到實物才增加實體在庫與不可售；全部填 0 代表沒有收到，這案結案並釋出數量。</small></p>
+                        <button type="submit" class="button-primary">記錄收回</button>
+                      </form>
+                    )
+                  }
+                  {request.receivedAt !== null && <p>{formatDateTime(request.receivedAt)} 由 {request.receivedBy} 記錄收回{request.receiptNote && `：${request.receiptNote}`}</p>}
+                  {
+                    request.status === "received" && (
+                      <form method="post" class="admin-cancellation-decision" onsubmit="return confirm('確定記錄檢查結果嗎？良品會轉為可售、並依實際收到數量與原實付單價登記退款，無法撤回。')">
+                        <input type="hidden" name="intent" value="record-return-inspection" />
+                        <input type="hidden" name="requestId" value={request.id} />
+                        <fieldset>
+                          <legend>記錄檢查：良品加損壞品必須等於實際收到的數量</legend>
+                          {request.items.filter((item) => (item.receivedQuantity ?? 0) > 0).map((item) => (
+                            <div class="admin-return-inspection-row">
+                              <span>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}・收到 {item.receivedQuantity}</span>
+                              <label>良品（轉可售）<input type="number" inputmode="numeric" name={`sellable-${item.orderLineId}`} min="0" max={item.receivedQuantity ?? 0} step="1" value={item.receivedQuantity ?? 0} required /></label>
+                              <label>損壞品（隔離）<input type="number" inputmode="numeric" name={`damaged-${item.orderLineId}`} min="0" max={item.receivedQuantity ?? 0} step="1" value="0" required /></label>
+                            </div>
+                          ))}
+                        </fieldset>
+                        <label>檢查備註（選填）<input name="note" maxlength="200" /></label>
+                        <p><small>損壞品留在不可售，不能販售，到「退貨處理」報廢；退款按實際收到的數量與原實付單價計算，同類配送全數退出（含取消）才退該類運費。</small></p>
+                        <button type="submit" class="button-primary">記錄檢查並退款</button>
+                      </form>
+                    )
+                  }
+                  {
+                    request.status === "completed" && (
+                      <>
+                        <p>{formatDateTime(request.inspectedAt!)} 由 {request.inspectedBy} 記錄檢查{request.inspectionNote && `：${request.inspectionNote}`}
+                          <br />應退商品款 NT$ {priceFormat.format(request.goodsTwd ?? 0)}、運費 NT$ {priceFormat.format(request.shippingTwd ?? 0)}；{request.refund ? `退款 #${request.refund.id}：${refundStatusLabel(request.refund.status)}` : "退款尚未登記（可退額度被其他退款占用，或訂單沒有可綁定的成功付款）"}</p>
+                        {!request.refund && (request.goodsTwd ?? 0) + (request.shippingTwd ?? 0) > 0 && (
+                          <form method="post">
+                            <input type="hidden" name="intent" value="record-return-inspection" />
+                            <input type="hidden" name="requestId" value={request.id} />
+                            {request.items.map((item) => <>
+                              <input type="hidden" name={`sellable-${item.orderLineId}`} value={item.sellableQuantity ?? 0} />
+                              <input type="hidden" name={`damaged-${item.orderLineId}`} value={item.damagedQuantity ?? 0} />
+                            </>)}
+                            <button type="submit" class="button-secondary">重新登記退款</button>
+                          </form>
+                        )}
                       </>
                     )
                   }
@@ -275,3 +389,12 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
     )
   }
 </AdminLayout>
+
+<style>
+  .admin-returns { list-style: none; padding: 0; display: grid; gap: var(--space-4); }
+  .admin-returns > li { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
+  .admin-returns fieldset { display: grid; gap: var(--space-3); border: 1px solid var(--color-border); padding: var(--space-3); }
+  .admin-returns label { display: grid; gap: var(--space-1); }
+  .admin-return-inspection-row { display: grid; gap: var(--space-2); }
+  @media (min-width: 40rem) { .admin-return-inspection-row { grid-template-columns: 1fr 10rem 10rem; align-items: end; } }
+</style>

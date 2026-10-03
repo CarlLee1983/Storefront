@@ -1,0 +1,119 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { describeReturnFailure, scrapFormToInput } from "../../../admin/return-form";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { formatDateTime } from "../../../orders/labels";
+import { returnStatusLabel } from "../../../orders/return";
+import { formToRecord } from "../../../shared/form-values";
+import { DELIVERY_TYPE_LABELS } from "@storefront/app/shipping-types";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let scrapFailure: (ReturnType<typeof describeReturnFailure> & { variantId: number }) | undefined;
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+// POST：報廢損壞品（intent=scrap）。成功後 303 回到本頁
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  if (form.get("intent") === "scrap") {
+    submitted = formToRecord(form);
+    const input = scrapFormToInput(form);
+    const result = await env.APP.scrapUnavailableStock(jwt, input);
+    if (result.ok) return Astro.redirect("/admin/returns?saved=scrap#unavailable", 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else scrapFailure = { ...describeReturnFailure(result), variantId: input.variantId };
+  }
+}
+
+const listing = unauthorized ? null : await env.APP.listReturnsToHandle(jwt);
+const products = unauthorized ? null : await env.APP.listProductsForAdmin(jwt);
+if (unauthorized || (listing && !listing.ok) || (products && !products.ok)) Astro.response.status = 403;
+const unavailableVariants = products?.ok
+  ? products.data.flatMap((product) => product.variants.filter((variant) => variant.unavailable > 0).map((variant) => ({ ...variant, productName: product.name })))
+  : [];
+const scrapped = Astro.url.searchParams.get("saved") === "scrap";
+const priceFormat = new Intl.NumberFormat("zh-TW");
+---
+
+<AdminLayout title="退貨處理">
+  {
+    !listing?.ok || !products?.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        <p>
+          顧客申請退貨已出貨的數量。到訂單頁依序審核、記錄收回（收到實物才增加實體在庫與不可售）與記錄檢查（良品轉可售、損壞品隔離；
+          並依實際收到的數量與原實付單價登記退款）。退款失敗不會反轉已發生的庫存變動。
+        </p>
+        <h2>待處理的退貨</h2>
+        {listing.data.omitted > 0 && <p class="error" role="alert">另有 {listing.data.omitted} 筆待處理的申請未列出。</p>}
+        {listing.data.returns.length === 0 && <p>目前沒有待處理的退貨申請。</p>}
+        {listing.data.returns.length > 0 && (
+          <div class="table-scroll" tabindex="0" role="region" aria-label="待處理的退貨申請"><table>
+            <thead>
+              <tr><th>申請</th><th>訂單</th><th>顧客</th><th>退貨明細</th><th>原因</th></tr>
+            </thead>
+            <tbody>
+              {listing.data.returns.map((request) => (
+                <tr>
+                  <td data-label="申請">#{request.id}<br />{returnStatusLabel(request.status)}<br />{formatDateTime(request.requestedAt)}</td>
+                  <td data-label="訂單"><a href={`/admin/orders/${request.orderId}#return-${request.id}`}>#{request.orderId}（前往處理）</a></td>
+                  <td data-label="顧客">{request.customerEmail}</td>
+                  <td data-label="退貨明細">
+                    <ul class="items">
+                      {request.items.map((item) => (
+                        <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}・{DELIVERY_TYPE_LABELS[item.deliveryType]}・NT$ {priceFormat.format(item.amountTwd)}{item.receivedQuantity !== null && `；實際收到 ${item.receivedQuantity}`}</li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td data-label="原因">{request.reason || "（未填）"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+        <h2 id="unavailable">不可售庫存</h2>
+        <p>
+          在庫中待檢與損壞的退貨，不能販售。已收回、尚未檢查的退貨還不能報廢；檢查確認為損壞的才能報廢移出倉庫，
+          報廢同時減少實體在庫與不可售數量，並留下原因（庫存流水可查）。
+        </p>
+        {scrapped && <p role="status">已報廢，實體在庫與不可售數量已同減。</p>}
+        {unavailableVariants.length === 0 && <p>目前沒有不可售的庫存。</p>}
+        {unavailableVariants.length > 0 && (
+          <div class="table-scroll" tabindex="0" role="region" aria-label="不可售庫存"><table>
+            <thead>
+              <tr><th>商品</th><th class="col-num">在庫</th><th class="col-num">不可售</th><th>報廢</th></tr>
+            </thead>
+            <tbody>
+              {unavailableVariants.map((variant) => (
+                <tr>
+                  <td data-label="商品"><a href={`/admin/stock-movements?variantId=${variant.id}`}>{variant.productName}{variant.optionValues.length > 0 && `（${variant.optionValues.join(" / ")}）`}</a></td>
+                  <td class="col-num" data-label="在庫">{variant.onHand}</td>
+                  <td class="col-num" data-label="不可售">{variant.unavailable}</td>
+                  <td data-label="報廢">
+                    {scrapFailure?.variantId === variant.id && <p class="error" role="alert">{scrapFailure.message}{Object.values(scrapFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+                    <form method="post" class="inline inline-stock-adjust" onsubmit="return confirm('確定報廢嗎？商品會移出倉庫，無法撤回。')">
+                      <input type="hidden" name="intent" value="scrap" />
+                      <input type="hidden" name="variantId" value={variant.id} />
+                      <input name="quantity" type="number" inputmode="numeric" min="1" step="1" placeholder="數量" aria-label={`${variant.productName}的報廢數量`} value={scrapFailure?.variantId === variant.id ? submitted.quantity ?? "" : ""} required />
+                      <input name="reason" type="text" maxlength="200" placeholder="原因" aria-label={`${variant.productName}的報廢原因`} value={scrapFailure?.variantId === variant.id ? submitted.reason ?? "" : ""} required />
+                      <button type="submit" class="btn-action">報廢</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+      </>
+    )
+  }
+</AdminLayout>
+
+<style>
+  .items { margin: 0; padding-left: 1.1em; }
+</style>

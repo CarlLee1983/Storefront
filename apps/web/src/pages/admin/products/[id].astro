@@ -192,7 +192,7 @@ const values = {
                   </div>
                   <button type="submit" class="btn-action">更新變體</button>
                 </form>
-                <p class="variant-stock">在庫 {variant.onHand}，保留 {variant.reserved}，可售 {variant.available}</p>
+                <p class="variant-stock">在庫 {variant.onHand}，不可售 {variant.unavailable}，保留 {variant.reserved}，可售 {variant.available}</p>
                 <div class="admin-actions">
                   <form method="post" class="inline inline-stock-adjust">
                     <input type="hidden" name="intent" value="adjust-variant-stock" />

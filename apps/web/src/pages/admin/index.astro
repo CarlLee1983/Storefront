@@ -179,6 +179,7 @@ function paginationUrl(p: number) {
                     <th class="col-num">售價</th>
                     <th class="col-num">原價</th>
                     <th class="col-num">在庫</th>
+                    <th class="col-num">不可售</th>
                     <th class="col-num">保留</th>
                     <th class="col-num">可售</th>
                     <th class="col-status">狀態</th>
@@ -210,6 +211,7 @@ function paginationUrl(p: number) {
                       <td class="col-num cell-price" data-label="售價">{stock.multiple && stock.minPriceTwd !== stock.maxPriceTwd ? `NT$ ${priceFormat.format(stock.minPriceTwd)} – ${priceFormat.format(stock.maxPriceTwd)}` : `NT$ ${priceFormat.format(stock.minPriceTwd)}`}</td>
                       <td class="col-num cell-was-price" data-label="原價">{stock.multiple || p.compareAtPriceTwd === null ? "—" : `NT$ ${priceFormat.format(p.compareAtPriceTwd)}`}</td>
                       <td class="col-num" data-label="在庫數">{stock.onHand}</td>
+                      <td class="col-num" data-label="不可售數">{stock.unavailable}</td>
                       <td class="col-num" data-label="保留數">{stock.reserved}</td>
                       <td class="col-num cell-available" data-label="可售數量">
                         <span class:list={["stock-pill", { "is-zero": stock.available === 0, "is-low": stock.available > 0 && stock.available <= 5 }]}>

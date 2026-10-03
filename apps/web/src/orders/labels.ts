@@ -81,6 +81,7 @@ const CUSTOMER_REFUND_REASONS: Record<string, string> = {
   cancelled_order: "付款時訂單已取消",
   duplicate_success: "同一張訂單有另一筆成功付款",
   cancellation: "取消申請已核准",
+  return: "退貨已收到並檢查完成",
 };
 
 export function customerRefundReasonLabel(reason: string | null): string | null {
@@ -134,6 +135,7 @@ const REFUND_REASON_LABELS: Record<string, string> = {
   cancelled_order: "訂單已取消",
   duplicate_success: "這張訂單重複付款",
   cancellation: "取消申請核准",
+  return: "退貨檢查完成",
 };
 
 export function refundReasonLabel(reason: string | null): string | null {

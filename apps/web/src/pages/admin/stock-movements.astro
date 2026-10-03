@@ -21,7 +21,7 @@ const filtered = filter.variantId !== undefined || filter.orderId !== undefined;
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
-        <p>在庫數的每一次變動，新的在前。付款只把待付款保留轉為已付款保留，不改在庫數，所以不在這裡；交運時才扣實體在庫。</p>
+        <p>在庫數與不可售數量的每一次變動，新的在前。付款只把待付款保留轉為已付款保留，不改在庫數，所以不在這裡；交運時才扣實體在庫；退貨收回入倉時在庫與不可售同增，檢查合格只把不可售轉可售，報廢同減。</p>
         <form method="get" class="admin-filter">
           <label class="filter-field">
             變體編號
@@ -41,7 +41,7 @@ const filtered = filter.variantId !== undefined || filter.orderId !== undefined;
           movements.data.items.length > 0 && (
             <div class="table-scroll admin-stock-ledger" tabindex="0" role="region" aria-label="庫存流水資料表"><table>
               <thead>
-                <tr><th>時間</th><th>商品</th><th>來源</th><th>增減</th><th>調整後在庫</th><th>訂單</th><th>操作人</th><th>原因</th></tr>
+                <tr><th>時間</th><th>商品</th><th>來源</th><th>在庫增減</th><th>調整後在庫</th><th>不可售增減</th><th>調整後不可售</th><th>訂單</th><th>操作人</th><th>原因</th></tr>
               </thead>
               <tbody>
                 {movements.data.items.map((item) => (
@@ -49,8 +49,10 @@ const filtered = filter.variantId !== undefined || filter.orderId !== undefined;
                     <td data-label="時間">{formatDateTime(item.createdAt)}</td>
                     <td data-label="商品"><a href={`/admin/stock-movements?variantId=${item.variantId}`}>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}</a></td>
                     <td data-label="來源">{movementKindLabel(item.kind)}</td>
-                    <td data-label="增減">{item.delta > 0 ? `+${item.delta}` : item.delta}</td>
+                    <td data-label="在庫增減">{item.delta > 0 ? `+${item.delta}` : item.delta}</td>
                     <td data-label="調整後在庫">{item.onHandAfter}</td>
+                    <td data-label="不可售增減">{item.unavailableDelta > 0 ? `+${item.unavailableDelta}` : item.unavailableDelta}</td>
+                    <td data-label="調整後不可售">{item.unavailableAfter}</td>
                     <td data-label="訂單">{item.orderId === null ? "—" : <a href={`/admin/orders/${item.orderId}`}>#{item.orderId}</a>}</td>
                     <td data-label="操作人">{item.actor}</td>
                     <td data-label="原因">{item.reason}</td>

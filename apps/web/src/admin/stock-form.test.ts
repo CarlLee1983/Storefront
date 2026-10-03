@@ -16,6 +16,8 @@ describe("庫存流水篩選", () => {
 
   it("來源顯示中文名稱，不認得的代碼原樣顯示", () => {
     expect(movementKindLabel("dispatch")).toBe("交運扣庫");
+    expect(movementKindLabel("return_received")).toBe("退貨收回入倉");
+    expect(movementKindLabel("scrap")).toBe("報廢");
     expect(movementKindLabel("future")).toBe("future");
   });
 });
