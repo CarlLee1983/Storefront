@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import type { APIRoute } from "astro";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { readOrderSearch, searchToInput } from "../../../admin/order-search";
-import { exportOrdersResponse } from "../../../admin/orders-export";
+import { exportOrdersResponse, taipeiDateStamp } from "../../../admin/orders-export";
 
 export const prerender = false;
 
@@ -10,6 +10,5 @@ export const prerender = false;
 export const GET: APIRoute = ({ request, url }) => {
   const jwt = readAccessJwt(request, env, import.meta.env.DEV);
   const search = readOrderSearch(url.searchParams);
-  const today = new Date().toISOString().slice(0, 10).replaceAll("-", "");
-  return exportOrdersResponse((beforeId) => env.APP.exportOrdersForAdmin(jwt, searchToInput(search, beforeId)), `orders-${today}.csv`);
+  return exportOrdersResponse((beforeId) => env.APP.exportOrdersForAdmin(jwt, searchToInput(search, beforeId)), `orders-${taipeiDateStamp(Date.now())}.csv`);
 };

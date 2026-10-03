@@ -69,7 +69,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {orders.ok && (
           <p class="admin-orders-bar">
             <span>每頁 20 筆，新的在前；匯出範圍與目前條件相同（全部符合的訂單，不限本頁）。</span>
-            <a href={exportHref} class="button-create" download>匯出 CSV</a>
+            <a href={exportHref} class="button-create">匯出 CSV</a>
           </p>
         )}
         {orders.ok && orders.data.items.length === 0 && <p>沒有符合的訂單。</p>}

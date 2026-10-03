@@ -71,7 +71,8 @@ for (const viewport of VIEWPORTS) {
       expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
       const lines = bytes.toString("utf8").replace(/^﻿/, "").split("\r\n").filter(Boolean);
       expect(lines[0]).toMatch(/^訂單編號,成立時間,顧客 email/);
-      expect(lines.slice(1).map(line => Number(line.split(",")[0]))).toEqual([...firstPage, ...secondPage]);
+      expect(lines.slice(1, -1).map(line => Number(line.split(",")[0]))).toEqual([...firstPage, ...secondPage]);
+      expect(lines.at(-1)).toBe(`# 共 ${RECENT_ORDERS + 1} 筆，匯出完成`);
       expect((await customerContext.request.get(exportHref!)).status()).toBe(403);
 
       // 客服備註：管理員新增並看到操作者與時間；顧客的訂單頁與列表看不到

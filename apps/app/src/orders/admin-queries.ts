@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, lt, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { approvedCancelledQuantity, pendingCancellationQuantity } from "../cancellations/queries";
 import { completedReturnedQuantity, openReturnQuantity } from "../returns/queries";
@@ -46,16 +46,19 @@ export type OrderCursor = { beforeId?: number };
 
 /**
  * 條件轉成 WHERE：全部參數化（email 以 `instr` 比對，不把使用者輸入當 LIKE 樣式）。
- * 都走索引：編號是主鍵；狀態與成立時間各有 `(欄位, id)` 索引；email 先在顧客表找出符合的顧客，再以 `orders_customer_idx` 對回訂單。
+ * 都走索引：編號是主鍵；狀態有 `(status, id)` 索引；email 先在顧客表找出符合的顧客，再以 `orders_customer_idx` 對回訂單。
+ * 日期區間不直接對 `created_at` 範圍掃描（那會每頁都讀完整區間再排序）：訂單的 `created_at` 是高水位時鐘的有效時間
+ * （`placeOrderIfAvailable`，只增不減）、`id` 是 AUTOINCREMENT，兩者同序，所以用 `orders_created_idx` 兩次點查
+ * 把日期換成 id 的上下界，再走主鍵範圍（遞減走主鍵、不需要排序）；區間內沒有訂單時子查詢為 NULL，比較不成立、回空。
  * 綁定參數數量固定，不隨結果筆數成長（D1 單句上限 100 個）。
  */
-function orderFilterWhere({ orderId, email, status, from, to, beforeId }: OrderFilter & OrderCursor): SQL | undefined {
+export function orderFilterWhere({ orderId, email, status, from, to, beforeId }: OrderFilter & OrderCursor): SQL | undefined {
   const conditions = [
     orderId === undefined ? undefined : eq(orders.id, orderId),
     email === undefined || email === "" ? undefined : sql`${orders.customerId} IN (SELECT id FROM ${user} WHERE instr(lower(${user.email}), lower(${email})) > 0)`,
     status === undefined ? undefined : eq(orders.status, status),
-    from === undefined ? undefined : gte(orders.createdAt, from),
-    to === undefined ? undefined : lt(orders.createdAt, to),
+    from === undefined ? undefined : sql`${orders.id} >= (SELECT first.id FROM orders first WHERE first.created_at >= ${from} ORDER BY first.created_at, first.id LIMIT 1)`,
+    to === undefined ? undefined : sql`${orders.id} <= (SELECT last.id FROM orders last WHERE last.created_at < ${to} ORDER BY last.created_at DESC, last.id DESC LIMIT 1)`,
     beforeId === undefined ? undefined : lt(orders.id, beforeId),
   ];
   return and(...conditions);

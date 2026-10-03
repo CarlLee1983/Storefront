@@ -223,7 +223,10 @@ export const listOrdersInput = z.object({ ...orderFilterFields, beforeId: wholeN
 /** 客服備註：訂單編號與內容（去頭尾空白後不可為空）。 */
 export const addOrderNoteInput = z.object({
   orderId: wholeNumber("訂單編號").positive("訂單編號無效"),
-  note: z.string({ error: "備註必須是文字" }).trim().min(1, "備註不可為空").max(MAX_NOTE_LENGTH, `備註不可超過 ${MAX_NOTE_LENGTH} 個字`),
+  // 瀏覽器表單以 \r\n 換行，先正規化成 \n 再 trim 與計長度（同商品資訊文字）
+  note: z.string({ error: "備註必須是文字" })
+    .transform((value) => value.replace(/\r\n/g, "\n"))
+    .pipe(z.string().trim().min(1, "備註不可為空").max(MAX_NOTE_LENGTH, `備註不可超過 ${MAX_NOTE_LENGTH} 個字`)),
 });
 
 /**

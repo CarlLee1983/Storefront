@@ -1,4 +1,8 @@
 import { env, exports } from "cloudflare:workers";
+import { desc } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import { orderFilterWhere } from "../src/orders/admin-queries";
+import { orders } from "../src/orders/schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { signInCustomer } from "./customers";
@@ -159,6 +163,16 @@ describe("查找舊單與匯出（條件一致）", () => {
     expect(await listedIds({ orderId: 0 })).toMatchObject({ ok: false, reason: "invalid_input" });
   });
 
+  it("只給日期區間時走主鍵範圍，不讀完整區間、也不另外排序", async () => {
+    await seedThree();
+    const { sql, params } = drizzle(env.DB).select({ id: orders.id }).from(orders).where(orderFilterWhere({ from: MARCH_10 - DAY, to: MARCH_10 + DAY })).orderBy(desc(orders.id)).limit(21).toSQL();
+
+    const plan = (await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(...params).all<{ detail: string }>()).results.map(row => row.detail);
+
+    expect(plan.some(detail => /SEARCH orders USING INTEGER PRIMARY KEY/.test(detail)), plan.join("\n")).toBe(true);
+    expect(plan.some(detail => /TEMP B-TREE/.test(detail)), plan.join("\n")).toBe(false);
+  });
+
   it("匯出與列表用同一份條件，範圍一致", async () => {
     await seedThree();
 
@@ -228,6 +242,19 @@ describe("客服備註", () => {
         { id: expect.any(Number), actor: "admin@example.com", note: "顧客改約週六", createdAt: expect.any(Number) },
       ] },
     });
+  });
+
+  it("換行以 \\n 計（瀏覽器的 \\r\\n 不多算），首尾空白去掉，超過 1000 字回 invalid_input", async () => {
+    const alice = await signInCustomer("alice");
+    const { orderId } = await placeMugOrder(alice);
+    const jwt = await mintAccessJwt();
+
+    expect(await app.addOrderNote(jwt, { orderId, note: "字\r\n".repeat(500).trimEnd() })).toMatchObject({ ok: true });
+    expect(await app.addOrderNote(jwt, { orderId, note: "\r\n第一行\r\n第二行\r\n" })).toMatchObject({ ok: true });
+    expect(await app.addOrderNote(jwt, { orderId, note: "字\r\n".repeat(501).trimEnd() })).toMatchObject({ ok: false, reason: "invalid_input" });
+    const order = await app.getOrderForAdmin(jwt, { orderId });
+    expect(order.ok && order.data.notes.map(note => note.note.length)).toEqual([999, 7]);
+    expect(order.ok && order.data.notes[1]!.note).toBe("第一行\n第二行");
   });
 
   it("訂單不存在回 order_not_found；空白或過長的備註回 invalid_input，都不寫入", async () => {

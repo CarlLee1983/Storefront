@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExportRow } from "./orders-csv";
-import { exportOrdersResponse } from "./orders-export";
+import { exportOrdersResponse, taipeiDateStamp } from "./orders-export";
 
 const row = (id: number): ExportRow => ({
   id, createdAt: 0, customerEmail: `c${id}@x.com`, status: "paid", totalTwd: 100, needsAttention: false, paidTwd: 100, refundedTwd: 0, orderedQuantity: 1, shippedQuantity: 0,
@@ -27,13 +27,24 @@ describe("exportOrdersResponse", () => {
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="orders.csv"');
     expect(text.startsWith("\uFEFF訂單編號")).toBe(true);
     expect(text.match(/訂單編號/g)).toHaveLength(1);
-    expect(text.split("\r\n").filter(Boolean).map((line) => line.split(",")[0]).slice(1)).toEqual(["9", "8", "7"]);
+    expect(text.split("\r\n").filter(Boolean).map((line) => line.split(",")[0]).slice(1)).toEqual(["9", "8", "7", "# 共 3 筆，匯出完成"]);
   });
 
   it("沒有符合的訂單仍給標題列", async () => {
     const response = await exportOrdersResponse(async () => ({ ok: true, data: { rows: [], nextBeforeId: null } }), "orders.csv");
 
-    expect(await rawText(response)).toMatch(/^\uFEFF訂單編號[^\r\n]*\r\n$/);
+    expect(await rawText(response)).toMatch(/^\uFEFF訂單編號[^\r\n]*\r\n# 共 0 筆，匯出完成\r\n$/);
+  });
+
+  it("中途失敗的串流沒有結尾列", async () => {
+    const response = await exportOrdersResponse(async (beforeId) => beforeId === undefined
+      ? { ok: true, data: { rows: [row(9)], nextBeforeId: 9 } }
+      : { ok: false, reason: "boom" }, "o.csv");
+    const reader = response.body!.getReader();
+    let received = "";
+    await expect((async () => { for (;;) { const { value, done } = await reader.read(); if (done) return; received += new TextDecoder().decode(value); } })()).rejects.toThrow();
+
+    expect(received).not.toContain("匯出完成");
   });
 
   it("未授權回 403、條件無效回 400，都不給檔案", async () => {
@@ -51,5 +62,12 @@ describe("exportOrdersResponse", () => {
       : { ok: false, reason: "boom" }, "o.csv");
 
     await expect(response.text()).rejects.toThrow("匯出中斷：boom");
+  });
+});
+
+describe("taipeiDateStamp", () => {
+  it("用台北日期：UTC 16:00 之後已是台北隔天", () => {
+    expect(taipeiDateStamp(Date.parse("2030-03-10T15:59:00Z"))).toBe("20300310");
+    expect(taipeiDateStamp(Date.parse("2030-03-10T16:00:00Z"))).toBe("20300311");
   });
 });
