@@ -43,6 +43,11 @@ const compareAtPriceTwd = wholeNumber("原價")
   .positive("原價必須大於 0")
   .max(MAX_PRICE_TWD, `原價不可超過 ${MAX_PRICE_TWD}`);
 
+/** 低庫存門檻：可售數量降到這個數量以下（含）就提醒；0 表示賣完才提醒，上限只擋手誤。 */
+const lowStockThreshold = wholeNumber("低庫存門檻")
+  .min(0, "低庫存門檻不可為負")
+  .max(MAX_STOCK_DELTA, `低庫存門檻不可超過 ${MAX_STOCK_DELTA}`);
+
 const MAX_OPTION_NAME_LENGTH = 30;
 const MAX_OPTION_VALUE_LENGTH = 50;
 
@@ -236,11 +241,11 @@ export const addOrderNoteInput = z.object({
 export const setProductOptionsInput = z.object({ id: productId, optionNames, defaultVariantValues: optionValues.optional() });
 
 /** 新增變體：選項值依商品的維度順序；新變體的在庫數為 0，由庫存調整補貨。 */
-export const createVariantInput = z.object({ productId, optionValues, priceTwd, compareAtPriceTwd: compareAtPriceTwd.optional(), deliveryType: deliveryType.optional() });
+export const createVariantInput = z.object({ productId, optionValues, priceTwd, compareAtPriceTwd: compareAtPriceTwd.optional(), deliveryType: deliveryType.optional(), lowStockThreshold: lowStockThreshold.optional() });
 
 /**
  * 修改變體：選項值、售價整組送出；`compareAtPriceTwd` 不帶表示不動原價、`null` 表示清空；
- * `imageId` 不帶表示不動、`null` 表示不指定圖片；`deliveryType` 不帶表示不動。
+ * `imageId` 不帶表示不動、`null` 表示不指定圖片；`deliveryType` 不帶表示不動；`lowStockThreshold` 不帶表示不動、`null` 表示不提醒。
  */
 export const updateVariantInput = z.object({
   variantId,
@@ -249,6 +254,7 @@ export const updateVariantInput = z.object({
   compareAtPriceTwd: compareAtPriceTwd.nullable().optional(),
   imageId: z.string({ error: "圖片編號必須是文字" }).min(1, "圖片編號無效").nullable().optional(),
   deliveryType: deliveryType.optional(),
+  lowStockThreshold: lowStockThreshold.nullable().optional(),
 });
 
 /** 費率上限只擋手誤；0 表示該類型免運。 */

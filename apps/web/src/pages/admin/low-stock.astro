@@ -1,0 +1,52 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const lowStock = await env.APP.listLowStockVariants(jwt);
+if (!lowStock.ok) Astro.response.status = 403;
+---
+
+<AdminLayout title="低庫存提醒">
+  {
+    !lowStock.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        <p>販售中、已設低庫存門檻且可售數量不高於門檻的變體，可售少的在前。可售 = 在庫 − 不可售 − 保留，所以被訂單保留或待檢退貨占住的數量不算可售。補貨或盤損請在商品編輯頁調整庫存，調整後這份清單會同步更新，變動可在庫存流水依變體對回。</p>
+        {lowStock.data.length === 0 && <p>目前沒有低庫存的變體。</p>}
+        {
+          lowStock.data.length > 0 && (
+            <div class="table-scroll admin-stock-ledger admin-low-stock" tabindex="0" role="region" aria-label="低庫存資料表"><table>
+              <thead>
+                <tr><th>商品</th><th class="col-num">門檻</th><th class="col-num">在庫</th><th class="col-num">不可售</th><th class="col-num">保留</th><th class="col-num">可售</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                {lowStock.data.map((item) => (
+                  <tr>
+                    <td data-label="商品"><a href={`/admin/products/${item.productId}#variant-${item.variantId}`}>{item.productName}{item.optionValues.length > 0 && `（${item.optionValues.join(" / ")}）`}</a></td>
+                    <td class="col-num" data-label="門檻">{item.threshold}</td>
+                    <td class="col-num" data-label="在庫">{item.onHand}</td>
+                    <td class="col-num" data-label="不可售">{item.unavailable}</td>
+                    <td class="col-num" data-label="保留">{item.reserved}</td>
+                    <td class="col-num" data-label="可售"><span class:list={["stock-pill", item.available === 0 ? "is-zero" : "is-low"]}>{item.available}</span></td>
+                    <td data-label="操作">
+                      <div class="admin-actions">
+                        <a href={`/admin/products/${item.productId}#variant-${item.variantId}`} class="btn-action">調整庫存</a>
+                        <a href={`/admin/stock-movements?variantId=${item.variantId}`} class="btn-action">查看流水</a>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )
+        }
+      </>
+    )
+  }
+</AdminLayout>

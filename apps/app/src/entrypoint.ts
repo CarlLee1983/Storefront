@@ -335,6 +335,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().adjustStock(jwt, input);
   }
 
+  listLowStockVariants(jwt: string) {
+    return this.#admin().listLowStockVariants(jwt);
+  }
+
   listStockMovements(jwt: string, input: unknown) {
     return this.#admin().listStockMovements(jwt, input);
   }

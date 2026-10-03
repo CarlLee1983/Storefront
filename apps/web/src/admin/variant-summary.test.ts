@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { summarizeVariants } from "./variant-summary";
 
 const variant = (priceTwd: number, onHand: number, reserved: number, overrides: Partial<AdminVariant> = {}): AdminVariant => ({
-  id: priceTwd, isDefault: false, optionValues: [], priceTwd, compareAtPriceTwd: null, onHand, unavailable: 0, scrappable: 0, reserved, available: onHand - reserved, discontinued: false, imageId: null, deliveryType: "standard", ...overrides,
+  id: priceTwd, isDefault: false, optionValues: [], priceTwd, compareAtPriceTwd: null, onHand, unavailable: 0, scrappable: 0, reserved, available: onHand - reserved, discontinued: false, imageId: null, deliveryType: "standard", lowStockThreshold: null, ...overrides,
 });
 
 describe("summarizeVariants", () => {

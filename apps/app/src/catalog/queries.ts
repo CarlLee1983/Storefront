@@ -142,6 +142,7 @@ async function selectAdminVariants(db: DrizzleD1Database, productId?: number): P
     discontinuedAt: productVariants.discontinuedAt,
     imageId: productVariants.imageId,
     deliveryType: productVariants.deliveryType,
+    lowStockThreshold: productVariants.lowStockThreshold,
   }).from(productVariants).where(productId === undefined ? undefined : eq(productVariants.productId, productId))
     .orderBy(desc(productVariants.isDefault), asc(productVariants.id));
   const byProduct = new Map<number, AdminVariant[]>();

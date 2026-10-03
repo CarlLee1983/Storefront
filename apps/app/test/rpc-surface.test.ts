@@ -42,6 +42,7 @@ const RPC_METHODS = [
   "listCategories",
   "listCategoriesForAdmin",
   "listInvoicesToHandle",
+  "listLowStockVariants",
   "listMailForAdmin",
   "listMyAddresses",
   "listMyMail",

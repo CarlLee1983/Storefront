@@ -65,10 +65,17 @@ export const productVariants = sqliteTable("product_variants", {
    *（新增欄位不另設 CHECK，否則遷移要重建資料表）。
    */
   deliveryType: text("delivery_type").$type<DeliveryType>().notNull().default("standard"),
+  /**
+   * 低庫存門檻：販售中的變體可售數量（`catalog/stock.ts`）降到這個數量以下（含）就列入低庫存提醒；null 表示不提醒（初始值）。
+   * 提醒是從可售數量與這個門檻即時推導的，沒有另存「已提醒」狀態，庫存一變動提醒就同步更新。
+   */
+  lowStockThreshold: integer("low_stock_threshold"),
 }, (table) => [
   uniqueIndex("product_variants_options_uidx").on(table.productId, table.option1Value, table.option2Value),
   index("product_variants_product_idx").on(table.productId),
   uniqueIndex("product_variants_default_uidx").on(table.productId).where(sql`is_default = 1`),
   // 特價變體只佔少數：部分索引讓「有沒有特價商品」與只看特價的查詢不必掃全表
+  // 有設門檻的變體只佔少數：低庫存清單只掃這些
+  index("product_variants_low_stock_idx").on(table.lowStockThreshold).where(sql`low_stock_threshold is not null`),
   index("product_variants_compare_at_price_idx").on(table.compareAtPriceTwd).where(sql`compare_at_price_twd is not null`),
 ]);

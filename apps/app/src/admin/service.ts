@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
 import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
+import { selectLowStockVariants } from "../catalog/low-stock";
 import { createVariant, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
 import { deliverNoticeSafely } from "../contact/notify";
 import { resendMessage, selectMailForAdmin, setDeliveryFailure } from "../contact/admin";
@@ -315,6 +316,13 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
      */
     scrapUnavailableStock(jwt: unknown, input: unknown) {
       return authorized(jwt, scrapUnavailableInput, input, (actor, { variantId, quantity, reason }) => scrapUnavailable(d1, { variantId, quantity, reason, actor: actor.email }, clock.now()));
+    },
+
+    /** 低庫存提醒：販售中、已設門檻且可售數量不高於門檻的變體，可售少的在前；補貨與盤損走 `adjustStock`，流水可依變體對回。 */
+    async listLowStockVariants(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectLowStockVariants(db));
     },
 
     /** 庫存流水（在庫數與不可售數量的每一次變動），新的在前；可依變體或訂單篩選，以 `nextBeforeId` 游標往舊的翻頁。 */

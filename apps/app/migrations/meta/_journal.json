@@ -232,6 +232,13 @@
       "when": 1791011709587,
       "tag": "0032_order_search_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1791013357116,
+      "tag": "0033_low_stock_threshold",
+      "breakpoints": true
     }
   ]
 }

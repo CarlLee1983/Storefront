@@ -285,6 +285,16 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0032_order_search_notes.down.sql`；已有任何客服備註時守門檢查讓回復失敗（備註是營運紀錄，須先匯出並確認可以捨棄）。回復順序是 0032 → 0031 → …。
 - 測試見 `apps/app/test/admin-orders.test.ts`（查找、翻頁、匯出分批、備註與顧客隔離）、`order-notes-migration.test.ts`；Web 的解析與 CSV 在 `apps/web/src/admin/order-search.test.ts`、`orders-csv.test.ts`、`orders-export.test.ts`；手機與桌機的操作由 `e2e/tests/order-search.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
 
+### 低庫存提醒（#124）
+
+依設計文件 T21（Migration `0033_low_stock_threshold.sql`；`apps/app/src/catalog/low-stock.ts`；Web 的 `/admin/low-stock`，導覽「低庫存提醒」）。管理員為每個變體設定低庫存門檻，販售中的變體可售數量不高於門檻就列入提醒；不含採購、多倉或外部通知。
+
+- 資料：`product_variants.low_stock_threshold`（整數，null = 不提醒，既有變體初始為 null）與部分索引 `product_variants_low_stock_idx`（只含有設門檻的變體）。沒有另存「已提醒」狀態：提醒由當下的可售數量推導（`catalog/stock.ts` 的 `availableExpr`，與結帳、庫存調整同一個公式），所以補貨、盤損、訂單保留、退貨不可售變動後下一次查詢就同步；停賣的變體不提醒。
+- 設定：`createVariant`、`updateVariant` 多一個選填 `lowStockThreshold`（0–1,000,000 的整數；`updateVariant` 帶 `null` 清除、不帶表示不動），商品編輯頁的變體表單（沒有選項的商品是獨立的「低庫存門檻」小表單）與列表／詳情都帶 `lowStockThreshold`；皆走 Access JWT。
+- 讀取：`listLowStockVariants` 回傳在庫、不可售、保留、可售與門檻，可售少的在前，至多 200 筆；頁面連到商品編輯頁調整庫存與依變體篩選的庫存流水，補貨與盤損因此可對回流水。已加入 `rpc-surface` 白名單，未授權回 `unauthorized`。
+- 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0033_low_stock_threshold.down.sql`；門檻只是設定、丟棄不影響庫存與訂單，不設守門檢查，已設的門檻會遺失。回復順序是 0033 → 0032 → …。
+- 測試見 `apps/app/test/low-stock.test.ts`（門檻、保留與不可售不當可售、停賣、同步更新、驗證與權限）、`low-stock-migration.test.ts`；Web 的表單解析在 `apps/web/src/admin/variant-form.test.ts`，手機／桌機流程在 `e2e/tests/low-stock.spec.ts`。
+
 ## 模擬金流閘道
 
 `apps/gateway`（`@storefront/gateway`）是獨立的 Worker，自己的 D1，模擬「外部」金流閘道；本站只透過 HTTP API 與簽章 webhook 和它互動。本機以 `bun run dev:gateway` 啟動（`bun run db:migrate` 會一併套用它的 migration），設定見 `apps/gateway/.dev.vars.example`。

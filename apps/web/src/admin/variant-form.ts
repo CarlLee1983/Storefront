@@ -6,8 +6,8 @@ export const VARIANT_INTENTS = ["set-options", "create-variant", "update-variant
 
 export type VariantFormDispatch =
   | { kind: "set-options"; input: { id: number; optionNames: string[]; defaultVariantValues?: string[] } }
-  | { kind: "create-variant"; input: { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number; deliveryType?: string } }
-  | { kind: "update-variant"; input: { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null; deliveryType?: string } }
+  | { kind: "create-variant"; input: { productId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number; deliveryType?: string; lowStockThreshold?: number } }
+  | { kind: "update-variant"; input: { variantId: number; optionValues: string[]; priceTwd: number; compareAtPriceTwd?: number | null; imageId?: string | null; deliveryType?: string; lowStockThreshold?: number | null } }
   | { kind: "discontinue"; input: { variantId: number; discontinued: boolean } }
   | { kind: "adjust-stock"; input: ReturnType<typeof stockAdjustFormToInput> }
   | { kind: "invalid" };
@@ -28,6 +28,12 @@ function newVariantCompareAt(value: FormDataEntryValue | null): number | undefin
   return parsed === null ? undefined : parsed;
 }
 
+/** 低庫存門檻：欄位不存在是 `undefined`（不動），留白是 `null`（不提醒），有值轉成數字。 */
+function lowStockThresholdFromInput(value: FormDataEntryValue | null): number | null | undefined {
+  if (value === null) return undefined;
+  return toText(value).trim() === "" ? null : toNumber(value);
+}
+
 /**
  * 商品編輯頁的變體管理表單 → RPC 輸入；不判斷內容是否合法，由 App 驗證。
  * 不認得的 intent 或缺少/無效的編號不呼叫任何 RPC。商品編號來自網址，變體編號來自表單。
@@ -43,6 +49,7 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
   if (intent === "create-variant") {
     const compareAtPriceTwd = newVariantCompareAt(form.get("compareAtPriceTwd"));
     const deliveryType = deliveryTypeFromInput(form.get("deliveryType"));
+    const lowStockThreshold = lowStockThresholdFromInput(form.get("lowStockThreshold"));
     return {
       kind: "create-variant",
       input: {
@@ -51,6 +58,7 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
         priceTwd: toNumber(form.get("priceTwd")),
         ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }),
         ...(deliveryType === undefined ? {} : { deliveryType }),
+        ...(lowStockThreshold == null ? {} : { lowStockThreshold }),
       },
     };
   }
@@ -59,6 +67,7 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
   if (intent === "update-variant") {
     const imageId = form.get("imageId");
     const deliveryType = deliveryTypeFromInput(form.get("deliveryType"));
+    const lowStockThreshold = lowStockThresholdFromInput(form.get("lowStockThreshold"));
     return {
       kind: "update-variant",
       input: {
@@ -68,6 +77,7 @@ export function dispatchVariantForm(form: FormData, productId: number): VariantF
         compareAtPriceTwd: compareAtPriceFromInput(form.get("compareAtPriceTwd")),
         ...(imageId === null ? {} : { imageId: toText(imageId) === "" ? null : toText(imageId) }),
         ...(deliveryType === undefined ? {} : { deliveryType }),
+        ...(lowStockThreshold === undefined ? {} : { lowStockThreshold }),
       },
     };
   }

@@ -31,7 +31,7 @@ it("0007→0008 preserves full galleries, image keys and upload identities while
     data: {
       id, name: row!.name, description: row!.description, defaultVariantId: expect.any(Number), priceTwd: row!.price_twd, compareAtPriceTwd: null,
       onHand: row!.on_hand, unavailable: 0, reserved: 0, available: row!.on_hand,
-      optionNames: [], variants: [{ id: expect.any(Number), isDefault: true, optionValues: [], priceTwd: row!.price_twd, compareAtPriceTwd: null, onHand: row!.on_hand, unavailable: 0, scrappable: 0, reserved: 0, available: row!.on_hand, discontinued: false, imageId: null, deliveryType: "standard" }],
+      optionNames: [], variants: [{ id: expect.any(Number), isDefault: true, optionValues: [], priceTwd: row!.price_twd, compareAtPriceTwd: null, onHand: row!.on_hand, unavailable: 0, scrappable: 0, reserved: 0, available: row!.on_hand, discontinued: false, imageId: null, deliveryType: "standard", lowStockThreshold: null }],
       cover: images[0], images, listed: true, featured: false, category: null,
     },
   };

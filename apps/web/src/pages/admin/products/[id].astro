@@ -166,6 +166,15 @@ const values = {
             {failure && failedTarget === "options" && <p class="error" role="alert">{failure.message}</p>}
             <button type="submit" class="button-primary">套用選項維度</button>
           </form>
+          {product.optionNames.length === 0 && product.variants[0] && <form method="post" class="variant-form" aria-label="低庫存門檻">
+            {failure && failedTarget === `variant-${product.variants[0].id}` && <p class="error" role="alert">{failure.message}{Object.values(failure.fields).flat().map((m) => `：${m}`)}</p>}
+            <input type="hidden" name="intent" value="update-variant" />
+            <input type="hidden" name="variantId" value={product.variants[0].id} />
+            <input type="hidden" name="priceTwd" value={product.variants[0].priceTwd} />
+            <label>低庫存門檻（選填）<input name="lowStockThreshold" type="number" min="0" step="1" value={product.variants[0].lowStockThreshold ?? ""} aria-describedby="low-stock-hint" /></label>
+            <p id="low-stock-hint"><small>可售數量降到這個數量以下（含）時，會列在「低庫存提醒」；留白表示不提醒。</small></p>
+            <button type="submit" class="btn-action">儲存門檻</button>
+          </form>}
           {product.optionNames.length > 0 && <>
             <ul class="variant-list">
               {product.variants.map((variant) => <li class:list={["variant-card", { "is-discontinued": variant.discontinued }]} id={`variant-${variant.id}`}>
@@ -183,6 +192,7 @@ const values = {
                         {DELIVERY_TYPES.map((type) => <option value={type} selected={variant.deliveryType === type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
                       </select>
                     </label>
+                    <label>低庫存門檻（選填）<input name="lowStockThreshold" type="number" min="0" step="1" value={variant.lowStockThreshold ?? ""} /></label>
                     <label>選取時顯示的圖片
                       <select name="imageId">
                         <option value="" selected={variant.imageId === null}>不指定</option>
@@ -192,7 +202,7 @@ const values = {
                   </div>
                   <button type="submit" class="btn-action">更新變體</button>
                 </form>
-                <p class="variant-stock">在庫 {variant.onHand}，不可售 {variant.unavailable}，保留 {variant.reserved}，可售 {variant.available}</p>
+                <p class="variant-stock">在庫 {variant.onHand}，不可售 {variant.unavailable}，保留 {variant.reserved}，可售 {variant.available}{variant.lowStockThreshold !== null && !variant.discontinued && variant.available <= variant.lowStockThreshold && <> <strong class="error">（低庫存：可售已不高於門檻 {variant.lowStockThreshold}）</strong></>}</p>
                 <div class="admin-actions">
                   <form method="post" class="inline inline-stock-adjust">
                     <input type="hidden" name="intent" value="adjust-variant-stock" />
@@ -222,8 +232,9 @@ const values = {
                     {DELIVERY_TYPES.map((type) => <option value={type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
                   </select>
                 </label>
+                <label>低庫存門檻（選填）<input name="lowStockThreshold" type="number" min="0" step="1" /></label>
               </div>
-              <p><small>配送類型決定結帳時的運費，只影響之後的訂單。新變體的在庫數從 0 開始，建立後在變體上調整庫存。停賣的變體不再接受新購買，但歷史訂單與庫存紀錄仍保留。</small></p>
+              <p><small>低庫存門檻：販售中的變體可售數量降到這個數量以下（含）時，會列在「低庫存提醒」；留白表示不提醒。配送類型決定結帳時的運費，只影響之後的訂單。新變體的在庫數從 0 開始，建立後在變體上調整庫存。停賣的變體不再接受新購買，但歷史訂單與庫存紀錄仍保留。</small></p>
               <button type="submit" class="button-primary">新增變體</button>
             </form>
           </>}

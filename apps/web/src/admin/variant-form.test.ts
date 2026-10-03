@@ -61,4 +61,14 @@ describe("dispatchVariantForm", () => {
   ])("%s：不呼叫任何 RPC", (_label, fields) => {
     expect(dispatchVariantForm(formOf(fields), 7)).toEqual({ kind: "invalid" });
   });
+
+  it("低庫存門檻：修改時留白是不提醒、有值轉數字、欄位不存在就不動；新增時留白不帶", () => {
+    const base = { intent: "update-variant", variantId: "3", value1: "白", priceTwd: "800" };
+    expect(dispatchVariantForm(formOf({ ...base, lowStockThreshold: "" }), 7)).toMatchObject({ input: { lowStockThreshold: null } });
+    expect(dispatchVariantForm(formOf({ ...base, lowStockThreshold: " 5 " }), 7)).toMatchObject({ input: { lowStockThreshold: 5 } });
+    expect(dispatchVariantForm(formOf(base), 7)).not.toHaveProperty("input.lowStockThreshold");
+    const created = { intent: "create-variant", value1: "白", priceTwd: "800" };
+    expect(dispatchVariantForm(formOf({ ...created, lowStockThreshold: "" }), 7)).toEqual({ kind: "create-variant", input: { productId: 7, optionValues: ["白"], priceTwd: 800 } });
+    expect(dispatchVariantForm(formOf({ ...created, lowStockThreshold: "2" }), 7)).toMatchObject({ input: { lowStockThreshold: 2 } });
+  });
 });
