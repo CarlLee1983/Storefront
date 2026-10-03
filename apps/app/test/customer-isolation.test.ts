@@ -11,7 +11,11 @@ const app = exports.default;
 
 beforeEach(resetDb);
 
-/** A11 跨顧客識別碼：鮑伯拿愛麗絲所有資料的識別碼（訂單、批次、申請、地址、信件、聯絡驗證）逐一試過所有顧客端 RPC，一律讀不到、改不動，結果與不存在的編號相同。 */
+/**
+ * A11 跨顧客識別碼：鮑伯拿愛麗絲的訂單、明細、批次、地址與信件編號，試過 getMyOrder、cancelOrder、startPayment、requestCancellation、requestReturn、
+ * updateAddress、deleteAddress、getMyMail 與三個清單 RPC，一律讀不到、改不動，結果與不存在的編號相同；管理 RPC 不接受顧客 cookie。
+ * （聯絡驗證憑證的跨顧客隔離見 contact-email.test.ts。）
+ */
 it("A11 顧客拿別人的訂單、批次、售後申請、地址與信件識別碼：讀不到、動不了，且自己的清單不含別人的資料", async () => {
   const { cookie: alice, orderId, mugLine, tableLine, gateway } = await paidMixedOrder("alice");
   const bob = await signInCustomer("bob");
@@ -25,13 +29,14 @@ it("A11 顧客拿別人的訂單、批次、售後申請、地址與信件識別
   const mail = await app.listMyMail(alice);
   if (!mail.ok || mail.data.length === 0) throw new Error("愛麗絲沒有信");
   const messageId = mail.data[0]!.id;
-  const refundBefore = (await adminOrder(orderId)).refunds;
+  const orderBefore = await adminOrder(orderId);
+  const refundBefore = orderBefore.refunds;
   const notFound = { ok: false, reason: "order_not_found" };
 
   // 訂單：讀取、取消、付款、申請取消與退貨（含用愛麗絲的明細與批次編號）
   expect(await app.getMyOrder(bob, { orderId })).toEqual(notFound);
   expect(await app.cancelOrder(bob, { orderId })).toEqual(notFound);
-  expect(await app.startPayment(bob, { orderId })).toMatchObject({ ok: false });
+  expect(await app.startPayment(bob, { orderId })).toEqual(notFound);
   expect(await app.requestCancellation(bob, { orderId, requestKey: "bob-cancel-key-0001", items: [{ orderLineId: mugLine.id, quantity: 1 }] })).toEqual(notFound);
   expect(await app.requestReturn(bob, { orderId, requestKey: "bob-return-key-0001", items: [{ orderLineId: mugLine.id, shipmentId: batchId, quantity: 1 }] })).toEqual(notFound);
   // 地址與信件：改、刪、讀都與不存在的編號相同
@@ -50,8 +55,7 @@ it("A11 顧客拿別人的訂單、批次、售後申請、地址與信件識別
 
   // 愛麗絲的資料一個字都沒動
   const after = await adminOrder(orderId);
-  expect(after.refunds).toEqual(refundBefore);
-  expect(after.status).not.toBe("cancelled");
+  expect(after).toEqual(orderBefore);
   expect(await app.listMyAddresses(alice)).toMatchObject({ ok: true, data: [{ id: addressId, name: "王小明" }] });
   expect(await app.getMyMail(alice, { messageId })).toMatchObject({ ok: true });
   expect(gateway.refundRequests.length).toBe(refundBefore.filter((refund) => refund.status === "succeeded").length);

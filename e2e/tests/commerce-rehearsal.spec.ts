@@ -25,7 +25,7 @@ function taipeiLocalNow(): string {
  * 並以管理員商品頁的「在庫、不可售、保留、可售」對照每一步的庫存。
  */
 for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }]) {
-  test(`${viewport.name}：9,700 元混合配送訂單走完分批交運、取消、退貨、物流遺失，退款 8,600、剩額 1,100，發票原額 9,700 折讓 8,600 餘額 1,100`, async ({ browser }) => {
+  test(`${viewport.name}：9,700 元混合配送訂單走完分批交運、取消、退貨、物流遺失，累計退款 8,600（收款剩額 1,100），發票原額 9,700 折讓 8,600 餘額 1,100`, async ({ browser }) => {
     test.setTimeout(420_000);
     const suffix = `${viewport.width}`;
     const lampName = `演練燈具${suffix}`;
@@ -173,6 +173,13 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await expect(timeline).toContainText("退款已退回 NT$ 6,600");
       await expect(timeline).toContainText("發票已開立 NT$ 9,700");
       await expect(timeline).not.toContainText("退款曾明確失敗");
+      // 累計金額：已收款 9,700、已退回 8,600，兩者相差的收款剩額即 1,100（等於保留的一件燈具與一般運費）
+      const amountOf = async (label: string) => Number((await timeline.getByText(label, { exact: true }).locator("xpath=following-sibling::dd").innerText()).replace(/[^\d]/g, ""));
+      expect(await amountOf("已收款")).toBe(9700);
+      expect(await amountOf("已退回")).toBe(8600);
+      expect(await amountOf("憑證已折讓")).toBe(8600);
+      expect(await amountOf("已收款") - await amountOf("已退回")).toBe(1100);
+      await expect(timeline.getByText("待退回款項", { exact: true }).locator("xpath=following-sibling::dd")).toHaveText("NT$ 0");
       const invoices = page.locator("#invoices");
       await expect(invoices).toContainText("NT$ 9,700");
       await expect(invoices).toContainText("已折讓 3 筆，累計 NT$ 8,600");

@@ -11,7 +11,7 @@
 | 設計文件步驟 | 證據 |
 | --- | --- |
 | 步驟 1～5：每步庫存（實體、保留、不可售、可售）、三筆退款 1,000 / 1,000 / 6,600（合計 8,600）、剩額 1,100、發票原額 9,700、折讓 8,600、餘額 1,100、時間線事件 | `apps/app/test/commerce-rehearsal.test.ts`：「逐步：庫存、三筆退款 8,600…」；全程只走公開 RPC 與閘道替身，沒有直接改資料庫 |
-| 步驟 6：第一筆退款明確失敗再重試、延遲開票（結果不明）、折讓失敗補辦、通知投遞失敗重送；最終金額與庫存不變，時間線保留各次業務事實，技術重試不成為新事件 | 同檔：「注入第一筆退款明確失敗、延遲開票、折讓失敗與通知投遞失敗並補辦…」；同一流程先跑無故障、再跑有故障，兩次的庫存、退款、發票折讓、閘道請求與信件種類逐項相同；管理員時間線只多一筆 `refund_failed`，顧客時間線完全相同；故障後待辦為空 |
+| 步驟 6：第一筆退款明確失敗再重試、延遲開票（結果不明）、折讓失敗補辦、通知投遞失敗重送；最終金額與庫存不變，時間線保留各次業務事實，技術重試不成為新事件 | 同檔：「注入第一筆退款明確失敗、延遲開票、折讓失敗與通知投遞失敗並補辦…」；同一流程先跑無故障、再跑有故障，兩次的庫存、退款、發票與折讓（含閘道上的發票、折讓金額）及信件種類逐項相同；管理員時間線只多一筆 `refund_failed`，顧客時間線完全相同；故障後待辦為空 |
 | 桌機 1280 與手機 375 的實際畫面（顧客＋管理員），含 axe | `e2e/tests/commerce-rehearsal.spec.ts`：手機、桌機各一支，從結帳 9,700、付款、分批交運、取消申請與核准、送達、自助退貨與檢查、大型配送另批交運與確認遺失，到管理員退款表／發票折讓與顧客時間線／發票餘額；每一步以管理員商品清單的庫存四欄對照；訂單頁與後台訂單頁各做無水平捲動與 axe 零違規 |
 | 結果不明阻擋後筆、其他配送費交叉情境 | 依設計文件另依 A7、A8 驗收（下表） |
 
@@ -33,14 +33,14 @@
 | A10 | 發票延遲／失敗不阻擋交易；原票完成後補齊折讓，原額減累計折讓為餘額；沒有重複憑證 | `invoices.test.ts`：「明確失敗：付款成功、訂單已付款、仍可出貨」「回應遺失（結果不明）：先查證」「退款先於延遲開立的發票成功」；`allowances.test.ts`：「退款先成功、原票延遲未完成：…原票補辦成功後自動補折讓」「折讓先失敗，管理員重試已成功的退款也會補折讓」「同筆成功退款只折讓一次」「回應遺失（結果不明）：先查證」；E2E `invoices.spec.ts`、`order-timeline.spec.ts` | 整體演練：延遲開票（結果不明）+ 折讓失敗補辦後，閘道上發票 1 張（9,700）、折讓 3 張（1,000 / 1,000 / 6,600），餘額 1,100；E2E 發票原額 9,700、折讓 8,600、餘額 1,100 |
 | A11 | 換 email、重寄舊訂單通知、投遞失敗、跨顧客識別碼 | `order-notifications.test.ts`：「換了聯絡 email 之後：舊信的重送寄新地址，歷史投遞保留原地址」「投遞失敗不影響下單」；`admin-mail.test.ts`：「重送是同一封信的新投遞」「非驗證信重送到顧客目前已驗證的地址」；`contact-email.test.ts`：「換址後歷史信件保持原收件地址」「顧客讀不到別人的信」；`address-book.test.ts`：「換成別人的地址編號既讀不到也改不到、刪不掉」；`checkout.test.ts`：「只看得到自己的訂單」；`cancellation-request.test.ts`：「別的顧客看不到這案取消申請」；`return-request.test.ts`：「別人的訂單與不屬於這張訂單的明細」；`order-timeline.test.ts`：「別人的訂單讀不到時間線」；`invoices.test.ts` / `allowances.test.ts`：顧客讀不到別人的發票與折讓；E2E `contact-mailbox.spec.ts`、`address-book.spec.ts`、`return-self-service.spec.ts` | `customer-isolation.test.ts`：同一位顧客拿另一位的訂單、批次、取消與退貨申請、地址、信件識別碼逐一試過所有顧客端 RPC，結果與不存在的編號相同；清單不含別人的資料；顧客 cookie 不能當管理員；受害者資料未被改動 |
 | A12 | 超過 200 筆訂單可搜尋、分頁、匯出；操作可追溯人／時間／原因；流水可核對，低庫存可見 | `admin-orders.test.ts`：「翻頁走過全部訂單：…超過 100 張仍可讀取」「依訂單編號／email／日期區間找」「匯出分批：500 筆一批…取回 520 筆不遺漏、不重複」「管理員新增備註…留下操作者與時間」；`stock-ledger.test.ts`：「調整寫入流水：變動量、調整後在庫數、操作人、原因與時間」「流水只增不改不刪由資料庫保證」；`low-stock.test.ts`：「設了門檻且可售數量不高於門檻才列入」「庫存調整後提醒同步更新，…並可用流水對回」；E2E `order-search.spec.ts`、`stock-ledger.spec.ts`、`low-stock.spec.ts` | 無 |
-| A13 | 舊待付款／已付未出貨／已出貨／取消訂單遷移：預設變體、原交易金額、免運、保留不丟失；無額外可售；未知物流不偽造；演練驗證與回復 | 每支遷移各有守門與回復測試：`product-variants-migration.test.ts`、`shipping-migration.test.ts`、`stock-ledger-migration.test.ts`（含 `scripts/verify-0020-stock.sql` 驗證）、`shipments-migration.test.ts`（未知物流單號與出貨時間不編造）、`refunds-migration.test.ts`、`cancellations-migration.test.ts` 等 `*-migration.test.ts`；`default-variant.test.ts` | `migration-chain.test.ts`：從 main 時代（0012）的舊資料（待付款 4 件、已付未出貨 2 件、已出貨 1 件〔無物流單號與出貨時間〕、已取消 9 件）套用全部遷移到 0033，斷言預設變體、金額與運費拆分（0）、實體 10／保留 6／可售 4（與遷移前一致，無額外可售）、整單批次不偽造；再依序執行 0033 → 0013 全部回復腳本，斷言舊語意與資料還原（在庫 8、單號與出貨時間仍為空）；最後重新套用，結果與第一次相同 |
-| A14 | 桌機與手機核心操作可用；結構化資料與可見價格庫存一致；型別、覆蓋率、E2E 與既有驗收通過 | `apps/web/src/seo/product-jsonld.test.ts`、`sitemap.test.ts`、`sitemap-source.test.ts`；E2E `seo.spec.ts`（JSON-LD 與頁面一致、sitemap 只列上架商品、`?variant=`）、`accessibility.spec.ts`、各功能 spec 的 375／1280 雙視窗與 axe | 整體演練 E2E 雙視窗；本票 Gates 結果見最後一節 |
+| A13 | 舊待付款／已付未出貨／已出貨／取消訂單遷移：預設變體、原交易金額、免運、保留不丟失；無額外可售；未知物流不偽造；演練驗證與回復 | 每支遷移各有守門與回復測試：`product-variants-migration.test.ts`、`shipping-migration.test.ts`、`stock-ledger-migration.test.ts`（含 `scripts/verify-0020-stock.sql` 驗證）、`shipments-migration.test.ts`（未知物流單號與出貨時間不編造）、`refunds-migration.test.ts`、`cancellations-migration.test.ts` 等 `*-migration.test.ts`；`default-variant.test.ts` | `migration-chain.test.ts`：從 main 時代（0012）的舊資料（待付款 4 件、已付未出貨 2 件、已出貨 2 單〔一單無物流單號與出貨時間、一單單號 TW1 且有出貨時間〕、已取消 9 件，另有已逾期且遲到付款已退款〔refunded，有原因與時間〕與已取消且退款失敗〔refund_failed〕各一單）套用全部遷移到 0033，斷言預設變體、金額與運費拆分（0）、實體 10／保留 6／可售 4（與遷移前一致，無額外可售）、整單批次（單號 TW1 與出貨時間照搬、未知者不偽造）、舊退款搬進逐筆退款（refunded → succeeded，refund_failed → unknown，商品款／運費拆分 300／0 與 200／0）；再依序執行 0033 → 0013 全部回復腳本，斷言訂單、單號與出貨時間、付款原欄位與舊語意還原（在庫 8；沒有原因的 refund_failed 付款回復時由退款補上原因 cancelled_order 與時間）；最後重新套用，結果與第一次相同；可售數量以 App 的 `availableExpr` 對遷移後資料庫執行，不另寫算法 |
+| A14 | 桌機與手機核心操作可用；結構化資料與可見價格庫存一致；型別、覆蓋率、E2E 與既有驗收通過 | `apps/web/src/seo/product-jsonld.test.ts`、`sitemap.test.ts`、`sitemap-source.test.ts`；E2E `seo.spec.ts`（JSON-LD 與頁面一致、sitemap 只列上架商品、`?variant=`）、`accessibility.spec.ts`、各功能 spec 的 375／1280 雙視窗與 axe | 整體演練 E2E 雙視窗；型別、覆蓋率與完整 E2E 的實跑結果見第 5 節「Gates」 |
 
 ## 3. 文案與演練行為的一致性
 
 以下頁面原本與演練行為不符，已修正（同步 `docs/copy/83-still-life-review.md`，並更新 `e2e/tests/content-pages.spec.ts`、`detail-cart-redesign.spec.ts` 的斷言）：
 
-- `/faq` 配送：補上一般宅配 NT$ 100、大型配送 NT$ 600，各收一次，分批出貨不加收。
+- `/faq` 配送：依配送類型各收一次（目前一般宅配 NT$ 100、大型配送 NT$ 600，以結帳頁顯示為準），分批出貨不加收。
 - `/faq` 發票：原寫「電子發票會寄到你登入時使用的 email」，改為模擬發票、通知寄到已驗證的聯絡 email、延遲時補辦、退款後逐筆折讓並顯示原額／累計折讓／餘額。
 - `/faq` 與 `/returns` 退換貨：改為各批自送達隔日起 7 天（台北日曆日）可自助申請、分批各自計算；日期不明、逾期或瑕疵由人工受理。
 - `/returns` 退款：補上商品款按實付單價、每筆各自通知、不超過實付，以及運費規則（部分售後不退、同類全退出退一次、遺失退商品款加該類原運費一次）。
@@ -49,6 +49,25 @@
 ## 4. 缺口與限制
 
 - 全部服務為模擬：閘道逾時以「回應遺失」與「永不回應」的替身重現（`payment-reconcile.test.ts`、`refunds.test.ts`），未對真實服務驗證。
-- 遷移鏈測試的舊資料是簡化的 main 時代形狀（單一商品、無圖片與分類），遷移守門對「已有新模型資料」的拒絕情境由各支遷移的既有測試負責，鏈測試只涵蓋「舊資料往上、無新資料往下」的主路徑。閘道（`apps/gateway`）的遷移是模擬服務、資料可重建，沒有回復腳本。
+- 遷移鏈測試的舊資料是簡化的 main 時代形狀：單一商品（無圖片、分類）、七張訂單（待付款、已付未出貨、已出貨兩種、已取消、已逾期退款成功、已取消退款失敗）與五筆付款；沒有多商品、多筆付款同單或已有物流單號以外的出貨資料。遷移守門對「已有新模型資料」的拒絕情境由各支遷移的既有測試負責，鏈測試只涵蓋「舊資料往上、無新資料往下」的主路徑。閘道（`apps/gateway`）的遷移是模擬服務、資料可重建，沒有回復腳本。
 - 跨顧客隔離以 RPC 層驗證（`customer-isolation.test.ts`）；瀏覽器層只有地址簿、信箱與自助退貨 E2E 以第二位顧客驗證，沒有針對每個頁面網址逐一試別人編號。
 - 整體演練 E2E 不注入故障（投遞失敗演練是全域狀態，會干擾並行 spec）；故障注入與補辦只在 App 整合測試走完整流程，畫面層的補辦由 `refunds.spec.ts`、`invoices.spec.ts`、`contact-mailbox.spec.ts` 各自覆蓋。
+
+## 5. Gates
+
+實跑日期 2026-10-03（台北），分支 `feat/commerce-expansion`，基底 commit `5af59d4` 加上本節所在的修正提交；指令都在 repo 根目錄執行。
+
+| 指令 | exit code | 結果 |
+| --- | --- | --- |
+| `bun run typecheck` | 0 | 三個 workspace 無錯誤 |
+| `bun run test` | 0 | gateway 103、app 1078、web 643 個測試全過，無 Unhandled Errors |
+| `bun run test:coverage` | 0 | 見下表，皆高於 80% 門檻 |
+| `bun run e2e` | 0 | 147 passed，0 failed，0 did not run |
+
+覆蓋率（Statements／Branches／Functions／Lines）：
+
+| 套件 | Statements | Branches | Functions | Lines |
+| --- | --- | --- | --- | --- |
+| gateway | 95.51% | 91.66% | 88.54% | 95.38% |
+| app | 94.18% | 90.23% | 88.41% | 94.42% |
+| web | 87.26% | 90.59% | 86.04% | 86.82% |

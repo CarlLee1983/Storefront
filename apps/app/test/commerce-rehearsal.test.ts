@@ -1,5 +1,5 @@
 import { exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mintAccessJwt } from "./access";
 import { approveOk, requestCancelOk } from "./cancellation-helpers";
 import { checkoutInput, createStockedListing, newKey } from "./checkout-helpers";
@@ -88,7 +88,7 @@ async function rehearse({ faults }: { faults: boolean }) {
     const listed = await app.listMailForAdmin(await mintAccessJwt());
     if (!listed.ok) throw new Error("讀取信件失敗");
     const pending = listed.data.messages.filter((message) => message.needsAttention);
-    expect(pending.length).toBeGreaterThan(0);
+    expect(pending.map((message) => message.kind)).toEqual(expect.arrayContaining(["shipment_loss_confirmed", "refund_succeeded"]));
     for (const message of pending) expect(await app.resendMail(await mintAccessJwt(), { messageId: message.id })).toEqual({ ok: true, data: { delivered: true } });
     const after = await app.listMailForAdmin(await mintAccessJwt());
     expect(after.ok && after.data.messages.filter((message) => message.needsAttention)).toEqual([]);
@@ -109,7 +109,7 @@ async function rehearse({ faults }: { faults: boolean }) {
     gatewayRefundedTwd: gateway.refundedTwd(gatewayPaymentId),
     invoice: final.invoices.map((invoice) => ({ status: invoice.status, amountTwd: invoice.amountTwd, allowedTwd: invoice.allowedTwd, allowedCount: invoice.allowedCount, pendingAllowanceTwd: invoice.pendingAllowanceTwd })),
     gatewayInvoices: [...gateway.invoices.values()].map((invoice) => invoice.amountTwd),
-    gatewayAllowances: [...gateway.allowances.values()].map((allowance) => allowance.amountTwd).sort(),
+    gatewayAllowances: [...gateway.allowances.values()].map((allowance) => allowance.amountTwd).sort((left, right) => left - right),
     adminEvents: countKinds(final.timeline.events.map((event) => event.kind)),
     customerEvents: countKinds(customerView.data.timeline.events.map((event) => event.kind)),
     mailKinds: countKinds(mail.data.map((message) => message.kind)),
@@ -147,6 +147,7 @@ describe("T24 整體商務演練（9,700 元訂單）", () => {
 
   it("注入第一筆退款明確失敗、延遲開票、折讓失敗與通知投遞失敗並補辦：金額與庫存與無故障演練相同，時間線保留各次業務事實，技術重試不成為新事件", async () => {
     const clean = await rehearse({ faults: false });
+    vi.useRealTimers();
     await resetDb();
     const faulted = await rehearse({ faults: true });
 

@@ -59,8 +59,10 @@ it("A8 結果不明的前筆先查再放行後筆，並行重試與重複、亂�
   expect(final.refunds.map((refund) => [refund.amountTwd, refund.status])).toEqual([[6600, "succeeded"], [320, "succeeded"], [320, "succeeded"]]);
   expect(gateway.refundRequests.map((request) => request.amountTwd).sort((a, b) => a - b)).toEqual([320, 320, 6600]);
   expect(new Set(gateway.refundRequests.map((request) => request.refundId)).size).toBe(3);
-  expect(gateway.refundedTwd(gatewayPaymentId)).toBe(7240);
-  expect(7240).toBeLessThanOrEqual(totalTwd);
+  const refundedTotal = final.refunds.reduce((total, refund) => total + refund.amountTwd, 0);
+  expect(gateway.refundedTwd(gatewayPaymentId)).toBe(refundedTotal);
+  expect(refundedTotal).toBe(7240);
+  expect(refundedTotal).toBeLessThanOrEqual(totalTwd);
   expect(final.timeline.progress.money).toMatchObject({ paidTwd: totalTwd, refundedTwd: 7240, refundOpenTwd: 0 });
 
   // 數量上限：只剩 1 件馬克杯（其餘 1 件取消、1 件退回），再退 2 件被擋，不產生新退款
