@@ -7,6 +7,7 @@ import { productVariants, products } from "./schema";
 import type { ListProductsInput } from "./input";
 import { PAGE_SIZE, type ProductSort } from "./listing";
 import type { AdminVariant, ProductSummary, VariantDetail } from "./types";
+import { awaitingInspectionQuantity } from "../returns/queries";
 import { availableExpr, availableQuantity, reservedQuantity } from "./stock";
 
 interface ProductBase {
@@ -136,6 +137,7 @@ async function selectAdminVariants(db: DrizzleD1Database, productId?: number): P
     compareAtPriceTwd: productVariants.compareAtPriceTwd,
     onHand: productVariants.onHand,
     unavailable: productVariants.unavailable,
+    scrappable: sql<number>`${productVariants.unavailable} - ${awaitingInspectionQuantity(sql`${productVariants.id}`)}`.as("scrappable"),
     reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     discontinuedAt: productVariants.discontinuedAt,
     imageId: productVariants.imageId,

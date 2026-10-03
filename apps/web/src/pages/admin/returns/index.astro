@@ -86,7 +86,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {unavailableVariants.length > 0 && (
           <div class="table-scroll" tabindex="0" role="region" aria-label="不可售庫存"><table>
             <thead>
-              <tr><th>商品</th><th class="col-num">在庫</th><th class="col-num">不可售</th><th>報廢</th></tr>
+              <tr><th>商品</th><th class="col-num">在庫</th><th class="col-num">不可售</th><th class="col-num">可報廢</th><th>報廢</th></tr>
             </thead>
             <tbody>
               {unavailableVariants.map((variant) => (
@@ -94,12 +94,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                   <td data-label="商品"><a href={`/admin/stock-movements?variantId=${variant.id}`}>{variant.productName}{variant.optionValues.length > 0 && `（${variant.optionValues.join(" / ")}）`}</a></td>
                   <td class="col-num" data-label="在庫">{variant.onHand}</td>
                   <td class="col-num" data-label="不可售">{variant.unavailable}</td>
+                  <td class="col-num" data-label="可報廢">{variant.scrappable}</td>
                   <td data-label="報廢">
                     {scrapFailure?.variantId === variant.id && <p class="error" role="alert">{scrapFailure.message}{Object.values(scrapFailure.fields).flat().map((m) => ` ${m}`)}</p>}
                     <form method="post" class="inline inline-stock-adjust" onsubmit="return confirm('確定報廢嗎？商品會移出倉庫，無法撤回。')">
                       <input type="hidden" name="intent" value="scrap" />
                       <input type="hidden" name="variantId" value={variant.id} />
-                      <input name="quantity" type="number" inputmode="numeric" min="1" step="1" placeholder="數量" aria-label={`${variant.productName}的報廢數量`} value={scrapFailure?.variantId === variant.id ? submitted.quantity ?? "" : ""} required />
+                      <input name="quantity" type="number" inputmode="numeric" min="1" max={variant.scrappable} step="1" placeholder="數量" aria-label={`${variant.productName}的報廢數量`} value={scrapFailure?.variantId === variant.id ? submitted.quantity ?? "" : ""} required />
                       <input name="reason" type="text" maxlength="200" placeholder="原因" aria-label={`${variant.productName}的報廢原因`} value={scrapFailure?.variantId === variant.id ? submitted.reason ?? "" : ""} required />
                       <button type="submit" class="btn-action">報廢</button>
                     </form>

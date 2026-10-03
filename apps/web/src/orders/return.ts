@@ -23,7 +23,11 @@ const CUSTOMER_NOTES: Record<string, string> = {
   completed: "已檢查完成並依原實付單價辦理退款；退款進度見「退款進度」。",
 };
 
-export function customerReturnNote(status: string): string {
+const COMPLETED_WITHOUT_REFUND = "已檢查完成；這筆退款目前還不能自動辦理，客服會與你聯繫處理。";
+
+/** 顧客看的說明；檢查完成但退款尚未登記（額度被占用等）時不承諾「依序辦理」，改說明客服會聯繫。 */
+export function customerReturnNote(status: string, refundRegistered = true): string {
+  if (status === "completed" && !refundRegistered) return COMPLETED_WITHOUT_REFUND;
   return Object.hasOwn(CUSTOMER_NOTES, status) ? CUSTOMER_NOTES[status]! : "目前無法確認這個申請的進度，請稍後重新整理。";
 }
 

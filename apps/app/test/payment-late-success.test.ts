@@ -109,6 +109,17 @@ describe("遲到的付款成功：重新保留", () => {
     expect(gateway.refunded).toEqual([gatewayPaymentId]);
   });
 
+  it("不可售數量不算可售：在庫夠但被待檢或損壞的退貨占住，遲到付款重新保留不到，退款而不重新保留", async () => {
+    const { alice, orderId, variantId, gateway, event, gatewayPaymentId } = await lateSuccessSetup({ onHand: 3, quantity: 2 });
+    await env.DB.prepare("UPDATE product_variants SET unavailable = 2 WHERE id = ?").bind(variantId).run();
+
+    const result = await app.applyPaymentResult(event);
+
+    expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "expired" } });
+    expect((await orderOf(alice, orderId)).refunds).toMatchObject([{ status: "succeeded", reason: "late_success_unreclaimable" }]);
+    expect(gateway.refunded).toEqual([gatewayPaymentId]);
+  });
+
   it("庫存被另一張已付款未出貨的訂單占住：遲到付款重新保留不到，退款（late_success_unreclaimable），在庫數維持 1", async () => {
     const { alice, orderId, variantId, gateway, event, gatewayPaymentId } = await lateSuccessSetup({ onHand: 1, quantity: 1 });
     const bob = await signInCustomer("bob");

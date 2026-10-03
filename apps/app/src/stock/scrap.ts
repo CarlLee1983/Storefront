@@ -14,7 +14,7 @@ export interface Scrap {
 
 /**
  * 報廢隔離的損壞品（ADR 0006）：商品移出倉庫，同時減少實體在庫與不可售數量，可售數量不變，原因寫進庫存流水。
- * 只能報廢「不可售 − 待檢」：已收回但尚未檢查的退貨還不知道是良品還是損壞，不能報廢（見 `awaitingInspectionQuantity`）。
+ * 只能報廢「不可售 − 待檢」（且報廢後在庫數不小於 0，不依賴不可售不超過在庫的不變式）：已收回但尚未檢查的退貨還不知道是良品還是損壞，不能報廢（見 `awaitingInspectionQuantity`）。
  * 以單一 batch 流水與更新共用同一個條件（同 `adjustOnHand`），D1 逐句、單寫者執行，所以兩者同成同敗，並行的報廢與檢查不會互相超量。
  * 沒有任何一列被更新：變體不存在，或數量超過可報廢的損壞品；變體不能刪除，事後查一次即可區分。
  */
@@ -23,7 +23,7 @@ export async function scrapUnavailable(
   { variantId, quantity, reason, actor }: Scrap,
   now: number,
 ): Promise<{ ok: true; data: { onHand: number; unavailable: number } } | VariantNotFound | InsufficientUnavailable> {
-  const scrappable = sql`${productVariants.unavailable} - ${awaitingInspectionQuantity(sql`${productVariants.id}`)} >= ${quantity}`;
+  const scrappable = sql`${productVariants.unavailable} - ${awaitingInspectionQuantity(sql`${productVariants.id}`)} >= ${quantity} AND ${productVariants.onHand} - ${quantity} >= 0`;
   const [, update, read] = await batchAtEffectiveNow(d1, now, [
     sql`
       INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, unavailable_delta, unavailable_after, order_id, actor, reason, created_at)

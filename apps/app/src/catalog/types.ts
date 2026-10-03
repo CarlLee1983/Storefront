@@ -52,6 +52,8 @@ export interface AdminVariant {
   onHand: number;
   /** 不可售數量：在庫中待檢與損壞的退貨。 */
   unavailable: number;
+  /** 可報廢的數量：不可售扣掉已收回尚未檢查的退貨（檢查確認的損壞品）。 */
+  scrappable: number;
   reserved: number;
   available: number;
   discontinued: boolean;

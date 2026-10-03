@@ -40,6 +40,8 @@ describe("標籤與說明", () => {
       expect(returnStatusLabel(status)).not.toBe("狀態待確認");
       expect(customerReturnNote(status)).not.toContain("無法確認");
     }
+    expect(customerReturnNote("completed", true)).toContain("退款進度");
+    expect(customerReturnNote("completed", false)).toContain("客服會與你聯繫");
     expect(returnStatusLabel("weird")).toBe("狀態待確認");
     expect(customerReturnNote("weird")).toContain("無法確認");
   });

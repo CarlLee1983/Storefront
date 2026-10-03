@@ -93,6 +93,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       // 已出貨的訂單有退貨申請入口（#117，說明文字會提到退款），所以斷言沒有退款進度與退款紀錄，而不是頁面完全沒有「退款」二字
       await expect(page.getByRole("region", { name: "退款進度" })).toHaveCount(0);
       await expect(page.getByText("已退款")).toHaveCount(0);
+      await expect(page.getByText("退款處理中")).toHaveCount(0);
       await assertLayout(page, viewport.width);
       await admin.goto(`/admin/stock-movements?orderId=${orderId}`);
       await expect(admin.getByRole("row").filter({ hasText: "交運扣庫" })).toHaveCount(1);

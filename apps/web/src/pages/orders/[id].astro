@@ -201,7 +201,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                       <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}{item.receivedQuantity !== null && `，實際收到 ${item.receivedQuantity}`}</li>)}</ul>
                       {request.reason && <p>申請原因：{request.reason}</p>}
                       {request.decisionNote && <p>審核說明：{request.decisionNote}</p>}
-                      <p class="cancellation-note">{customerReturnNote(request.status)}</p>
+                      <p class="cancellation-note">{customerReturnNote(request.status, request.refund !== null)}</p>
                       {request.refund && <p>退款 NT$ {priceFormat.format(request.refund.amountTwd)}：{customerRefundStatusLabel(request.refund.status)}</p>}
                     </li>
                   ))}
