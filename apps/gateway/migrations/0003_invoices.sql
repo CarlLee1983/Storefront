@@ -14,4 +14,5 @@ CREATE TABLE `invoices` (
 	`issued_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `invoices_invoice_key_uidx` ON `invoices` (`invoice_key`);
+CREATE UNIQUE INDEX `invoices_invoice_key_uidx` ON `invoices` (`invoice_key`);--> statement-breakpoint
+CREATE UNIQUE INDEX `invoices_invoice_number_uidx` ON `invoices` (`invoice_number`);

@@ -1,5 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import { recordInvoiceAttempt } from "../src/invoices/queries";
+import { GatewayError } from "../src/payments/gateway";
 import { recordRefundAttempt } from "../src/payments/refunds";
 import { createInvoiceService } from "../src/invoices/service";
 import type { InvoiceGateway } from "../src/invoices/gateway";
@@ -221,6 +223,41 @@ describe("開立失敗不阻擋付款與出貨，可補辦", () => {
   });
 });
 
+describe("已開立的發票不被後來的寫入蓋回", () => {
+  it("已開立後再記失敗或不明：狀態、號碼與開立時間不變，通知不重複", async () => {
+    const { cookie, orderId, succeed } = await orderWithPayment();
+    await app.applyPaymentResult(succeed());
+    const [before] = await adminInvoices(orderId);
+
+    for (const status of ["failed", "unknown"] as const) {
+      expect(await recordInvoiceAttempt(env.DB, { invoiceId: before!.id, actor: "system", action: "send", outcome: status, code: "x", status }, Date.now())).toBe(false);
+    }
+
+    const [after] = await adminInvoices(orderId);
+    expect(after).toMatchObject({ status: "issued", invoiceNumber: before!.invoiceNumber, issuedAt: before!.issuedAt });
+    expect(after!.attempts).toHaveLength(3);
+    expect(await mailOf(cookie)).toHaveLength(1);
+  });
+
+  it("發票服務回 409 invoice_conflict（冪等鍵對到不同的發票）：記為結果不明，不當作明確失敗", async () => {
+    const { orderId, gateway, succeed } = await orderWithPayment();
+    gateway.failNext("issueInvoice", 503);
+    await app.applyPaymentResult(succeed());
+    const [invoice] = await adminInvoices(orderId);
+    const conflicting: InvoiceGateway = {
+      getInvoice: async () => null,
+      issueInvoice: async () => {
+        throw new GatewayError("invoice_conflict", 409, "衝突");
+      },
+    };
+
+    const service = createInvoiceService(env.DB, { now: () => Date.now() }, conflicting);
+
+    expect(await service.retryInvoice(invoice!.id, ADMIN_EMAIL)).toEqual({ ok: true, data: { status: "unknown" } });
+    expect((await adminInvoices(orderId))[0]!.attempts.at(-1)).toMatchObject({ outcome: "unknown", code: "invoice_conflict" });
+  });
+});
+
 describe("憑證重寄", () => {
   it("寄到顧客目前已驗證的 email：新增一筆投遞，歷史投遞與信件內容、發票都不變", async () => {
     const { cookie, orderId, succeed } = await orderWithPayment();
@@ -311,6 +348,20 @@ describe("待折讓義務：成功退款都建立，憑證待補、原票只顯�
     const [admin] = await adminInvoices(orderId);
     expect(admin).toMatchObject({ allowances: [{ refundId: order.refunds[0]!.id, amountTwd: totalTwd }] });
     expect((await todos()).allowances).toMatchObject([{ orderId, refundId: order.refunds[0]!.id, amountTwd: totalTwd, invoiceStatus: "issued" }]);
+  });
+
+  it("已取消訂單上的遲到付款：照樣開立原額發票並通知，整筆退款成功後建立待折讓義務，顧客收到未生效、退款與發票三封通知", async () => {
+    const { cookie, orderId, totalTwd, gateway, succeed } = await lateOrderWithPayment();
+
+    await app.applyPaymentResult(succeed());
+
+    const order = await orderOf(cookie, orderId);
+    expect(order.status).toBe("cancelled");
+    expect(order.invoices).toMatchObject([{ status: "issued", amountTwd: totalTwd, pendingAllowanceTwd: totalTwd, pendingAllowanceCount: 1 }]);
+    expect(gateway.invoiceRequests).toHaveLength(1);
+    const list = await app.listMyMail(cookie);
+    expect(list.ok && list.data.map((message) => message.kind).sort()).toEqual(["invoice_issued", "order_placed", "payment_unsettled", "refund_succeeded"]);
+    expect((await todos()).allowances).toMatchObject([{ orderId, amountTwd: totalTwd, invoiceStatus: "issued" }]);
   });
 
   it("退款先於延遲開立的發票成功：先保留退款與義務，原票補開後仍是原額，義務不變不重複", async () => {

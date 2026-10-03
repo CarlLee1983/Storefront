@@ -65,7 +65,7 @@ export const refunds = sqliteTable("refunds", {
 
 /**
  * 模擬發票：以呼叫端給的 `invoice_key` 為冪等鍵，同一個鍵重送回同一張發票（同金額），不會重複開立。
- * 發票號碼由閘道的自增編號推得，開立之後不再改變；只演練一般個人消費發票，沒有統編、載具或捐贈。
+ * 發票號碼由閘道隨機產生並唯一（`invoice_number` 唯一索引），開立之後不再改變；只演練一般個人消費發票，沒有統編、載具或捐贈。
  */
 export const invoices = sqliteTable(
   "invoices",
@@ -78,7 +78,7 @@ export const invoices = sqliteTable(
     invoiceNumber: text("invoice_number").notNull(),
     issuedAt: integer("issued_at").notNull(),
   },
-  (table) => [uniqueIndex("invoices_invoice_key_uidx").on(table.invoiceKey)],
+  (table) => [uniqueIndex("invoices_invoice_key_uidx").on(table.invoiceKey), uniqueIndex("invoices_invoice_number_uidx").on(table.invoiceNumber)],
 );
 
 /**

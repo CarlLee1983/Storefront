@@ -235,7 +235,21 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 只顯示原額：顧客與管理員看到的 `amountTwd` 永遠是開立原額，`pendingAllowanceTwd` 是已成功退款但憑證尚未折讓的合計，畫面標示「憑證待補」並說明原票沒有扣除退款；**沒有「剩餘金額」或「已結清」**。逐筆折讓與完成標記是 #122，本票不做、也不宣稱已完成全部憑證處理；ADR 0008 人工結案同樣未實作。
 - 模擬服務（`apps/gateway`，見「模擬金流閘道」）：`POST /v1/invoices`、`GET /v1/invoices/:invoiceKey`；開發主控頁可切換「下一次開立失敗」與「下一次開立已成立但回應遺失」演練失敗與延遲（結果不明）。
 - 畫面：顧客訂單頁「發票」（只分「已開立」與「開立中」，不揭露內部的失敗與不明；有待折讓時標「憑證待補」）、後台「發票待辦」（待開立發票與憑證待補清單）、後台訂單頁「發票」（嘗試紀錄、待折讓、補辦／重寄）；手機與桌機皆可操作（e2e 驗證）。
-- 部署順序：先 migration（App 與閘道各自的 migration，閘道 `0003_invoices.sql`），再閘道、App，最後 Web；新 App 在付款成功時會寫 `invoices`，0030 缺表時付款結果的套用會整批失敗，所以 migration 必須先套用。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0030_invoices.down.sql`（已有已開立的發票時守門檢查讓回復失敗，其餘由收款與退款推得、重新套用會補回）。回復順序是 0030 → 0029 → …。
+- 部署順序：先停止寫入，再套用 migration（App 的 `0030_invoices.sql` 與閘道的 `0003_invoices.sql`），然後部署閘道、App，最後 Web，與 0024、0029 一致；新 App 在付款成功時會寫 `invoices`，0030 缺表時付款結果的套用會整批失敗，所以 migration 必須先套用。閘道 0003 只新增資料表、沒有回復腳本（模擬服務，需要時整張刪除即可）。
+- 安全網（新 App 上線後執行一次，冪等可重跑）：migration 套用到新 App 上線之間若有付款成功，那筆收款（舊 App 寫入、沒有開立義務）與成功退款不會有義務。執行下列兩句補登（與 0030 末兩句相同，加 `ON CONFLICT DO NOTHING`，已存在的不動）：
+
+  ```sql
+  INSERT INTO invoices (order_id, payment_id, gateway_invoice_key, amount_twd, status, created_at)
+  SELECT order_id, id, 'inv_legacy_' || id, amount_twd, 'pending', created_at FROM payments WHERE status = 'succeeded'
+  ON CONFLICT (payment_id) DO NOTHING;
+  INSERT INTO allowance_obligations (refund_id, payment_id, order_id, amount_twd, created_at)
+  SELECT id, payment_id, order_id, amount_twd, COALESCE(settled_at, created_at) FROM refunds WHERE status = 'succeeded'
+  ON CONFLICT (refund_id) DO NOTHING;
+  ```
+
+- 舊收款（遷移前或補登的）只能逐張補辦：它們停在「待開立」，系統只在付款事件進來時開立，沒有 Cron 也沒有批次補開，管理員要在 `/admin/invoices` 逐張按「補辦」。
+- 付款確認路徑的延遲：開立在套用付款結果的同一個請求裡、batch 之後同步呼叫發票服務（webhook、導回查詢與補查都是），所以發票服務慢時（逾時上限 5 秒）這些請求會變慢，但結果不受影響。沒有改成 `ctx.waitUntil`：測試與冪等補開依賴「套用結果回傳時開立已有結果」，且 App 的服務層沒有執行環境的 context。
+- 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0030_invoices.down.sql`（已有已開立的發票，或任何開立嘗試紀錄——含結果不明，發票服務那邊可能已開立——時守門檢查讓回復失敗；其餘由收款與退款推得、重新套用會補回）。回復順序是 0030 → 0029 → …。
 - 測試：`apps/app/test/invoices.test.ts`（開立一次與重送不重複、失敗與不明與查證、補辦並行、重寄憑證、權限、待折讓義務與先後順序）、`invoices-migration.test.ts`（遷移補資料、約束與回復）、`apps/gateway/test/invoice.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
 
 ## 模擬金流閘道

@@ -89,3 +89,17 @@ it("已有已開立的發票時，回復的守門檢查讓整段失敗且資料�
   expect(await rows("SELECT count(*) AS n FROM invoices")).toEqual([{ n: 2 }]);
   expect(await rows("SELECT count(*) AS n FROM allowance_obligations")).toEqual([{ n: 1 }]);
 });
+
+it("有任何開立嘗試紀錄（例如結果不明、發票服務可能已開立）時，回復的守門檢查同樣讓整段失敗", async () => {
+  await seed0029();
+  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await db.batch([
+    db.prepare("UPDATE invoices SET status = 'unknown' WHERE payment_id = 1"),
+    db.prepare("INSERT INTO invoice_attempts (invoice_id, at, actor, action, outcome, code) SELECT id, 1, 'system', 'send', 'unknown', 'unreachable' FROM invoices WHERE payment_id = 1"),
+  ]);
+
+  await expect(db.batch(rollbackStatements())).rejects.toThrow();
+
+  expect(await rows("SELECT status FROM invoices WHERE payment_id = 1")).toEqual([{ status: "unknown" }]);
+  expect(await rows("SELECT count(*) AS n FROM invoice_attempts")).toEqual([{ n: 1 }]);
+});

@@ -55,11 +55,12 @@ export function createHttpInvoiceGateway(config: HttpGatewayConfig, fetchImpl?: 
 
 /**
  * 發票服務丟出的錯誤該算「明確失敗」還是「結果不明」（比照退款 `isExplicitRefundFailure`）：
- * 服務有回應並明確拒絕（`invoice_failed`，或 4xx 的請求被拒）→ 確定這次沒開成，可補辦；
+ * 服務有回應並明確拒絕（`invoice_failed`，或 4xx 的請求被拒；`invoice_conflict` 例外，視為不明）→ 確定這次沒開成，可補辦；
  * 連不上、逾時、5xx、回應格式不符、408、429 → 可能已開立也可能沒有，必須先查證。
  */
 export function isExplicitInvoiceFailure(error: GatewayError): boolean {
   if (error.code === "invoice_failed") return true;
-  if (error.code === "invoice_timeout" || error.code === "invalid_response" || error.status === null) return false;
+  // 冪等鍵對到另一張不同的發票：發票服務與本站記錄矛盾，不能當作沒開成而重送，須人工查核
+  if (error.code === "invoice_conflict" || error.code === "invoice_timeout" || error.code === "invalid_response" || error.status === null) return false;
   return error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
 }

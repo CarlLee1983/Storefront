@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a567f304-bceb-4b34-991d-313e553fcc85",
+  "id": "e886f7b5-29ac-4b9c-ac85-37cf947a281b",
   "prevId": "585d14a9-56c2-42d4-97e4-ab7c56557f17",
   "tables": {
     "deliveries": {
@@ -227,6 +227,13 @@
           "name": "invoices_invoice_key_uidx",
           "columns": [
             "invoice_key"
+          ],
+          "isUnique": true
+        },
+        "invoices_invoice_number_uidx": {
+          "name": "invoices_invoice_number_uidx",
+          "columns": [
+            "invoice_number"
           ],
           "isUnique": true
         }
