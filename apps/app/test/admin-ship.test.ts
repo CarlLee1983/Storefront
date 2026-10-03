@@ -1,5 +1,5 @@
 import { env, exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
 import { checkoutInput, createStockedListing, newKey } from "./checkout-helpers";
 import { signInCustomer } from "./customers";
@@ -8,9 +8,6 @@ import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { adminOrder, APPOINTMENT, shipRemaining } from "./shipment-helpers";
 
 const app = exports.default;
-
-// 每個測試都要建商品、上傳圖片與下單，全套並行時會比預設 5 秒慢（比照 ba457e3）
-vi.setConfig({ testTimeout: 30_000 });
 
 /** 成立一張已付款的訂單，回傳顧客 cookie、訂單編號與變體編號。 */
 async function paidOrder(name = "alice", options?: { onHand?: number; quantity?: number }) {
@@ -95,7 +92,6 @@ describe("管理員交運（整批）", () => {
       expect(await adminOrder(orderId)).toMatchObject({ status, shipments: [] });
     }
   });
-
 
   it("已出貨的訂單不能再交運、不能撤回：order_not_shippable，批次不變", async () => {
     const { orderId } = await paidOrder();

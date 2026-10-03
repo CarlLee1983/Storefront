@@ -1,5 +1,5 @@
 import { exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
 import { decide, paidMixedOrder, requestCancel, requestCancelOk } from "./cancellation-helpers";
 import { newKey } from "./checkout-helpers";
@@ -9,9 +9,6 @@ import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { adminOrder, shipRemaining } from "./shipment-helpers";
 
 const app = exports.default;
-
-// 每個測試都要建商品、走完付款與下單，全套並行時會比預設 5 秒慢（比照 admin-ship）
-vi.setConfig({ testTimeout: 30_000 });
 
 beforeEach(resetDb);
 

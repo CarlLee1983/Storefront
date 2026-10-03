@@ -1,5 +1,5 @@
 import { env, exports } from "cloudflare:workers";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
 import { setNow } from "./clock";
 import { signInCustomer } from "./customers";
@@ -8,9 +8,6 @@ import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { adminOrder, adminShipment, reportShipmentEvent, shipBatch } from "./shipment-helpers";
 
 const app = exports.default;
-
-// 全套並行時建商品、下單會比預設 5 秒慢（比照 admin-ship）
-vi.setConfig({ testTimeout: 30_000 });
 
 const MINUTE = 60_000;
 let cookie: string;

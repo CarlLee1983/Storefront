@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { setNow } from "./clock";
 import { signInCustomer } from "./customers";
 import { forceOrderStatus, resetDb } from "./db";
@@ -11,9 +11,6 @@ import { returnWindowEnd, returnWindowEndSql } from "../src/returns/window";
 import { approveReturn, decideReturn, requestReturn } from "./return-helpers";
 
 const app = exports.default;
-
-// 全套並行時建商品、下單會比預設 5 秒慢（比照 return-request）
-vi.setConfig({ testTimeout: 30_000 });
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
