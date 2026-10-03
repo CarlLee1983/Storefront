@@ -61,6 +61,16 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </ul>
           </div>
         )}
+        {listing.data.unregisteredLosses.length > 0 && (
+          <div role="region" aria-label="已確認遺失但未登記退款的案件">
+            <p class="error" role="alert">以下遺失已確認，但還沒有登記退款（可退額度被其他退款占用，或訂單沒有可綁定的成功付款），款項尚未處理：</p>
+            <ul>
+              {listing.data.unregisteredLosses.map((loss) => (
+                <li>遺失 #{loss.id}：應退 NT$ {priceFormat.format(loss.goodsTwd + loss.shippingTwd)}，<a href={`/admin/orders/${loss.orderId}#losses`}>訂單 #{loss.orderId}（前往重新登記退款）</a></li>
+              ))}
+            </ul>
+          </div>
+        )}
         {listing.data.omitted > 0 && <p class="error" role="alert">另有 {listing.data.omitted} 筆待處理的退款未列出。</p>}
         {listing.data.refunds.length === 0 && <p>目前沒有待處理的退款。</p>}
         {listing.data.refunds.length > 0 && (

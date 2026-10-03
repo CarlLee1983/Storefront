@@ -12,6 +12,7 @@ import { decideFormToInput, describeDecideFailure, describeDecideOutcome } from 
 import { cancellationStatusLabel, cancellableQuantity } from "../../../orders/cancellation";
 import { describeReturnFailure, describeReturnOutcome, inspectionFormToInput, receiptFormToInput } from "../../../admin/return-form";
 import { returnStatusLabel } from "../../../orders/return";
+import { describeLossFailure, describeLossOutcome, lossFormToInput } from "../../../admin/loss-form";
 import { formToRecord } from "../../../shared/form-values";
 import { formatDateTime, parseOrderId, paymentStatusLabel, refundAttemptLabel, refundReasonLabel, refundStatusLabel } from "../../../orders/labels";
 
@@ -26,9 +27,11 @@ let eventFailure: ReturnType<typeof describeShipmentEventFailure> | undefined;
 let submitted: Record<string, string> = {};
 let decideFailure: ReturnType<typeof describeDecideFailure> | undefined;
 let returnFailure: (ReturnType<typeof describeReturnFailure> & { requestId: number }) | undefined;
+let lossFailure: ReturnType<typeof describeLossFailure> | undefined;
+let submittedLoss: { shipmentId: number; lossKey: string } | undefined;
 let unauthorized = false;
 
-// POST 有七種：審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
+// POST 有八種：確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   if (form.get("intent") === "decide-cancellation") {
@@ -57,6 +60,15 @@ if (orderId !== null && Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=return-inspected&refund=${result.data.refund?.status ?? "none"}#returns`, 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
+  } else if (form.get("intent") === "confirm-loss") {
+    const input = lossFormToInput(form);
+    const result = await env.APP.confirmShipmentLoss(jwt, input);
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=loss-confirmed&refund=${result.data.refund?.status ?? "none"}#losses`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else {
+      lossFailure = describeLossFailure(result);
+      submittedLoss = { shipmentId: input.shipmentId, lossKey: input.lossKey };
+    }
   } else if (form.get("intent") === "shipment-event") {
     const input = shipmentEventFormToInput(form);
     const result = await env.APP.recordShipmentEvent(jwt, input);
@@ -86,6 +98,7 @@ const shipped = Astro.url.searchParams.get("saved") === "shipped";
 const eventSaved = Astro.url.searchParams.get("saved") === "event";
 const decideSaved = describeDecideOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const returnSaved = describeReturnOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
+const lossSaved = describeLossOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const priceFormat = new Intl.NumberFormat("zh-TW");
 // 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一批
 const dispatchKey = submitted.dispatchKey || crypto.randomUUID();
@@ -107,6 +120,8 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
         {decideFailure && <p class="error" role="alert">{decideFailure.message}</p>}
         {returnSaved && <p role="status">{returnSaved}</p>}
         {returnFailure && <p class="error" role="alert">退貨申請 #{returnFailure.requestId}：{returnFailure.message}</p>}
+        {lossSaved && <p role="status">{lossSaved}</p>}
+        {lossFailure && <p class="error" role="alert">{lossFailure.message}{Object.values(lossFailure.fields).flat().map((m) => ` ${m}`)}</p>}
         {eventFailure && <p class="error" role="alert">{eventFailure.message}{Object.values(eventFailure.fields).flat().map((m) => ` ${m}`)}</p>}
         <div class="admin-card-section">
           <h2>訂單狀態與基本資訊</h2>
@@ -160,7 +175,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           {!canShip && failure && <p class="error" role="alert">{failure.message}</p>}
         </div>
         <h2>出貨批次</h2>
-        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} />}
+        {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} submittedLoss={submittedLoss} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
             <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>已取消</th><th>取消審核中</th><th>已退貨</th><th>退貨處理中</th><th>配送類型</th><th>小計</th></tr>
@@ -315,6 +330,32 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
             </ul>
           )
         }
+        {
+          order.losses.length > 0 && (
+            <>
+              <h2 id="losses">物流遺失</h2>
+              <ul class="admin-losses" aria-label="確認遺失紀錄">
+                {order.losses.map((loss) => (
+                  <li id={`loss-${loss.id}`}>
+                    <p><strong>遺失 #{loss.id}（出貨批次 #{loss.shipmentId}）</strong>：{formatDateTime(loss.confirmedAt)} 由 {loss.actor} 確認{loss.note && `：${loss.note}`}</p>
+                    <ul>{loss.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}（NT$ {priceFormat.format(item.amountTwd)}）</li>)}</ul>
+                    <p>應退商品款 NT$ {priceFormat.format(loss.goodsTwd)}、運費 NT$ {priceFormat.format(loss.shippingTwd)}；不回補庫存、不補寄；{loss.refund ? `退款 #${loss.refund.id}：${refundStatusLabel(loss.refund.status)}` : "退款尚未登記（可退額度被其他退款占用，或訂單沒有可綁定的成功付款）"}</p>
+                    {!loss.refund && loss.goodsTwd + loss.shippingTwd > 0 && (
+                      <form method="post">
+                        <input type="hidden" name="intent" value="confirm-loss" />
+                        <input type="hidden" name="shipmentId" value={loss.shipmentId} />
+                        <input type="hidden" name="lossKey" value={loss.lossKey} />
+                        <input type="hidden" name="note" value={loss.note} />
+                        {loss.items.map((item) => <input type="hidden" name={`lost-${item.orderLineId}`} value={item.quantity} />)}
+                        <button type="submit" class="button-secondary">重新登記退款</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        }
         <h2>付款嘗試</h2>
         {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
         {
@@ -391,6 +432,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
 </AdminLayout>
 
 <style>
+  .admin-losses { list-style: none; padding: 0; display: grid; gap: var(--space-3); }
   .admin-returns { list-style: none; padding: 0; display: grid; gap: var(--space-4); }
   .admin-returns > li { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
   .admin-returns fieldset { display: grid; gap: var(--space-3); border: 1px solid var(--color-border); padding: var(--space-3); }

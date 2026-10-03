@@ -150,6 +150,9 @@ describe("批次配送進度文案", () => {
   it("已知進度與回報種類有專屬名稱，未知及 prototype 代碼不顯示原始值", () => {
     expect(deliveryStatusLabel("delivered")).toBe("已送達");
     expect(deliveryStatusLabel("delivery_failed")).toContain("再次配送");
+    expect(deliveryStatusLabel("lost")).toContain("遺失");
+    expect(customerRefundReasonLabel("loss")).toContain("遺失");
+    expect(refundReasonLabel("loss")).toBe("物流確認遺失");
     expect(shipmentEventKindLabel("redelivery")).toBe("再次配送");
     for (const code of ["future", "__proto__", "constructor"]) {
       expect(deliveryStatusLabel(code)).toBe("進度未知");

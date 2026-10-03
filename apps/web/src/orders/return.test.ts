@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerReturnNote, returnBatchNote, describeReturnRequestFailure, returnFormToInput, returnStatusLabel, returnableQuantity } from "./return";
+import { customerReturnNote, returnBatchNote, describeReturnRequestFailure, returnFormToInput, returnStatusLabel, returnableQuantity, customerLossNote } from "./return";
 
 describe("returnFormToInput", () => {
   it("帶入訂單編號、冪等鍵、原因原文與各明細數量；0 與留空的明細不送", () => {
@@ -37,9 +37,10 @@ describe("returnFormToInput", () => {
 
 describe("returnableQuantity", () => {
   it("已交運扣掉已退貨與進行中的，不會小於 0", () => {
-    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 1, openReturnQuantity: 1 })).toBe(1);
-    expect(returnableQuantity({ shippedQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0 })).toBe(0);
-    expect(returnableQuantity({ shippedQuantity: 1, returnedQuantity: 1, openReturnQuantity: 1 })).toBe(0);
+    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 1, openReturnQuantity: 1, lostQuantity: 0 })).toBe(1);
+    expect(returnableQuantity({ shippedQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0, lostQuantity: 0 })).toBe(0);
+    expect(returnableQuantity({ shippedQuantity: 1, returnedQuantity: 1, openReturnQuantity: 1, lostQuantity: 0 })).toBe(0);
+    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 0, openReturnQuantity: 1, lostQuantity: 1 })).toBe(1);
   });
 });
 
@@ -68,5 +69,14 @@ describe("returnBatchNote", () => {
     expect(returnBatchNote({ state: "open", deliveredAt: 1, windowEndsAt })).toContain("23:59:59");
     expect(returnBatchNote({ state: "closed", deliveredAt: 1, windowEndsAt })).toContain("人工受理");
     expect(returnBatchNote({ state: "not_delivered", deliveredAt: null, windowEndsAt: null })).toContain("人工受理");
+  });
+});
+
+describe("customerLossNote", () => {
+  it("說明不補寄、重新下單；退款未登記時不承諾自動辦理", () => {
+    expect(customerLossNote(true)).toContain("重新下單");
+    expect(customerLossNote(true)).toContain("已依原實付單價辦理退款");
+    expect(customerLossNote(false)).toContain("客服會與你聯繫");
+    expect(customerLossNote(false)).not.toContain("已依原實付單價辦理退款");
   });
 });

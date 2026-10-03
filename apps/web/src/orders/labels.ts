@@ -82,6 +82,7 @@ const CUSTOMER_REFUND_REASONS: Record<string, string> = {
   duplicate_success: "同一張訂單有另一筆成功付款",
   cancellation: "取消申請已核准",
   return: "退貨已收到並檢查完成",
+  loss: "物流確認商品遺失",
 };
 
 export function customerRefundReasonLabel(reason: string | null): string | null {
@@ -136,6 +137,7 @@ const REFUND_REASON_LABELS: Record<string, string> = {
   duplicate_success: "這張訂單重複付款",
   cancellation: "取消申請核准",
   return: "退貨檢查完成",
+  loss: "物流確認遺失",
 };
 
 export function refundReasonLabel(reason: string | null): string | null {
@@ -165,6 +167,7 @@ const DELIVERY_STATUS_LABELS: Record<string, string> = {
   in_transit: "運送中",
   delivery_failed: "配送未成功，等待再次配送",
   delivered: "已送達",
+  lost: "已確認遺失，已辦理退款",
 };
 
 /** 批次配送進度的顯示名稱；不認得的狀態不顯示原始代碼。 */

@@ -32,9 +32,9 @@ export function customerReturnNote(status: string, refundRegistered = true): str
   return Object.hasOwn(CUSTOMER_NOTES, status) ? CUSTOMER_NOTES[status]! : "目前無法確認這個申請的進度，請稍後重新整理。";
 }
 
-/** 這筆明細還能申請退貨的數量：已交運、未被退貨申請占用（進行中與已退貨）。 */
-export function returnableQuantity(line: { shippedQuantity: number; returnedQuantity: number; openReturnQuantity: number }): number {
-  return Math.max(0, line.shippedQuantity - line.returnedQuantity - line.openReturnQuantity);
+/** 這筆明細還能申請退貨的數量：已交運、未被退貨申請占用（進行中與已退貨）、也沒有確認遺失（遺失的已退款）。 */
+export function returnableQuantity(line: { shippedQuantity: number; returnedQuantity: number; openReturnQuantity: number; lostQuantity: number }): number {
+  return Math.max(0, line.shippedQuantity - line.returnedQuantity - line.openReturnQuantity - line.lostQuantity);
 }
 
 /**
@@ -78,4 +78,10 @@ export function describeReturnRequestFailure(result: { reason: string; fields?: 
     request_key_conflict: "這次提交的內容與同一份表單先前送出的不同，請重新整理頁面後再填",
   };
   return { message: messages[result.reason] ?? "申請退貨失敗，請稍後再試", fields: result.fields ?? {} };
+}
+
+/** 顧客看的遺失說明：不補寄、需要再購買請重新下單；退款尚未登記（額度被占用等）時不承諾自動辦理，改說明客服會聯繫。 */
+export function customerLossNote(refundRegistered: boolean): string {
+  const base = "物流確認這些商品在運送中遺失，不會補寄；如需再購買請重新下單。";
+  return refundRegistered ? `${base}已依原實付單價辦理退款，進度見「退款進度」。` : `${base}這筆退款目前還不能自動辦理，客服會與你聯繫處理。`;
 }

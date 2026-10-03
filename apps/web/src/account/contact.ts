@@ -40,6 +40,7 @@ const MAIL_KIND_LABELS: Record<string, string> = {
   return_completed: "退貨檢查完成通知",
   shipment_delivered: "送達通知",
   shipment_delivery_failed: "配送異常通知",
+  shipment_loss_confirmed: "物流遺失確認通知",
 };
 
 /** 信件種類的顯示名稱；不認得的種類不顯示原始代碼。 */

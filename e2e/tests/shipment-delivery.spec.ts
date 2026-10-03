@@ -60,7 +60,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       const report = async (kind: string) => {
         await admin.waitForTimeout(1_000 - (Date.now() % 1_000) + 50);
         // 配送失敗時清單預設展開，其餘收合：只在收合時點開
-        if (!(await batches.locator("details").evaluate((element: HTMLDetailsElement) => element.open))) await batches.getByText(/^物流回報/).click();
+        if (!(await batches.locator("details.shipment-events").evaluate((element: HTMLDetailsElement) => element.open))) await batches.getByText(/^物流回報/).click();
         await batches.getByLabel("回報種類").selectOption(kind);
         await batches.getByLabel(/回報發生時間/).fill(taipeiLocalNow());
         await batches.getByRole("button", { name: "記錄物流回報" }).click();
