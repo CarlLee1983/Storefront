@@ -180,7 +180,7 @@ export function deliveryStatusLabel(status: string): string {
  * 還有未遺失的數量是「部分商品已確認遺失，其餘已送達（時間）」，全數遺失只說遺失（晚到的送達回報不改變結果）。
  */
 export function shipmentProgressLabel(status: string, deliveredAt: number | null, hasUnlost: boolean): string {
-  if (status === "lost" && deliveredAt !== null) return hasUnlost ? `部分商品已確認遺失並退款，其餘已送達（實際送達：${formatDateTime(deliveredAt)}）` : deliveryStatusLabel(status);
+  if (status === "lost" && deliveredAt !== null) return hasUnlost ? `部分商品已確認遺失（退款事宜另行通知），其餘已送達（實際送達：${formatDateTime(deliveredAt)}）` : deliveryStatusLabel(status);
   return `${deliveryStatusLabel(status)}${deliveredAt !== null ? `（實際送達：${formatDateTime(deliveredAt)}）` : ""}`;
 }
 

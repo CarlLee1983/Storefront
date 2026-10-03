@@ -112,7 +112,7 @@ export function insertDeliveredNotice(shipmentId: number): SQL {
       '訂單 #' || orders.id || ' 有一批商品已送達：' || ${deliveredItemsText} || '。' ||
       '送達時間：' || strftime('%Y-%m-%d %H:%M', shipments.delivered_at / 1000, 'unixepoch', '+8 hours') || '（台灣時間）。' ||
       CASE WHEN EXISTS (SELECT 1 FROM shipment_loss_items WHERE loss_id IN (SELECT id FROM shipment_losses WHERE shipment_id = shipments.id))
-        THEN '這一批另有商品經物流確認遺失，已另行通知並退款，上面只列實際送達的數量。' ELSE '' END ||
+        THEN '這一批另有商品經物流確認遺失，已另行通知退款事宜，上面只列實際送達的數量。' ELSE '' END ||
       '送達隔日起 7 天內可在訂單頁自助申請退貨。各批出貨進度請至訂單頁查看。',
       'shipment_delivered:' || shipments.id, ${effectiveNow}
     FROM shipments JOIN orders ON orders.id = shipments.order_id

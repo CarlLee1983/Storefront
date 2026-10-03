@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { refundAttemptLabel, refundStatusLabel, customerRefundStatusLabel, customerRefundStatusNote, appointmentSummary, deliveryStatusLabel, formatDateTime, shipmentEventKindLabel, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
+import { refundAttemptLabel, refundStatusLabel, customerRefundStatusLabel, customerRefundStatusNote, appointmentSummary, deliveryStatusLabel, formatDateTime, shipmentProgressLabel, shipmentEventKindLabel, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
 import { customerOrderStatusLabel, customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary } from "./labels";
 
 describe("顧客訂單與付款文案", () => {
@@ -158,5 +158,26 @@ describe("批次配送進度文案", () => {
       expect(deliveryStatusLabel(code)).toBe("進度未知");
       expect(shipmentEventKindLabel(code)).toBe("回報");
     }
+  });
+});
+
+describe("shipmentProgressLabel", () => {
+  const at = Date.UTC(2026, 9, 10, 4, 0);
+
+  it("部分遺失且已送達：說明遺失與其餘已送達，附送達時間", () => {
+    const label = shipmentProgressLabel("lost", at, true);
+    expect(label).toContain("部分商品已確認遺失");
+    expect(label).toContain("其餘已送達");
+    expect(label).toContain(formatDateTime(at));
+  });
+
+  it("全數遺失、晚到的送達回報不改變結果：只說遺失，不顯示送達時間", () => {
+    expect(shipmentProgressLabel("lost", at, false)).toBe(deliveryStatusLabel("lost"));
+  });
+
+  it("其餘進度沿用原標籤，已送達附送達時間，未送達不附", () => {
+    expect(shipmentProgressLabel("delivered", at, true)).toBe(`已送達（實際送達：${formatDateTime(at)}）`);
+    expect(shipmentProgressLabel("in_transit", null, true)).toBe(deliveryStatusLabel("in_transit"));
+    expect(shipmentProgressLabel("lost", null, true)).toBe(deliveryStatusLabel("lost"));
   });
 });
