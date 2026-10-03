@@ -12,6 +12,7 @@ const RPC_METHODS = [
   "cancelOrder",
   "checkout",
   "confirmPayment",
+  "confirmShipmentLoss",
   "createCategory",
   "createProduct",
   "createVariant",

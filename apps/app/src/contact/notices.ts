@@ -117,7 +117,7 @@ export function insertDeliveredNotice(shipmentId: number): SQL {
 
 /**
  * 配送異常通知：一次配送失敗回報一封，事件鍵 `shipment_delivery_failed:<批次編號>:<回報事件鍵>`。
- * 回報存在且是配送失敗、該批尚未送達、而且它是該批發生時間最新的回報才寫（已送達後才到、或已被後續回報取代的失敗回報只留紀錄，不通知顧客；
+ * 回報存在且是配送失敗、該批尚未送達也沒有確認遺失、而且它是該批發生時間最新的回報才寫（已送達或已確認遺失後才到、或已被後續回報取代的失敗回報只留紀錄，不通知顧客；
  * 管理端的 `noticeExpected` 用同一個條件，所以「不寄」不會被當成通知缺漏）。
  * 信件說明物流仍持有原貨、會再次配送，顧客不需要重新下單。
  */
@@ -129,7 +129,7 @@ export function insertDeliveryFailedNotice(shipmentId: number, eventKey: string)
       '物流仍持有這批商品，會再次安排配送，你不需要重新下單；各批出貨進度請至訂單頁查看。',
       'shipment_delivery_failed:' || shipments.id || ':' || event.event_key, ${effectiveNow}
     FROM shipment_events event JOIN shipments ON shipments.id = event.shipment_id JOIN orders ON orders.id = shipments.order_id
-    WHERE event.shipment_id = ${shipmentId} AND event.event_key = ${eventKey} AND event.kind = 'delivery_failed' AND shipments.delivery_status <> 'delivered' AND ${isLatestEvent("event")}
+    WHERE event.shipment_id = ${shipmentId} AND event.event_key = ${eventKey} AND event.kind = 'delivery_failed' AND shipments.delivery_status NOT IN ('delivered', 'lost') AND ${isLatestEvent("event")}
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
@@ -223,6 +223,32 @@ export function insertReturnCompletedNotice(requestId: number): SQL {
       'return:' || rr.id || ':completed', ${effectiveNow}
     FROM return_requests rr JOIN orders ON orders.id = rr.order_id
     WHERE rr.id = ${requestId} AND rr.status = 'completed'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/** 確認遺失的商品與數量一段文字（以 `shipment_losses` 為外層列，別名 `sl`）。 */
+const lossItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || item.quantity, '、')
+  FROM shipment_loss_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.loss_id = sl.id)`;
+
+/**
+ * 確認遺失通知：一案一封，事件鍵 `shipment_loss:<遺失編號>:confirmed`，與確認同一個 batch 寫入。
+ * 信件說明遺失的商品與數量、不會補寄（需要再購買請重新下單）與應退金額（商品款加符合條件的原運費）；
+ * 通知依退款是否已登記分文案，退款完成另有退款成功通知。
+ */
+export function insertLossConfirmedNotice(lossId: number | SQL): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'shipment_loss_confirmed', '訂單 #' || orders.id || ' 有商品確認在運送中遺失',
+      '訂單 #' || orders.id || ' 有商品經物流確認在運送中遺失：' || ${lossItemsText} || '。' ||
+      '這些商品不會補寄，如需再購買請重新下單。' ||
+      '應退款 NT$' || (sl.goods_twd + sl.standard_shipping_twd + sl.large_shipping_twd) || '（商品款 NT$' || sl.goods_twd || '、運費 NT$' || (sl.standard_shipping_twd + sl.large_shipping_twd) || '），' ||
+      CASE WHEN EXISTS (SELECT 1 FROM refunds WHERE refunds.shipment_loss_id = sl.id)
+        THEN '退款完成會另行通知；各筆退款的進度請至訂單頁查看。'
+        ELSE '這筆退款目前還不能自動辦理，客服會與你聯繫處理。' END,
+      'shipment_loss:' || sl.id || ':confirmed', ${effectiveNow}
+    FROM shipment_losses sl JOIN orders ON orders.id = sl.order_id
+    WHERE sl.id = ${lossId}
     ON CONFLICT (event_key) DO NOTHING
   `;
 }

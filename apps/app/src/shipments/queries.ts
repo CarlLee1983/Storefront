@@ -10,8 +10,21 @@ export function dispatchedQuantity(orderLineId: SQL): SQL<number> {
 }
 
 /**
- * 一筆物流回報。`noticeExpected` 是這筆回報「應該有通知信」（與寫信同一個條件：送達回報；或是批次未送達、且是發生時間最新的配送失敗回報）；
- * `noticeMessageId` 是它對應的通知信，應有而為 null 才是漏通知，給管理員查證；不應有的（再次配送、已被後續回報取代或已送達）不算缺漏。
+ * 某筆訂單明細確認遺失的數量（各案遺失明細加總，見 `shipments/loss.ts`）：貨已交運但無法交付，不能再被退貨申請占用，也不回補庫存。
+ * 退貨申請的數量上限是「已交運 − 退貨占用 − 遺失」，遺失的確認用同一個算式反過來擋退貨占用，兩邊以同一句條件寫入競爭。
+ */
+export function lostQuantity(orderLineId: SQL): SQL<number> {
+  return sql<number>`COALESCE((SELECT SUM(lost.quantity) FROM shipment_loss_items lost WHERE lost.order_line_id = ${orderLineId}), 0)`;
+}
+
+/** 某筆明細在某一批確認遺失的數量（批次層級的上限：該批數量 − 該批自助退貨占用 − 該批已遺失）。 */
+export function lostInBatchQuantity(orderLineId: SQL, shipmentId: SQL): SQL<number> {
+  return sql<number>`COALESCE((SELECT SUM(lost.quantity) FROM shipment_loss_items lost JOIN shipment_losses lost_case ON lost_case.id = lost.loss_id WHERE lost.order_line_id = ${orderLineId} AND lost_case.shipment_id = ${shipmentId}), 0)`;
+}
+
+/**
+ * 一筆物流回報。`noticeExpected` 是這筆回報「應該有通知信」（與寫信同一個條件：批次沒有確認遺失時的送達回報；或是批次未送達也沒有確認遺失、且是發生時間最新的配送失敗回報）；
+ * `noticeMessageId` 是它對應的通知信，應有而為 null 才是漏通知，給管理員查證；不應有的（再次配送、已被後續回報取代、已送達或已確認遺失）不算缺漏。
  */
 export interface ShipmentEventView {
   id: number;
@@ -97,9 +110,9 @@ export async function selectShipmentsByOrder(db: DrizzleD1Database, orderIds: nu
       kind: shipmentEvents.kind,
       occurredAt: shipmentEvents.occurredAt,
       recordedAt: shipmentEvents.recordedAt,
-      noticeExpected: sql<boolean>`(shipment_events.kind = 'delivered' OR (
+      noticeExpected: sql<boolean>`((shipment_events.kind = 'delivered' AND (SELECT delivery_status FROM shipments WHERE shipments.id = shipment_events.shipment_id) <> 'lost') OR (
         shipment_events.kind = 'delivery_failed'
-        AND (SELECT delivery_status FROM shipments WHERE shipments.id = shipment_events.shipment_id) <> 'delivered'
+        AND (SELECT delivery_status FROM shipments WHERE shipments.id = shipment_events.shipment_id) NOT IN ('delivered', 'lost')
         AND ${isLatestEvent("shipment_events")}
       ))`.mapWith(Boolean),
       noticeMessageId: sql<number | null>`(SELECT mail.id FROM mail_messages mail WHERE mail.event_key = CASE shipment_events.kind

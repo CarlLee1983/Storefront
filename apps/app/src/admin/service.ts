@@ -22,6 +22,9 @@ import { orderIdInput } from "../orders/input";
 import { selectOrderForAdmin } from "../orders/queries";
 import { dispatchShipment } from "../shipments/dispatch";
 import { recordShipmentEvent } from "../shipments/events";
+import { confirmShipmentLoss } from "../shipments/loss";
+import { confirmShipmentLossInput } from "../shipments/loss-input";
+import { selectLossesWithoutRefund, selectOrderLosses } from "../shipments/loss-queries";
 import { selectOrderPaymentSummaries } from "../payments/queries";
 import type { createPaymentService } from "../payments/service";
 import { reconcilePaymentInput, retryRefundInput } from "../payments/input";
@@ -343,6 +346,25 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       });
     },
 
+    /**
+     * 確認某一批的部分商品遺失（模擬物流）：退受影響的商品數量（按原實付單價）與符合條件的該類原運費一次，不回補庫存、不補寄；
+     * 批次進度成為 `lost`，之後才到的物流回報只留紀錄。與退貨申請共用數量（遺失的不可再退貨，反之亦然）；已送達的批次、暫時配送失敗以外的情形不可確認。
+     * 在同一個 batch 登記這案的退款並通知，退款接續執行（`retryRefund` 同一條路徑，操作者記在嘗試紀錄上），退款失敗、被前筆阻擋或額度不足都不反轉遺失事實，留在退款待辦重試。
+     * 批次不存在回 `shipment_not_found`，已送達回 `shipment_delivered`，明細不在這一批回 `loss_line_invalid`，
+     * 數量超過可遺失的數量（含已遺失、被退貨占用）回 `loss_quantity_exceeded`，同鍵不同內容回 `loss_key_conflict`；同鍵同內容重送冪等（會再嘗試登記與執行退款）。
+     */
+    confirmShipmentLoss(jwt: unknown, input: unknown) {
+      return authorized(jwt, confirmShipmentLossInput, input, async (actor, request) => {
+        const result = await confirmShipmentLoss(d1, db, request, actor.email, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "shipment_loss_confirmed", shipmentId: request.shipmentId, lossId: result.data.lossId, actor: actor.email, replayed: result.data.replayed }));
+        await deliverNoticeSafely(db, `shipment_loss:${result.data.lossId}:confirmed`, clock.now());
+        if (result.data.refund === null) return ok({ ...result.data, refund: null });
+        const executed = await retryRefund(result.data.refund.id, actor.email);
+        return ok({ ...result.data, refund: { id: result.data.refund.id, status: executed.ok ? executed.data.status : result.data.refund.status } });
+      });
+    },
+
     /** 模擬信箱的投遞結果與演練控制狀態（不含信件內文與驗證連結）。 */
     async listMailForAdmin(jwt: unknown) {
       const auth = await verifier.verify(jwt);
@@ -374,12 +396,12 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
 
     /**
      * 退款待辦：所有尚未成功的退款（結果不明、明確失敗、等待與處理中），含每次嘗試的紀錄與操作者；
-     * 另列 `unregisteredCancellations`、`unregisteredReturns`：已核准取消、已完成檢查的退貨卻沒有登記退款的案件（到訂單頁「重新登記退款」）。
+     * 另列 `unregisteredCancellations`、`unregisteredReturns`、`unregisteredLosses`：已核准取消、已完成檢查的退貨、已確認遺失卻沒有登記退款的案件（到訂單頁「重新登記退款」）。
      */
     async listRefundsToHandle(jwt: unknown) {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
-      return ok({ ...(await selectRefundTodos(db)), unregisteredCancellations: await selectApprovedWithoutRefund(db), unregisteredReturns: await selectCompletedWithoutRefund(db) });
+      return ok({ ...(await selectRefundTodos(db)), unregisteredCancellations: await selectApprovedWithoutRefund(db), unregisteredReturns: await selectCompletedWithoutRefund(db), unregisteredLosses: await selectLossesWithoutRefund(db) });
     },
 
     /** 重試一筆退款：明確失敗的直接重送，結果不明的先向閘道查證再決定；操作者記在嘗試紀錄上。 */
@@ -476,6 +498,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           refunds: await selectOrderRefunds(db, orderId),
           cancellations: await selectOrderCancellations(db, orderId),
           returns: await selectOrderReturns(db, orderId),
+          losses: await selectOrderLosses(db, orderId),
         });
       });
     },

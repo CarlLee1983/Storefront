@@ -32,6 +32,7 @@ const adminCalls = (jwt: string) => ({
   listOrdersForAdmin: () => app.listOrdersForAdmin(jwt, {}),
   getOrderForAdmin: () => app.getOrderForAdmin(jwt, { orderId: 1 }),
   shipOrder: () => app.shipOrder(jwt, { orderId: 1 }),
+  confirmShipmentLoss: () => app.confirmShipmentLoss(jwt, { shipmentId: 1, lossKey: "k", items: [{ orderLineId: 1, quantity: 1 }] }),
 });
 
 async function expectAllRejected(jwt: string) {

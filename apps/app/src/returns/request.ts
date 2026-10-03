@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { batchAtEffectiveNow, effectiveNow, readEffectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
-import { dispatchedQuantity } from "../shipments/queries";
+import { dispatchedQuantity, lostInBatchQuantity, lostQuantity } from "../shipments/queries";
 import { orderLines, orders, PARTIALLY_SHIPPED, SHIPPED, type OrderStatus } from "../orders/schema";
 import { shipmentItems, shipments } from "../shipments/schema";
 import { hashCaseRequest } from "../shared/request-hash";
@@ -35,7 +35,8 @@ export type ReturnRequestResult =
  *   且「該批數量 − 該批已被自助占用」足夠；批次判斷與下面的明細層條件在同一句 INSERT 裡，所以窗口、占用與並行都以寫入當下為準。
  *   送達時間之後被較早的回報改寫，只影響之後的申請；已成立的申請不受影響，同鍵重送也回原申請。
  * 1. 建立申請：訂單屬於這位顧客且此刻有已交運的數量、同一冪等鍵還沒有申請，且每筆明細「被退貨占用（待審、核准、已收回、已完成）+ 本次」不超過已交運數量。
- *    占用與數量上限共用 `heldByReturnQuantity`，所以重複申請、並行申請與已退貨的數量都被同一句條件擋下，不會超量。
+ *    占用與數量上限共用 `heldByReturnQuantity`，所以重複申請、並行申請與已退貨的數量都被同一句條件擋下，不會超量；
+ *    確認遺失的數量（`lostQuantity`，自助另看該批的 `lostInBatchQuantity`）同樣不可再申請退貨，確認遺失的寫入也用這兩邊的占用擋回來（`shipments/loss.ts`）。
  *    取消申請只動未交運的數量（`cancellations/request.ts`），與退貨用的是明細數量的兩個互斥部分，不會重複占用。
  * 2. 寫申請明細（自助另外寫批次對應 `return_request_batches`）：只在這個申請還沒有明細時，同鍵重送不會重複寫。
  * 結果不以受影響列數判斷，而是 batch 之後讀這個冪等鍵的申請：存在就成功（`replayed` 表示不是這次建立的），同鍵不同內容回 `request_key_conflict`。
@@ -79,7 +80,7 @@ export async function requestReturn(
           LEFT JOIN shipment_items ship_item ON ship_item.shipment_id = ship.id AND ship_item.order_line_id = json_extract(batch.value, '$.orderLineId')
           WHERE ship_item.id IS NULL
             OR ship.delivered_at IS NULL OR ship.delivered_at > ${effectiveNow} OR ${effectiveNow} >= ${returnWindowEndSql(sql`ship.delivered_at`)}
-            OR ${heldByReturnBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + json_extract(batch.value, '$.quantity') > ship_item.quantity
+            OR ${heldByReturnBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + ${lostInBatchQuantity(sql`ship_item.order_line_id`, sql`ship.id`)} + json_extract(batch.value, '$.quantity') > ship_item.quantity
         )`
     : sql``;
 
@@ -94,7 +95,7 @@ export async function requestReturn(
           SELECT 1 FROM json_each(${itemsJson}) item
           LEFT JOIN order_lines line ON line.id = json_extract(item.value, '$.orderLineId') AND line.order_id = orders.id
           WHERE line.id IS NULL
-            OR ${heldByReturnQuantity(sql`line.id`)} + json_extract(item.value, '$.quantity') > ${dispatchedQuantity(sql`line.id`)}
+            OR ${heldByReturnQuantity(sql`line.id`)} + ${lostQuantity(sql`line.id`)} + json_extract(item.value, '$.quantity') > ${dispatchedQuantity(sql`line.id`)}
         )
         ${batchCondition}
     `,

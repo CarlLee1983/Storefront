@@ -46,7 +46,7 @@ describe("管理員訂單清單", () => {
     if (!result.ok) return;
     expect(result.data.map(order => order.id)).toEqual(ids.slice(1).reverse());
     for (const order of result.data) {
-      expect(order.lines).toEqual([{ id: expect.any(Number), productId, variantId, productName: "大量訂單商品", variantLabel: "", quantity: 1, unitPriceTwd: 100, deliveryType: "standard", shippedQuantity: 0, cancelledQuantity: 0, pendingCancellationQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0,
+      expect(order.lines).toEqual([{ id: expect.any(Number), productId, variantId, productName: "大量訂單商品", variantLabel: "", quantity: 1, unitPriceTwd: 100, deliveryType: "standard", shippedQuantity: 0, cancelledQuantity: 0, pendingCancellationQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0, lostQuantity: 0,
         cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }]);
     }
   }, 30_000);
@@ -91,7 +91,7 @@ describe("管理員訂單明細", () => {
         shippingInfo: SHIPPING_INFO,
         paymentDeadline: expect.any(Number),
         createdAt: expect.any(Number),
-        lines: [{ id: expect.any(Number), productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", shippedQuantity: 0, cancelledQuantity: 0, pendingCancellationQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
+        lines: [{ id: expect.any(Number), productId, variantId, productName: "馬克杯", variantLabel: "", quantity: 2, unitPriceTwd: 320, deliveryType: "standard", shippedQuantity: 0, cancelledQuantity: 0, pendingCancellationQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0, lostQuantity: 0, cover: expect.objectContaining({ id: expect.any(String), variants: expect.any(Array) }) }],
         payments: [
           { id: expect.any(Number), amountTwd: 1, status: "failed", createdAt: 0, needsAttention: false },
           // 待付款的訂單上有成功的付款：不是由它支付的，也沒有退款紀錄
@@ -100,6 +100,7 @@ describe("管理員訂單明細", () => {
         refunds: [],
         cancellations: [],
         returns: [],
+        losses: [],
         shipments: [],
       },
     });
