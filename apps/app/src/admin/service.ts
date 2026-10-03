@@ -31,10 +31,14 @@ import { confirmShipmentLoss } from "../shipments/loss";
 import { confirmShipmentLossInput } from "../shipments/loss-input";
 import { selectLossesWithoutRefund, selectOrderLosses } from "../shipments/loss-queries";
 import { selectOrderPaymentSummaries } from "../payments/queries";
+import type { createInvoiceService } from "../invoices/service";
 import type { createPaymentService } from "../payments/service";
 import { reconcilePaymentInput, retryRefundInput } from "../payments/input";
 import { selectReconcileListing } from "../payments/reconcile";
 import { selectOrderRefunds, selectRefundTodos } from "../payments/refunds";
+import { invoiceIdInput } from "../invoices/input";
+import { selectInvoiceTodos, selectOrderInvoices, selectPendingAllowances } from "../invoices/queries";
+import { resendInvoiceCertificate } from "../invoices/resend";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
@@ -56,13 +60,17 @@ export type ReconcilePayment = ReturnType<typeof createPaymentService>["reconcil
 /** 重試一筆退款（見 `createPaymentService().retryRefund`）；同樣由 entrypoint 接上。 */
 export type RetryRefund = ReturnType<typeof createPaymentService>["retryRefund"];
 
+/** 補辦一張發票（見 `createInvoiceService().retryInvoice`）；同樣由 entrypoint 接上。 */
+export type RetryInvoice = ReturnType<typeof createInvoiceService>["retryInvoice"];
+
 export interface AdminDependencies {
   images?: ProductImageBucket;
   reconcilePayment: ReconcilePayment;
   retryRefund: RetryRefund;
+  retryInvoice: RetryInvoice;
 }
 
-export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, { images, reconcilePayment, retryRefund }: AdminDependencies) {
+export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, { images, reconcilePayment, retryRefund, retryInvoice }: AdminDependencies) {
   const db = drizzle(d1);
   const verifier = createAccessVerifier(access, clock);
 
@@ -460,6 +468,27 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, retryRefundInput, input, (actor, { refundId }) => retryRefund(refundId, actor.email));
     },
 
+    /**
+     * 發票待辦：所有尚未開立的模擬發票（結果不明、明確失敗、待開立），含每次嘗試的紀錄與操作者；
+     * 另列 `allowances`：所有待折讓義務（已成功退款、憑證待補；逐筆折讓完成於 #122）。
+     */
+    async listInvoicesToHandle(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      const pending = await selectPendingAllowances(db);
+      return ok({ ...(await selectInvoiceTodos(db)), allowances: pending.allowances, omittedAllowances: pending.omitted });
+    },
+
+    /** 補辦一張發票：失敗的直接重送，結果不明的先向發票服務查證再決定；操作者記在嘗試紀錄上，已開立的冪等回成功。 */
+    retryInvoice(jwt: unknown, input: unknown) {
+      return authorized(jwt, invoiceIdInput, input, (actor, { invoiceId }) => retryInvoice(invoiceId, actor.email));
+    },
+
+    /** 重寄一張已開立發票的憑證信：寄到顧客目前已驗證的 email，不改歷史投遞與憑證內容（見 `resendInvoiceCertificate`）。 */
+    resendInvoice(jwt: unknown, input: unknown) {
+      return authorized(jwt, invoiceIdInput, input, (actor, { invoiceId }) => resendInvoiceCertificate(db, clock, actor.email, invoiceId));
+    },
+
     /** 取消審核待辦：所有待審的取消申請（舊的在前）。 */
     async listCancellationsToReview(jwt: unknown) {
       const auth = await verifier.verify(jwt);
@@ -547,6 +576,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           ...order,
           payments: await selectOrderPaymentSummaries(db, clock.now(), orderId),
           refunds: await selectOrderRefunds(db, orderId),
+          invoices: await selectOrderInvoices(db, orderId),
           cancellations: await selectOrderCancellations(db, orderId),
           returns: await selectOrderReturns(db, orderId),
           losses: await selectOrderLosses(db, orderId),

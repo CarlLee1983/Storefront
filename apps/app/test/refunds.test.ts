@@ -7,7 +7,7 @@ import { DEFAULT_SHIPPING_TWD } from "./checkout-helpers";
 import { signInCustomer } from "./customers";
 import { forceOrderStatus, resetDb, seedPayment } from "./db";
 import { installFakeGateway } from "./fake-gateway";
-import { orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
+import { noInvoices, orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
 import { app } from "./release-helpers";
 
 const db = drizzle(env.DB);
@@ -343,7 +343,7 @@ describe("權限與可見範圍", () => {
     const [failed] = await adminRefunds(orderId);
     const { createPaymentService } = await import("../src/payments/service");
 
-    const service = createPaymentService(env.DB, { now: () => Date.now() }, async () => null, null, "http://localhost:4321");
+    const service = createPaymentService(env.DB, { now: () => Date.now() }, async () => null, null, "http://localhost:4321", noInvoices);
 
     expect(await service.retryRefund(failed!.id, ADMIN_EMAIL)).toEqual({ ok: false, reason: "payment_unavailable" });
     expect((await adminRefunds(orderId))[0]!.status).toBe("failed");
@@ -357,6 +357,7 @@ describe("承諾退款額度（#116、#121、#122 共用的單句條件寫入）
     await env.DB.prepare("UPDATE orders SET status = 'paid'").run();
     await app.applyPaymentResult(settleFirst());
     const payment = (await env.DB.prepare("SELECT id, amount_twd FROM payments WHERE gateway_payment_id = ?").bind(first).first<{ id: number; amount_twd: number }>())!;
+    await env.DB.prepare("DELETE FROM allowance_obligations").run();
     await env.DB.prepare("DELETE FROM refund_attempts").run();
     await env.DB.prepare("DELETE FROM refunds").run();
     const commit = (reason: "late_success_unreclaimable" | "cancelled_order" | "duplicate_success", amountTwd: number) =>

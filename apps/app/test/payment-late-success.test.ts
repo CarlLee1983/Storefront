@@ -11,7 +11,7 @@ import { signInCustomer } from "./customers";
 import { checkoutInput } from "./checkout-helpers";
 import { forceOrderStatus, resetDb, seedPayment } from "./db";
 import { installFakeGateway } from "./fake-gateway";
-import { orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
+import { noInvoices, orderOf, placeMugOrder, startPaymentFor } from "./payment-helpers";
 import { app, PAYMENT_WINDOW_MS, placeOrderAt, PRICE, runCron, stocked, stockOf } from "./release-helpers";
 import { seedImageAndList } from "./images";
 
@@ -176,7 +176,7 @@ describe("退款的結果與觸發", () => {
     const bob = await signInCustomer("bob");
     await placeOrderAt(bob, variantId, 2, T0 + PAYMENT_WINDOW_MS + 6_000);
     const errors = vi.spyOn(console, "error");
-    const service = createPaymentService(env.DB, { now: () => Date.now() }, async () => null, null, "http://localhost:4321");
+    const service = createPaymentService(env.DB, { now: () => Date.now() }, async () => null, null, "http://localhost:4321", noInvoices);
 
     const result = await service.applyPaymentResult(event);
 
@@ -243,6 +243,7 @@ describe("退款的結果與觸發", () => {
       async () => null,
       createHttpGateway({ baseUrl: TEST_GATEWAY_BASE_URL, apiKey: TEST_GATEWAY_API_KEY }),
       "http://localhost:4321",
+      noInvoices,
     );
 
     await service.applyPaymentResult(event);
@@ -322,6 +323,7 @@ describe("遲到的付款成功與結帳搶最後一件並行", () => {
       asAlice,
       createHttpGateway({ baseUrl: TEST_GATEWAY_BASE_URL, apiKey: TEST_GATEWAY_API_KEY }),
       "http://localhost:4321",
+      noInvoices,
     );
     // 每個商品在庫 1，各有一張已逾期、付款成功事件還沒套用的訂單（不占保留，可售數量 1）
     for (let i = 0; i < rounds; i += 1) {

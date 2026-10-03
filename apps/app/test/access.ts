@@ -38,7 +38,7 @@ export async function generateRogueKey(): Promise<CryptoKey> {
   return privateKey;
 }
 
-/** `createAdminService` 的相依：補查付款與重試退款不是這些測試要驗的，被呼叫就丟錯（讓誤用立刻現形）。 */
+/** `createAdminService` 的相依：補查付款、重試退款與補辦發票不是這些測試要驗的，被呼叫就丟錯（讓誤用立刻現形）。 */
 export function adminDeps(images?: ProductImageBucket) {
   return {
     images,
@@ -47,6 +47,9 @@ export function adminDeps(images?: ProductImageBucket) {
     },
     retryRefund: (): never => {
       throw new Error("這個測試不該重試退款");
+    },
+    retryInvoice: (): never => {
+      throw new Error("這個測試不該補辦發票");
     },
   };
 }

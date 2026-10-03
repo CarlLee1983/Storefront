@@ -21,6 +21,7 @@ import {
   selectPendingPayments,
 } from "./queries";
 import { deliverNoticeSafely } from "../contact/notify";
+import type { InvoiceService } from "../invoices/service";
 import { paymentExpiresAt } from "../orders/payment-deadline";
 import { isExplicitRefundFailure, refundReasonFor } from "./refund";
 import {
@@ -55,6 +56,7 @@ export function createPaymentService(
   authenticate: AuthenticateCustomer,
   gateway: PaymentGateway | null,
   webOrigin: string,
+  invoices: Pick<InvoiceService, "issueForPayment">,
 ) {
   const db = drizzle(d1);
   const unauthorized: Unauthorized = { ok: false, reason: "unauthorized" };
@@ -176,6 +178,7 @@ export function createPaymentService(
    * 套用付款結果（webhook 與導回查詢共用）：以事件 ID 冪等，重複的事件只套用一次、回同一結果。
    * 付款結果通知的信件與付款結果同一個 batch 寫入（outbox，見 `contact/notices.ts`）；batch 之後才投遞，投遞出錯只記 log，
    * 付款不受影響，事件重送時補上缺的投遞。
+   * 付款成功時另在同一 batch 登記模擬發票的開立義務，batch 之後才向發票服務開立（見 `invoices/service.ts`）；事件重送時補開尚未開立的、補上缺的發票通知投遞。
    * 付款成功時的分流在 `applyPaymentEvent`（待付款轉已付款、已逾期重新保留）；沒能讓訂單轉為已付款的成功付款
    * （重新保留不到、已取消、第二筆成功）登記退款並執行（見 `refundUnsettledPayment`）。回傳的是退款之後的付款與訂單狀態。
    */
@@ -188,6 +191,8 @@ export function createPaymentService(
       await refundUnsettledPayment({ id: payment.id, orderId: payment.orderId, gatewayPaymentId: event.gatewayPaymentId }, orderStatus);
     }
     await deliverNoticeSafely(db, `payment:${payment.id}`, clock.now());
+    // 成功收款開立模擬發票：在 batch 與退款之後、交易之外呼叫發票服務；失敗與逾時只留紀錄待補辦，不影響付款結果
+    if (event.outcome === "succeeded") await invoices.issueForPayment(payment.id);
     const current = await selectPaymentAndOrderStatus(db, event.gatewayPaymentId);
     return current ? ok(current) : fail("payment_not_found");
   }

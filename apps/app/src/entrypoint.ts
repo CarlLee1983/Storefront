@@ -7,6 +7,7 @@ import { createAddressService } from "./addresses/service";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { createContactService } from "./contact/service";
+import { createInvoiceService } from "./invoices/service";
 import { createOrderService } from "./orders/service";
 import { readPaymentConfig } from "./payments/config";
 import { createPaymentService } from "./payments/service";
@@ -33,6 +34,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       images: this.env.PRODUCT_IMAGES,
       reconcilePayment: (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor),
       retryRefund: (refundId, actor) => this.#payments().retryRefund(refundId, actor),
+      retryInvoice: (invoiceId, actor) => this.#invoices().retryInvoice(invoiceId, actor),
     });
   }
 
@@ -66,6 +68,12 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     });
   }
 
+  /** 模擬發票服務與金流閘道同一組設定：不全時 `gateway` 是 null，補辦回 `payment_unavailable`，開立義務仍留著。 */
+  #invoices() {
+    const config = readPaymentConfig(this.env);
+    return createInvoiceService(this.env.DB, systemClock, config.ok ? config.config.invoices : null);
+  }
+
   /**
    * 付款設定（閘道網址、API 金鑰）在這裡才驗證：不全時 `gateway` 是 null，付款 RPC 回 `payment_unavailable`，
    * 其他 RPC 不受影響。log 只含變數名稱，不含值。
@@ -77,7 +85,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       const { customer } = await readCustomerSession(this.#auth(), cookie);
       return customer?.customerId ?? null;
     };
-    return createPaymentService(this.env.DB, systemClock, authenticate, config.ok ? config.config.gateway : null, config.ok ? config.config.webOrigin : "");
+    return createPaymentService(this.env.DB, systemClock, authenticate, config.ok ? config.config.gateway : null, config.ok ? config.config.webOrigin : "", createInvoiceService(this.env.DB, systemClock, config.ok ? config.config.invoices : null));
   }
 
   /**
@@ -352,6 +360,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   retryRefund(jwt: string, input: unknown) {
     return this.#admin().retryRefund(jwt, input);
+  }
+
+  listInvoicesToHandle(jwt: string) {
+    return this.#admin().listInvoicesToHandle(jwt);
+  }
+
+  retryInvoice(jwt: string, input: unknown) {
+    return this.#admin().retryInvoice(jwt, input);
+  }
+
+  resendInvoice(jwt: string, input: unknown) {
+    return this.#admin().resendInvoice(jwt, input);
   }
 
   listCancellationsToReview(jwt: string) {

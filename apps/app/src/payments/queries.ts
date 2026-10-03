@@ -7,6 +7,7 @@ import { orders, type OrderStatus } from "../orders/schema";
 import { everyLineReclaimableSql, lateSuccessStatusSql, payableStatusSql } from "./payable";
 import { paymentNeedsAttentionSql } from "./attention";
 import { insertPaymentResultNotice } from "../contact/notices";
+import { insertInvoiceObligation } from "../invoices/queries";
 import { paymentReconcileIssues, payments, type PaymentStatus } from "./schema";
 import type { PaymentEvent } from "./shared";
 
@@ -141,6 +142,7 @@ export async function selectPaymentAndOrderStatus(
  *    - 已取消、已付款（另一筆付款先成功）、已出貨：不轉，0 列。
  *    同一組條件還要求：搶到事件、這筆付款還在 pending。所以同一張訂單的兩筆付款同時成功時，只有先執行的那一筆轉已付款。
  * 3. 付款轉為事件的結果，僅限仍是 pending 的付款（狀態只往前走，已成功的付款不會被後來的失敗事件蓋掉）。
+ * 3b. （成功時）登記這筆收款的模擬發票開立義務（`insertInvoiceObligation`，一筆付款最多一張）；開立本身在 batch 之外（見 `invoices/service.ts`）。
  * 4. 讀回訂單狀態（`orderStatus`）：就是 batch 當下訂單沒轉成的原因，呼叫端據此決定退款原因。
  *
  * 付款成功但第 2 句沒轉（`orderSettled` 為 false）時，付款仍記為成功、訂單不動（保留也不變）；呼叫端據此決定是否退款（在 batch 之外呼叫閘道）。
@@ -172,10 +174,13 @@ export async function applyPaymentEvent(
       `,
     );
   }
+  const paymentUpdateIndex = statements.length;
   statements.push(sql`
     UPDATE payments SET status = ${outcome}
     WHERE gateway_payment_id = ${gatewayPaymentId} AND status = 'pending' AND ${won}
   `);
+  // 成功收款的模擬發票開立義務與付款結果同一個 batch（outbox）：付款成功發票義務就存在；已登記的不重複（事件重送、補查都不動它）
+  if (outcome === "succeeded") statements.push(insertInvoiceObligation(gatewayPaymentId));
   // 通知的信件本體與付款結果同一個 batch（outbox）：付款有了結果信就存在，事件重送時事件鍵已有信就不動
   statements.push(insertPaymentResultNotice(gatewayPaymentId));
   // 付款離開 pending（這次或先前的呼叫套用的）：開著的補查待辦記為已解決
@@ -187,7 +192,7 @@ export async function applyPaymentEvent(
   statements.push(sql`SELECT status FROM orders WHERE id = ${orderId}`);
 
   const results = await batchAtEffectiveNow(d1, now, statements);
-  const paymentSettled = results[results.length - 4]!.meta.changes > 0;
+  const paymentSettled = results[paymentUpdateIndex]!.meta.changes > 0;
   const orderSettled = outcome === "succeeded" && results[1]!.meta.changes > 0;
   const orderStatus = (results[results.length - 1]!.results[0] as { status: OrderStatus }).status;
   return { paymentSettled, orderSettled, orderStatus };

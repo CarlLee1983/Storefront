@@ -106,11 +106,11 @@ export interface HttpGatewayConfig {
   apiKey: string;
 }
 
-/** 打模擬閘道 HTTP API 的實作；`fetchImpl` 預設是全域 `fetch`（呼叫當下才取，測試可以攔截）。 */
-export function createHttpGateway(
+/** 打模擬閘道 HTTP API 的底層呼叫（付款與發票共用同一個閘道網址與金鑰）：帶 API 金鑰、逾時、回應信封與錯誤的統一處理。`fetchImpl` 預設是全域 `fetch`（呼叫當下才取，測試可以攔截）。 */
+export function createGatewayCaller(
   { baseUrl, apiKey }: HttpGatewayConfig,
   fetchImpl: typeof fetch = (input, init) => globalThis.fetch(input, init),
-): PaymentGateway {
+) {
   const root = baseUrl.replace(/\/+$/, "");
 
   async function call<S extends z.ZodType>(path: string, method: "GET" | "POST", schema: S, body?: unknown): Promise<z.output<S>> {
@@ -146,6 +146,16 @@ export function createHttpGateway(
     if (!data?.success) throw new GatewayError("invalid_response", response.status, `金流閘道的回應格式不符：${method} ${path}`);
     return data.data;
   }
+
+  return { root, call };
+}
+
+/** 打模擬閘道 HTTP API 的付款實作。 */
+export function createHttpGateway(
+  config: HttpGatewayConfig,
+  fetchImpl: typeof fetch = (input, init) => globalThis.fetch(input, init),
+): PaymentGateway {
+  const { root, call } = createGatewayCaller(config, fetchImpl);
 
   const paymentPath = (gatewayPaymentId: string) => `/v1/payments/${encodeURIComponent(gatewayPaymentId)}`;
 

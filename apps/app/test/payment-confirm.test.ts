@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signInCustomer } from "./customers";
 import { resetDb } from "./db";
 import { installFakeGateway, type FakeGateway } from "./fake-gateway";
-import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
+import { noInvoices, orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { createPaymentService } from "../src/payments/service";
 
 const app = exports.default;
@@ -203,7 +203,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
   });
 
   it("閘道尚未設定：payment_unavailable，fail closed", async () => {
-    const service = createPaymentService({} as D1Database, { now: () => Date.now() }, async () => "someone", null, "http://localhost:4321");
+    const service = createPaymentService({} as D1Database, { now: () => Date.now() }, async () => "someone", null, "http://localhost:4321", noInvoices);
 
     expect(await service.confirmPayment("cookie", { orderId: 1, gatewayPaymentId: "pay_1" })).toEqual({
       ok: false,

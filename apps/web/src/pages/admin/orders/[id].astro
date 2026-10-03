@@ -14,7 +14,9 @@ import { describeReturnFailure, describeReturnOutcome, inspectionFormToInput, re
 import { returnStatusLabel, shipmentReturnStatusLabel } from "../../../orders/return";
 import { describeLossFailure, describeLossOutcome, lossFormToInput } from "../../../admin/loss-form";
 import { declareReturnFormToInput, describeShipmentReturnFailure, describeShipmentReturnOutcome, shipmentReturnInspectionFormToInput, shipmentReturnReceiptFormToInput } from "../../../admin/shipment-return-form";
-import { formToRecord } from "../../../shared/form-values";
+import { describeInvoiceFailure, describeInvoiceRetryOutcome, describeResendOutcome, parseInvoiceResult } from "../../../admin/invoice";
+import { invoiceAttemptLabel, invoiceStatusLabel } from "../../../orders/invoice";
+import { formToRecord, toText } from "../../../shared/form-values";
 import { formatDateTime, parseOrderId, paymentStatusLabel, refundAttemptLabel, refundReasonLabel, refundStatusLabel } from "../../../orders/labels";
 
 export const prerender = false;
@@ -33,11 +35,22 @@ let submittedLoss: { shipmentId: number; lossKey: string } | undefined;
 let shipmentReturnFailure: (ReturnType<typeof describeShipmentReturnFailure> & { returnId?: number }) | undefined;
 let submittedReturn: { shipmentId: number; returnKey: string } | undefined;
 let unauthorized = false;
+let invoiceFailure: string | undefined;
 
-// POST 有十一種：登記物流退回、記錄物流退回的收回與檢查（intent=declare-return、record-shipment-return-receipt、record-shipment-return-inspection，檢查的同內容重送會重新登記退款）、確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
+// POST 有十三種：補辦發票與重寄憑證（intent=retry-invoice、resend-invoice）、登記物流退回、記錄物流退回的收回與檢查（intent=declare-return、record-shipment-return-receipt、record-shipment-return-inspection，檢查的同內容重送會重新登記退款）、確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  if (form.get("intent") === "decide-cancellation") {
+  if (form.get("intent") === "retry-invoice") {
+    const result = await env.APP.retryInvoice(jwt, { invoiceId: Number(toText(form.get("invoiceId"))) });
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?invoice=${result.data.status}#invoices`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else invoiceFailure = describeInvoiceFailure(result);
+  } else if (form.get("intent") === "resend-invoice") {
+    const result = await env.APP.resendInvoice(jwt, { invoiceId: Number(toText(form.get("invoiceId"))) });
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?resend=${result.data.delivered ? "delivered" : "failed"}#invoices`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else invoiceFailure = describeInvoiceFailure(result);
+  } else if (form.get("intent") === "decide-cancellation") {
     const result = await env.APP.decideCancellation(jwt, decideFormToInput(form));
     if (result.ok) {
       const saved = result.data.decision === "approved" ? "cancellation-approved" : "cancellation-rejected";
@@ -124,6 +137,8 @@ const decideSaved = describeDecideOutcome(Astro.url.searchParams.get("saved"), A
 const returnSaved = describeReturnOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const shipmentReturnSaved = describeShipmentReturnOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const lossSaved = describeLossOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
+const invoiceResult = parseInvoiceResult(Astro.url.searchParams);
+const invoiceNotice = invoiceResult === null ? null : invoiceResult.kind === "retry" ? describeInvoiceRetryOutcome(invoiceResult.status) : describeResendOutcome(invoiceResult.delivered);
 const priceFormat = new Intl.NumberFormat("zh-TW");
 // 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一批
 const dispatchKey = submitted.dispatchKey || crypto.randomUUID();
@@ -514,6 +529,60 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                           ))}
                         </ul>
                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )
+        }
+        <h2 id="invoices">發票</h2>
+        {invoiceNotice && (invoiceNotice.isError ? <p class="error" role="alert">{invoiceNotice.text}</p> : <p role="status">{invoiceNotice.text}</p>)}
+        {invoiceFailure && <p class="error" role="alert">{invoiceFailure}</p>}
+        {order.invoices.length === 0 && <p>沒有發票（收款成功才會開立）。</p>}
+        {
+          order.invoices.length > 0 && (
+            <div class="table-scroll admin-order-invoices" tabindex="0" role="region" aria-label="發票資料表"><table>
+              <thead>
+                <tr><th>發票</th><th>原額</th><th>狀態</th><th>待折讓</th><th>嘗試紀錄</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                {order.invoices.map((invoice) => (
+                  <tr>
+                    <td data-label="發票">#{invoice.id}（付款 #{invoice.paymentId}）<br />{invoice.invoiceNumber ?? "尚未開立"}<br /><small>{invoice.issuedAt === null ? `登記 ${formatDateTime(invoice.createdAt)}` : `開立 ${formatDateTime(invoice.issuedAt)}`}</small></td>
+                    <td data-label="原額">NT$ {priceFormat.format(invoice.amountTwd)}</td>
+                    <td data-label="狀態">
+                      <strong class={invoice.status === "unknown" || invoice.status === "failed" ? "error" : undefined}>{invoiceStatusLabel(invoice.status)}</strong>
+                      {invoice.status !== "issued" && <><br /><a href="/admin/invoices">到發票待辦處理</a></>}
+                    </td>
+                    <td data-label="待折讓">
+                      {invoice.allowances.length === 0 ? "無" : (
+                        <>
+                          <strong class="error">憑證待補：NT$ {priceFormat.format(invoice.pendingAllowanceTwd)}</strong>
+                          <ul class="attempts">
+                            {invoice.allowances.map((allowance) => (
+                              <li>退款 #{allowance.refundId}：NT$ {priceFormat.format(allowance.amountTwd)}（{formatDateTime(allowance.createdAt)}）</li>
+                            ))}
+                          </ul>
+                          <small>原票仍只顯示原額，未折讓的退款沒有從原額扣除；逐筆折讓於 #122</small>
+                        </>
+                      )}
+                    </td>
+                    <td data-label="嘗試紀錄">
+                      {invoice.attempts.length === 0 ? "尚未送出" : (
+                        <ul class="attempts">
+                          {invoice.attempts.map((attempt) => (
+                            <li>{formatDateTime(attempt.at)} {attempt.actor === "system" ? "系統" : attempt.actor}：{invoiceAttemptLabel(attempt.action, attempt.outcome)}{attempt.code && `（${attempt.code}）`}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td data-label="操作">
+                      <form method="post">
+                        <input type="hidden" name="intent" value={invoice.status === "issued" ? "resend-invoice" : "retry-invoice"} />
+                        <input type="hidden" name="invoiceId" value={invoice.id} />
+                        <button type="submit" aria-label={`${invoice.status === "issued" ? "重寄憑證" : invoice.status === "unknown" ? "查證並補辦" : "補辦"}發票 #${invoice.id}`}>{invoice.status === "issued" ? "重寄憑證" : invoice.status === "unknown" ? "查證並補辦" : "補辦"}</button>
+                      </form>
                     </td>
                   </tr>
                 ))}

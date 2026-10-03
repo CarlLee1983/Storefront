@@ -8,6 +8,7 @@
     "./access": "./src/admin/access.ts",
     "./dev-keys": "./scripts/dev-keys.ts",
     "./payments-shared": "./src/payments/shared.ts",
+    "./invoices-shared": "./src/invoices/shared.ts",
     "./category-slug": "./src/categories/slug.ts",
     "./catalog-listing": "./src/catalog/listing.ts",
     "./product-images": "./src/product-images.ts",

@@ -306,3 +306,20 @@ export function insertShipmentReturnCompletedNotice(returnId: number | SQL): SQL
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
+
+/**
+ * 模擬發票開立通知：一張發票一封，事件鍵 `invoice:<發票編號>`；只在該發票已開立時寫，與開立同一個 batch（見 `invoices/queries.ts` 的 `recordInvoiceAttempt`）。
+ * 信件內容寫信當下就固定：發票號碼與原額，之後的折讓不改寫它（折讓另有紀錄與通知）；重寄是同一封信的新投遞（見 `contact/admin.ts` 的 `resendMessage`）。
+ */
+export function insertInvoiceNotice(invoiceId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'invoice_issued', '訂單 #' || orders.id || ' 的模擬發票已開立',
+      '訂單 #' || orders.id || ' 已開立模擬發票：發票號碼 ' || invoices.invoice_number || '，金額 NT$' || invoices.amount_twd || '（收款原額）。' ||
+      '這是演練用的模擬發票，不是真實電子發票。若日後有退款，折讓會另行處理並通知；這封信記載的是開立當時的原額，不會因折讓而改寫。',
+      'invoice:' || invoices.id, ${effectiveNow}
+    FROM invoices JOIN orders ON orders.id = invoices.order_id
+    WHERE invoices.id = ${invoiceId} AND invoices.status = 'issued'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}

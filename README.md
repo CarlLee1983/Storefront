@@ -50,7 +50,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 出貨通知（#112）：每個出貨批次寫一封 `shipment_dispatched`（商品數量、物流單號、議定時段），見下方「分批出貨與大型配送預約」。
 - 退款成功通知（#115）：每筆成功的退款寄一封 `refund_succeeded`（事件鍵 `refund:<退款編號>`），與退款轉為成功同一個 batch 寫入；重試與重複回呼不重複。
 - 取消審核（#116）與退貨審核、檢查完成（#117）通知：`cancellation_approved`／`cancellation_rejected`、`return_approved`／`return_rejected`／`return_completed`（一案一封，事件鍵 `return:<申請編號>:<approved|rejected|completed>`），都與該決定同一個 batch 寫入；檢查完成的信依退款是否已登記分文案。
-- 尚未涵蓋（後續票）：發票完成等通知。
+- 發票開立通知（#121）：每張已開立的模擬發票寄一封 `invoice_issued`（事件鍵 `invoice:<發票編號>`），與開立同一個 batch 寫入，見下方「模擬發票（#121）」。
+- 尚未涵蓋（後續票）：折讓完成（#122）等通知。
 
 ## 地址簿
 
@@ -218,9 +219,24 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 畫面：後台訂單頁批次清單的「登記物流退回」表單，與「物流退回」區塊（收回、檢查、重新登記退款）；顧客訂單頁「被物流退回倉庫的商品」；退款待辦頁列出未登記退款的物流退回；手機與桌機皆可操作（e2e 驗證）。
 - 部署順序：先 migration，再 App，再 Web。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0029_shipment_returns.down.sql`（已有任何物流退回、物流退回退款、物流退回庫存流水或 `returned` 批次時守門檢查讓回復失敗，須先確認可以捨棄）。回復順序是 0029 → 0028 → 0027 → …。0029 重建 `refunds`（CHECK 要加新原因），做法同 0028；回復時重建 `stock_movements`（含外鍵的欄位不能 DROP COLUMN），並還原只增不改不刪的 trigger。
 - 測試：`apps/app/test/shipment-return.test.ts`（入倉與庫存、損壞品與報廢、未收到與部分收回、運費互斥與取消／退貨／遺失交錯、尋回的遺失品、與物流回報的先後與亂序、數量互斥含並行、退款失敗與額度占用的復原、冪等與漏通知補回、權限與輸入）、`shipment-returns-migration.test.ts`（遷移、約束與回復）、`apps/web/src/admin/shipment-return-form.test.ts`、`e2e/tests/shipment-return.spec.ts`（手機與桌機）。
-- 尚未實作：發票折讓（#121、#122）；ADR 0008 仍待決（本票的退款失敗同取消、退貨、遺失，沒有人工結案）；物流退回案件沒有獨立的待辦清單，管理員從訂單頁處理。
+- 尚未實作：逐筆發票折讓（#122；#121 已開立模擬發票並為成功退款建立待折讓義務，見下一節）；ADR 0008 仍待決（本票的退款失敗同取消、退貨、遺失，沒有人工結案）；物流退回案件沒有獨立的待辦清單，管理員從訂單頁處理。
 - 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `returns`，明細多回傳 `returnedQuantity`、`openReturnQuantity`，變體多回傳 `unavailable`，舊 Web 不受影響；0027 只新增一張表，回復腳本 `apps/app/rollback/0027_return_batches.down.sql` 在已有批次對應時守門檢查讓回復失敗，回復順序 0027 → 0026 → …）。0026 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024、0025。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0026_returns.down.sql`；已有任何退貨申請、不可售數量、不可售流水或退貨退款時守門檢查讓回復失敗（收回與檢查已改變實體與不可售，舊版無法表達），須先確認可以捨棄。回復順序是 0026 → 0025 → …。
 - 測試：`apps/app/test/return-request.test.ts`（申請、占用、並行、冪等、權限與輸入、審核）、`return-flow.test.ts`（收回、檢查、報廢、可售算式、運費與取消混合）、`return-refund.test.ts`（退款失敗不反轉實物、額度占用、同單逐筆）、`return-self-service.test.ts`（自助窗口邊界：送達當日、第 7 天 23:59:59、第 8 天 00:00:00，台北日曆日、各批各自期限、送達時間被較早回報改寫、未送達與無送達日、批次數量與並行、冪等、權限）、`returns-migration.test.ts`（遷移、約束與回復，含 0027）、`e2e/tests/returns.spec.ts`（手機與桌機完整流程）、`e2e/tests/return-self-service.spec.ts`（未送達只有人工受理、送達後自助申請、管理員看到自助申請、顧客隔離）。
+
+### 模擬發票（#121）
+
+依設計文件「發票、通知與進度」與 A10（Migration `0030_invoices.sql`；`apps/app/src/invoices/`）。只演練一般個人消費者的 email 交付：沒有統編、載具、捐贈，也不是真實電子發票。
+
+- 開立義務（outbox）：每筆**成功收款**一張發票，原額等於那筆收款的實收。付款轉為成功的同一個 batch（`applyPaymentEvent`）寫入一列 `invoices`（`pending`，`payment_id` 唯一，所以事件重送、導回查詢與補查都不會登記第二張）；batch 之後、交易之外才向發票服務開立。包含訂單沒讓它成立的成功付款（遲到、已取消、重複付款）：每筆收款各自一張，各自原額。
+- 冪等與不重複：發票服務以 `invoices.gateway_invoice_key`（`inv_<UUID>`，登記時產生、之後永不更改）為冪等鍵，同一個鍵重送、並行與補辦都回同一張發票；本地狀態只會有一次轉為已開立（`recordInvoiceAttempt` 的條件 UPDATE），發票通知信的事件鍵唯一，所以只有一張發票、一封通知。
+- 失敗不阻擋、可補辦（比照 #115 退款）：進度 `pending`（待開立）、`unknown`（結果不明）、`failed`（明確失敗）、`issued`（已開立）。發票服務明確拒絕（`invoice_failed` 或 4xx）記 `failed`；連不上、逾時、5xx、回應異常記 `unknown`，補辦時**先向發票服務查證**（`GET /v1/invoices/:invoiceKey`）：已開立就記成功、不重送，從未收過才以同一個鍵送出；回應的鍵、金額、訂單參照與本站不符一律當作不明。每次嘗試（操作者、動作、結果、錯誤碼）留在 `invoice_attempts`。付款、出貨與退款都不看發票狀態。系統只在付款事件進來時開立一次（含事件重送補開 `pending`）；失敗與不明沒有 Cron，由管理員在 `/admin/invoices`（導覽「發票待辦」；RPC `listInvoicesToHandle`、`retryInvoice`）按「補辦」／「查證並補辦」。發票服務與金流閘道同一組設定（`GATEWAY_BASE_URL`、`GATEWAY_API_KEY`），設定不全時補辦回 `payment_unavailable`，開立義務留著。
+- 憑證交付與重寄：開立成功時寫一封 `invoice_issued`（發票號碼與開立當時的原額，內容固定）到顧客的模擬信箱，收件地址是當下已驗證的聯絡 email。管理員在後台訂單頁「發票」表按「重寄憑證」（RPC `resendInvoice`）＝同一封信的新投遞（沿用 `resendMessage`），寄到顧客**目前**已驗證的 email（沒有回 `no_verified_contact`），不改既有投遞紀錄、信件內容與發票；尚未開立回 `invoice_not_issued`。
+- 待折讓義務：每筆**成功**的退款一列 `allowance_obligations`（`refund_id` 唯一），與退款轉為成功同一個 batch 寫入——退款轉 `succeeded` 的唯一寫入點是 `recordRefundAttempt`，所以取消、退貨、遺失、物流退回與付款異常的退款（含失敗後重試成功的「後續成功退款」）都會建立；0030 另為遷移前已成功的退款補義務、為已成功的收款補待開立的發票義務（冪等鍵 `inv_legacy_<付款編號>`）。義務綁定收款而不是發票：退款可能先於延遲開立的發票成功，先保留退款事實，原票開立後仍是原額，義務不變。
+- 只顯示原額：顧客與管理員看到的 `amountTwd` 永遠是開立原額，`pendingAllowanceTwd` 是已成功退款但憑證尚未折讓的合計，畫面標示「憑證待補」並說明原票沒有扣除退款；**沒有「剩餘金額」或「已結清」**。逐筆折讓與完成標記是 #122，本票不做、也不宣稱已完成全部憑證處理；ADR 0008 人工結案同樣未實作。
+- 模擬服務（`apps/gateway`，見「模擬金流閘道」）：`POST /v1/invoices`、`GET /v1/invoices/:invoiceKey`；開發主控頁可切換「下一次開立失敗」與「下一次開立已成立但回應遺失」演練失敗與延遲（結果不明）。
+- 畫面：顧客訂單頁「發票」（只分「已開立」與「開立中」，不揭露內部的失敗與不明；有待折讓時標「憑證待補」）、後台「發票待辦」（待開立發票與憑證待補清單）、後台訂單頁「發票」（嘗試紀錄、待折讓、補辦／重寄）；手機與桌機皆可操作（e2e 驗證）。
+- 部署順序：先 migration（App 與閘道各自的 migration，閘道 `0003_invoices.sql`），再閘道、App，最後 Web；新 App 在付款成功時會寫 `invoices`，0030 缺表時付款結果的套用會整批失敗，所以 migration 必須先套用。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0030_invoices.down.sql`（已有已開立的發票時守門檢查讓回復失敗，其餘由收款與退款推得、重新套用會補回）。回復順序是 0030 → 0029 → …。
+- 測試：`apps/app/test/invoices.test.ts`（開立一次與重送不重複、失敗與不明與查證、補辦並行、重寄憑證、權限、待折讓義務與先後順序）、`invoices-migration.test.ts`（遷移補資料、約束與回復）、`apps/gateway/test/invoice.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
 
 ## 模擬金流閘道
 
@@ -237,9 +253,11 @@ API（JSON，`Authorization: Bearer <GATEWAY_API_KEY>`；回應 `{ ok: true, dat
 | `GET /v1/payments/:id` | `{ paymentId, status, amountTwd, merchantReference, expiresAt, eventId, refundedTwd }`；`status` 為 `pending / succeeded / failed / expired`（退款不改付款狀態）。`eventId` 是最近一個事件（成功／失敗）的 ID，與 webhook 的 `eventId` 相同，供導回查詢與 webhook 共用冪等鍵；沒有事件（pending、取消而失效）為 `null`。`refundedTwd` 是已成功退回的累計金額 |
 | `POST /v1/payments/:id/cancel` | 讓進行中的付款失效：取消後狀態就是 `expired`（沒有獨立的 cancelled 狀態，也不產生事件）；已 `expired` 冪等成功，已有結果者 409 `payment_not_cancellable` |
 | `POST /v1/payments/:id/refunds` | `{ refundId, amountTwd }` → 200 `{ refundId, paymentId, status: "succeeded", amountTwd }`。部分退款，以呼叫端給的 `refundId`（1–100 個英數、`_`、`-`）為冪等鍵：同一個 ID 已成功再送回同一筆結果、不重複退；明確失敗過的可用同一個 ID 重試。只有 `succeeded` 的付款可退（409 `payment_not_refundable`）；累計成功退款加這一筆超過付款金額回 409 `refund_exceeds_payment`；同一個 ID 帶不同金額或用在別筆付款回 409 `refund_conflict`；模擬的失敗回 502 `refund_failed`（款項不動）。不送 webhook |
+| `POST /v1/invoices` | `{ invoiceKey, merchantReference, amountTwd }` → 200 `{ invoiceKey, invoiceNumber, merchantReference, amountTwd, issuedAt }`。開立模擬發票，以 `invoiceKey`（1–100 個英數、`_`、`-`）為冪等鍵：同一個鍵重送回同一張發票（同號碼）、不重複開立；同鍵不同金額或參照回 409 `invoice_conflict`；模擬的失敗回 502 `invoice_failed`（沒有開立，可用同一個鍵重試）；模擬的回應遺失回 504 `invoice_timeout`（發票已開立，呼叫端須查證） |
+| `GET /v1/invoices/:invoiceKey` | 查證一張發票（同上形狀）；從未收過這個鍵回 404 `invoice_not_found` |
 | `GET /v1/payments/:id/refunds/:refundId` | 查證一筆退款：`{ refundId, paymentId, status: "succeeded" \| "failed", amountTwd }`；閘道從未收過這個 ID 回 404 `refund_not_found`。呼叫端逾時、結果不明時先用它查，再決定要不要用同一個 ID 重送 |
 
-付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款嘗試回 502 `refund_failed`（那筆退款記為 `failed`，款項不動），旗標隨即消耗，以同一個 `refundId` 重試即成功；主控頁列出每筆付款的各筆退款。
+付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款嘗試回 502 `refund_failed`（那筆退款記為 `failed`，款項不動），旗標隨即消耗，以同一個 `refundId` 重試即成功；主控頁列出每筆付款的各筆退款。主控頁的「模擬發票」區可切換「下一次開立失敗」（502 `invoice_failed`、沒有開立）與「下一次開立已成立但回應遺失」（504 `invoice_timeout`、發票已開立），旗標用完即清，並列出最近開立的發票。
 
 Webhook：`POST <webhookUrl>`，本文 `{ eventId, type, paymentId, merchantReference, amountTwd, occurredAt }`（`type` 為 `payment.succeeded / payment.failed`；退款不送 webhook；`occurredAt` 是事件建立時間的 epoch 毫秒，重送不變）。Header `Gateway-Signature: t=<unix 秒>,v1=<hex(HMAC-SHA256(GATEWAY_WEBHOOK_SECRET, "<t>.<原始 body>"))>`，`t` 是每次投遞當下的時間。接收端用 `@storefront/gateway/webhook-signature` 的 `verifyWebhookSignature` 驗證（預設容忍 5 分鐘），並以 `eventId` 去重。
 

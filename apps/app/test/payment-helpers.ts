@@ -39,3 +39,6 @@ export async function startPaymentFor(cookie: string, orderId: number, gateway: 
   if (!started.ok) throw new Error(`發起付款失敗：${started.reason}`);
   return gateway.lastPaymentId();
 }
+
+/** 不開立發票的替身：直接建 `createPaymentService` 的測試不關心發票。 */
+export const noInvoices = { issueForPayment: async (): Promise<void> => undefined };

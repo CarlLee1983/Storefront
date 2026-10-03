@@ -10,6 +10,7 @@ import Layout from "../../layouts/Layout.astro";
 import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
 import { customerLossNote, customerReturnNote, customerShipmentReturnNote, describeReturnRequestFailure, returnBatchNote, returnFormToInput, returnStatusLabel, returnableQuantity, shipmentReturnStatusLabel } from "../../orders/return";
 import { formToRecord } from "../../shared/form-values";
+import { customerAllowanceNote, customerInvoiceStatusLabel, customerInvoiceStatusNote } from "../../orders/invoice";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
@@ -83,6 +84,8 @@ const returnBatches = order?.returnBatches ?? [];
 const hasSelfServiceQuantity = returnBatches.some((batch) => batch.items.some((item) => item.selfServiceQuantity > 0));
 const cancellationFieldErrors = cancellationFailure?.fields.items ?? [];
 const priceFormat = new Intl.NumberFormat("zh-TW");
+// 已有成功退款、折讓尚未完成的發票：提醒原額不代表退款後的實際金額（逐筆折讓完成於 #122）
+const allowanceNotes = new Map((order?.invoices ?? []).map((invoice) => [invoice.id, customerAllowanceNote(invoice.pendingAllowanceTwd, invoice.pendingAllowanceCount, (amount) => priceFormat.format(amount))]));
 ---
 
 <Layout title={order ? `訂單 #${order.id}` : "找不到頁面"} description={order ? `查看訂單 #${order.id} 的付款、出貨狀態與收件資訊。` : undefined} noindex>
@@ -335,6 +338,32 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </section>
           )
         }
+        {
+          order.invoices.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="invoice-info-title" id="invoices">
+              <h2 id="invoice-info-title">發票</h2>
+              <table class="payment-history">
+                <thead>
+                  <tr><th>開立時間</th><th>發票號碼</th><th>原額</th><th>進度</th></tr>
+                </thead>
+                <tbody>
+                  {order.invoices.map((invoice) => (
+                    <tr>
+                      <td data-label="開立時間">{invoice.issuedAt === null ? "尚未開立" : formatDateTime(invoice.issuedAt)}</td>
+                      <td data-label="發票號碼">{invoice.invoiceNumber ?? "—"}</td>
+                      <td data-label="原額">NT$ {priceFormat.format(invoice.amountTwd)}</td>
+                      <td data-label="進度"><span class="payment-state">
+                        {customerInvoiceStatusLabel(invoice.status)}
+                        <small>（{customerInvoiceStatusNote(invoice.status)}）</small>
+                        {allowanceNotes.get(invoice.id) && <strong class="invoice-allowance-pending">憑證待補：{allowanceNotes.get(invoice.id)}</strong>}
+                      </span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )
+        }
         {order.status === "pending_payment" && (
           <div class="cancel-container">
             <form class="cancel-form" method="post" onsubmit="return confirm('確定要取消這張訂單嗎？取消後無法恢復。')">
@@ -429,6 +458,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   .payment-history { table-layout: auto; min-width: 0; }
   .payment-history td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .payment-state small { display: block; }
+  .invoice-allowance-pending { display: block; color: var(--color-error); font-weight: 600; font-size: var(--text-sm); }
   .cancel-container {
     margin-top: var(--space-8);
     padding: var(--space-4) var(--space-6);

@@ -65,6 +65,7 @@ describe("結帳成功", () => {
         ],
         payments: [],
         refunds: [],
+        invoices: [],
         cancellations: [],
         returns: [],
         losses: [],

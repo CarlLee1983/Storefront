@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { insertRefundNotice } from "../contact/notices";
+import { insertAllowanceObligation } from "../invoices/queries";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { orders } from "../orders/schema";
 import { payments, refundAttempts, refunds } from "./schema";
@@ -181,7 +182,7 @@ export interface RefundAttemptRecord {
 
 /**
  * 記下一次退款嘗試，同一個 batch 內：嘗試紀錄（一律寫）、退款狀態（僅限租約仍是自己的 processing）、
- * 成功時的退款通知信（outbox，見 `contact/notices.ts`）。回傳狀態是否真的寫回。
+ * 成功時的退款通知信（outbox，見 `contact/notices.ts`）與待折讓義務（`invoices/queries.ts`；退款轉 succeeded 的唯一寫入點，義務與退款成功同成同敗）。回傳狀態是否真的寫回。
  */
 export async function recordRefundAttempt(d1: D1Database, record: RefundAttemptRecord, now: number): Promise<boolean> {
   const { refundId, claimedAt, actor, action, outcome, code, status } = record;
@@ -193,7 +194,7 @@ export async function recordRefundAttempt(d1: D1Database, record: RefundAttemptR
       UPDATE refunds SET status = ${status}, settled_at = ${status === "succeeded" ? effectiveNow : null}
       WHERE id = ${refundId} AND status = 'processing' AND claimed_at = ${claimedAt}
     `);
-    if (status === "succeeded") statements.push(insertRefundNotice(refundId));
+    if (status === "succeeded") statements.push(insertRefundNotice(refundId), insertAllowanceObligation(refundId));
   }
   const results = await batchAtEffectiveNow(d1, now, statements);
   return status === null ? true : results[1]!.meta.changes > 0;

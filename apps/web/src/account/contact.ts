@@ -43,6 +43,7 @@ const MAIL_KIND_LABELS: Record<string, string> = {
   shipment_loss_confirmed: "物流遺失確認通知",
   shipment_return_declared: "物流退回通知",
   shipment_return_completed: "物流退回檢查完成通知",
+  invoice_issued: "發票開立通知",
 };
 
 /** 信件種類的顯示名稱；不認得的種類不顯示原始代碼。 */

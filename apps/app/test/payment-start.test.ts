@@ -6,7 +6,7 @@ import { setNow } from "./clock";
 import { TEST_GATEWAY_BASE_URL } from "./constants";
 import { forceOrderStatus, resetDb, seedPayment } from "./db";
 import { installFakeGateway } from "./fake-gateway";
-import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
+import { noInvoices, orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { createPaymentService } from "../src/payments/service";
 
 const app = exports.default;
@@ -386,6 +386,7 @@ describe("startPayment：發起付款", () => {
       async () => "someone",
       null,
       WEB_ORIGIN,
+      noInvoices,
     );
 
     expect(await service.startPayment("cookie", { orderId: 1 })).toEqual({ ok: false, reason: "payment_unavailable" });

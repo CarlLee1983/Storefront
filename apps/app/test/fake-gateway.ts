@@ -16,6 +16,15 @@ export interface FakeRefund {
   status: "succeeded" | "failed";
 }
 
+/** 發票服務上的一張發票（與真實服務一致：以呼叫端給的 invoiceKey 為冪等鍵）。 */
+export interface FakeInvoice {
+  invoiceKey: string;
+  invoiceNumber: string;
+  merchantReference: string;
+  amountTwd: number;
+  issuedAt: number;
+}
+
 /** 可操控的金流閘道替身：在 HTTP 層實作閘道的 API 契約（apps/gateway/README），由 `installFakeGateway` 攔截全域 fetch。 */
 export class FakeGateway {
   readonly payments = new Map<string, FakePayment>();
@@ -45,8 +54,16 @@ export class FakeGateway {
   /** 覆寫建立付款時回報的失效時間（參數是本站要求的失效時間），用來模擬回應不合法的閘道。 */
   expiresAtOverride: ((requested: number) => number) | undefined;
   onRefund: (() => Promise<void>) | undefined;
+  /** 發票服務上已開立的發票，鍵是 invoiceKey。 */
+  readonly invoices = new Map<string, FakeInvoice>();
+  /** 到達發票服務、通過驗證的開立請求（含明確失敗與回應遺失的），依序。 */
+  readonly invoiceRequests: { invoiceKey: string; merchantReference: string; amountTwd: number }[] = [];
+  /** 下一次開立請求在服務明確失敗（502 invoice_failed，沒有開立）。 */
+  private explicitInvoiceFailures = 0;
+  /** 下一次開立請求在服務成功開立，但回應遺失（呼叫端只看到連線失敗）。 */
+  private lostInvoiceResponses = 0;
 
-  failNext(operation: "create" | "get" | "cancel" | "refund" | "getRefund", status = 502): void {
+  failNext(operation: "create" | "get" | "cancel" | "refund" | "getRefund" | "issueInvoice" | "getInvoice", status = 502): void {
     this.failures.set(operation, status);
   }
 
@@ -58,6 +75,16 @@ export class FakeGateway {
   /** 下一次退款請求閘道已成功退回，但回應在途中遺失：呼叫端逾時，結果不明。 */
   loseNextRefundResponse(): void {
     this.lostRefundResponses += 1;
+  }
+
+  /** 下一次開立請求發票服務明確拒絕（502 invoice_failed）：呼叫端確定沒有開立。 */
+  failNextInvoiceExplicitly(): void {
+    this.explicitInvoiceFailures += 1;
+  }
+
+  /** 下一次開立請求發票服務已開立，但回應在途中遺失：呼叫端逾時，結果不明。 */
+  loseNextInvoiceResponse(): void {
+    this.lostInvoiceResponses += 1;
   }
 
   /** 這筆付款在閘道上已成功退回的累計金額。 */
@@ -123,6 +150,14 @@ export class FakeGateway {
       payment.expiresAt = expiresAt;
       return success({ paymentId: id, paymentUrl: `${TEST_GATEWAY_BASE_URL}/pay/${id}`, expiresAt }, 201);
     }
+    if (url.pathname === "/v1/invoices" && request.method === "POST") return this.handleIssueInvoice(request);
+    const invoiceLookup = /^\/v1\/invoices\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+    if (invoiceLookup && request.method === "GET") {
+      const failed = this.takeFailure("getInvoice");
+      if (failed) return failed;
+      const found = this.invoices.get(invoiceLookup[1]!);
+      return found ? success(found) : error(404, "invoice_not_found");
+    }
     const match = /^\/v1\/payments\/([A-Za-z0-9_]+)(\/cancel|\/refunds(?:\/([A-Za-z0-9_-]+))?)?$/.exec(url.pathname);
     const payment = match ? this.payments.get(match[1]!) : undefined;
     if (!match || !payment) return error(404, "payment_not_found");
@@ -184,6 +219,26 @@ export class FakeGateway {
       throw new TypeError("fetch failed");
     }
     return success(refund);
+  }
+
+  private async handleIssueInvoice(request: Request): Promise<Response> {
+    const failed = this.takeFailure("issueInvoice");
+    if (failed) return failed;
+    const { invoiceKey, merchantReference, amountTwd } = (await request.json()) as { invoiceKey: string; merchantReference: string; amountTwd: number };
+    this.invoiceRequests.push({ invoiceKey, merchantReference, amountTwd });
+    const existing = this.invoices.get(invoiceKey);
+    if (existing) return existing.amountTwd === amountTwd && existing.merchantReference === merchantReference ? success(existing) : error(409, "invoice_conflict");
+    if (this.explicitInvoiceFailures > 0) {
+      this.explicitInvoiceFailures -= 1;
+      return error(502, "invoice_failed");
+    }
+    const invoice: FakeInvoice = { invoiceKey, invoiceNumber: `SM-${String(this.invoices.size + 1).padStart(8, "0")}`, merchantReference, amountTwd, issuedAt: Date.now() };
+    this.invoices.set(invoiceKey, invoice);
+    if (this.lostInvoiceResponses > 0) {
+      this.lostInvoiceResponses -= 1;
+      throw new TypeError("fetch failed");
+    }
+    return success(invoice);
   }
 
   private takeFailure(operation: string): Response | undefined {

@@ -430,8 +430,11 @@ describe("Cron 補查", () => {
     const original = gateway.handle.bind(gateway);
     let lookups = 0;
     vi.spyOn(gateway, "handle").mockImplementation((request) => {
-      lookups += 1;
-      vi.setSystemTime(Date.now() + RECONCILE_BUDGET_MS + 1_000);
+      // 只數付款查詢：付款成功後開立發票也會打到閘道，不算補查的一筆
+      if (new URL(request.url).pathname.startsWith("/v1/payments")) {
+        lookups += 1;
+        vi.setSystemTime(Date.now() + RECONCILE_BUDGET_MS + 1_000);
+      }
       return original(request);
     });
     const at = T0 + RECONCILE_GRACE_MS + 1_000;

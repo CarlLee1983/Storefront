@@ -96,14 +96,14 @@ describe("下單通知", () => {
     gateway.settle(gateway.lastPaymentId(), "succeeded");
     await app.confirmPayment(alice, { orderId, gatewayPaymentId: gateway.lastPaymentId() });
 
-    const [message] = (await adminMail()).messages;
+    const message = (await adminMail()).messages.find((candidate) => candidate.kind === "payment_succeeded");
     expect(message).toMatchObject({ kind: "payment_succeeded", needsAttention: true, deliveries: [] });
     expect(await app.resendMail(jwt, { messageId: message!.id })).toEqual({ ok: false, reason: "no_verified_contact" });
 
     const customerId = (await app.getCustomerSession(alice)).customer!.customerId;
     await env.DB.prepare("INSERT INTO contact_verifications (customer_id, email, token, created_at, expires_at, verified_at) VALUES (?, 'late@example.com', 'tok-late', 5, 6, 5)").bind(customerId).run();
     expect(await app.resendMail(jwt, { messageId: message!.id })).toEqual({ ok: true, data: { delivered: true } });
-    expect((await mailOf(alice))[0]).toMatchObject({ recipientAddress: "late@example.com" });
+    expect((await mailOf(alice)).find((candidate) => candidate.kind === "payment_succeeded")).toMatchObject({ recipientAddress: "late@example.com" });
   });
 
   it("投遞階段丟例外時下單仍成功，信件已存在並出現在待辦；同一冪等鍵重送補回首次投遞", async () => {
@@ -160,7 +160,7 @@ describe("付款結果通知", () => {
     await app.applyPaymentResult(event);
     await app.confirmPayment(alice, { orderId, gatewayPaymentId });
 
-    expect(kindsOf(await mailOf(alice))).toEqual(["order_placed", "payment_succeeded"]);
+    expect(kindsOf(await mailOf(alice))).toEqual(["invoice_issued", "order_placed", "payment_succeeded"]);
   });
 
   it("付款失敗寄失敗通知，訂單仍待付款", async () => {
@@ -180,7 +180,7 @@ describe("付款結果通知", () => {
     await app.applyPaymentResult(event);
     await app.applyPaymentResult(event);
 
-    expect(kindsOf(await mailOf(alice))).toEqual(["order_placed", "payment_unsettled", "refund_succeeded"]);
+    expect(kindsOf(await mailOf(alice))).toEqual(["invoice_issued", "order_placed", "payment_unsettled", "refund_succeeded"]);
   });
 
   it("通知投遞失敗不讓付款失敗：訂單照常轉為已付款，信留在待處理", async () => {
@@ -193,7 +193,7 @@ describe("付款結果通知", () => {
     expect(result).toMatchObject({ ok: true, data: { orderStatus: "paid" } });
     expect((await app.getMyOrder(alice, { orderId }))).toMatchObject({ ok: true, data: { status: "paid" } });
     const pending = (await adminMail()).messages.filter((message) => message.needsAttention);
-    expect(pending.map((message) => message.kind)).toEqual(["payment_succeeded"]);
+    expect(pending.map((message) => message.kind).sort()).toEqual(["invoice_issued", "payment_succeeded"]);
   });
 
   it("付款投遞階段丟例外時付款仍成功，信件已存在並出現在待辦", async () => {
@@ -208,7 +208,9 @@ describe("付款結果通知", () => {
 
     expect(result).toMatchObject({ ok: true, data: { orderStatus: "paid" } });
     expect((await app.getMyOrder(alice, { orderId }))).toMatchObject({ ok: true, data: { status: "paid" } });
-    expect((await adminMail()).messages.filter((message) => message.needsAttention)).toMatchObject([{ kind: "payment_succeeded", deliveries: [] }]);
+    const pending = (await adminMail()).messages.filter((message) => message.needsAttention);
+    expect(pending.map((message) => message.kind).sort()).toEqual(["invoice_issued", "payment_succeeded"]);
+    expect(pending.every((message) => message.deliveries.length === 0)).toBe(true);
   });
 
   it("通知遺失後，事件重送會補上缺的那封，仍不重複", async () => {
@@ -221,7 +223,7 @@ describe("付款結果通知", () => {
     await app.applyPaymentResult(event);
     await app.applyPaymentResult(event);
 
-    expect(kindsOf(await mailOf(alice))).toEqual(["order_placed", "payment_succeeded"]);
+    expect(kindsOf(await mailOf(alice))).toEqual(["invoice_issued", "order_placed", "payment_succeeded"]);
   });
 });
 

@@ -5,7 +5,7 @@ import "../styles/admin.css";
 interface Props { title: string }
 const { title } = Astro.props;
 const path = Astro.url.pathname;
-const section = path.startsWith("/admin/categories") ? "categories" : path.startsWith("/admin/orders") ? "orders" : path.startsWith("/admin/payments") ? "payments" : path.startsWith("/admin/cancellations") ? "cancellations" : path.startsWith("/admin/returns") ? "returns" : path.startsWith("/admin/refunds") ? "refunds" : path.startsWith("/admin/mail") ? "mail" : path.startsWith("/admin/shipping") ? "shipping" : path.startsWith("/admin/stock-movements") ? "stock" : "products";
+const section = path.startsWith("/admin/categories") ? "categories" : path.startsWith("/admin/orders") ? "orders" : path.startsWith("/admin/payments") ? "payments" : path.startsWith("/admin/cancellations") ? "cancellations" : path.startsWith("/admin/returns") ? "returns" : path.startsWith("/admin/refunds") ? "refunds" : path.startsWith("/admin/invoices") ? "invoices" : path.startsWith("/admin/mail") ? "mail" : path.startsWith("/admin/shipping") ? "shipping" : path.startsWith("/admin/stock-movements") ? "stock" : "products";
 const links = [
   { section: "products", href: "/admin", label: "商品管理" },
   { section: "categories", href: "/admin/categories", label: "分類管理" },
@@ -16,6 +16,7 @@ const links = [
   { section: "cancellations", href: "/admin/cancellations", label: "取消審核" },
   { section: "returns", href: "/admin/returns", label: "退貨處理" },
   { section: "refunds", href: "/admin/refunds", label: "退款待辦" },
+  { section: "invoices", href: "/admin/invoices", label: "發票待辦" },
   { section: "mail", href: "/admin/mail", label: "信件投遞" },
 ];
 ---

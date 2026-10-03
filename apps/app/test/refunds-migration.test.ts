@@ -5,6 +5,9 @@ import rollbackSql from "../rollback/0024_refunds.down.sql?raw";
 
 const db = env.MIGRATION_DB;
 const THROUGH_0023 = 24;
+const THROUGH_0024 = 25;
+/** 0024 之後的遷移（0030 的待折讓義務外鍵指向 refunds）不在回復測試的範圍：套用與回復都只看到 0024。 */
+const applyThrough0024 = () => applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0024));
 const rollbackStatements = () => rollbackSql.split("--> statement-breakpoint").map((statement) => db.prepare(statement));
 const rows = async (query: string) => (await db.prepare(query).all()).results;
 
@@ -84,7 +87,7 @@ it("退款的狀態、原因與金額拆分受 CHECK 限制，付款層級原因
 
 it("回復程序把逐筆退款寫回付款上的結果，之後可重新套用 0024", async () => {
   await seedLegacy();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyThrough0024();
 
   await db.batch(rollbackStatements());
 
@@ -96,7 +99,7 @@ it("回復程序把逐筆退款寫回付款上的結果，之後可重新套用 
   ]);
   expect(await rows("SELECT name FROM sqlite_master WHERE name IN ('refunds', 'refund_attempts')")).toEqual([]);
   expect(await rows("PRAGMA foreign_key_check")).toEqual([]);
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyThrough0024();
   expect(await rows("SELECT payment_id, status FROM refunds ORDER BY id")).toEqual([{ payment_id: 1, status: "succeeded" }, { payment_id: 2, status: "unknown" }]);
 });
 

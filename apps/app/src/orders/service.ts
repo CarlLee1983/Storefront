@@ -14,6 +14,7 @@ import { selectMyLosses } from "../shipments/loss-queries";
 import { requestReturn } from "../returns/request";
 import { deliverNoticeSafely } from "../contact/notify";
 import { selectVerifiedEmail } from "../contact/queries";
+import { selectInvoiceSummaries } from "../invoices/queries";
 import { selectPaymentSummaries } from "../payments/queries";
 import { selectRefundSummaries } from "../payments/refunds";
 import type { InvalidatePaymentsRefusal } from "../payments/shared";
@@ -113,12 +114,13 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       if (!order) return fail("order_not_found");
       const payments = await selectPaymentSummaries(db, customerId, clock.now(), order.id);
       const refunds = await selectRefundSummaries(db, customerId, order.id);
+      const invoices = await selectInvoiceSummaries(db, customerId, order.id);
       const cancellations = await selectMyCancellations(db, customerId, order.id);
       const returns = await selectMyReturns(db, customerId, order.id);
       const losses = await selectMyLosses(db, customerId, order.id);
       const shipmentReturns = await selectMyShipmentReturns(db, customerId, order.id);
       const returnBatches = await selectReturnBatches(db, order.id, await readEffectiveNow(db, clock.now()));
-      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns, returnBatches, losses, shipmentReturns });
+      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], invoices: invoices.get(order.id) ?? [], cancellations, returns, returnBatches, losses, shipmentReturns });
     },
 
     /**

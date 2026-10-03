@@ -98,6 +98,8 @@ describe("管理員訂單明細", () => {
           { id: expect.any(Number), amountTwd: 1, status: "succeeded", createdAt: 0, needsAttention: true },
         ],
         refunds: [],
+        // 直接寫入的付款沒有走「套用付款結果」，所以沒有開立義務
+        invoices: [],
         cancellations: [],
         returns: [],
         losses: [],
