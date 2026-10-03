@@ -8,7 +8,7 @@ import OrderLines from "../../orders/OrderLines.astro";
 import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
 import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
-import { customerLossNote, customerReturnNote, describeReturnRequestFailure, returnBatchNote, returnFormToInput, returnStatusLabel, returnableQuantity } from "../../orders/return";
+import { customerLossNote, customerReturnNote, customerShipmentReturnNote, describeReturnRequestFailure, returnBatchNote, returnFormToInput, returnStatusLabel, returnableQuantity, shipmentReturnStatusLabel } from "../../orders/return";
 import { formToRecord } from "../../shared/form-values";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
@@ -261,6 +261,24 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                     <p class="cancellation-note">{customerLossNote(loss.refund !== null, loss.goodsTwd + loss.shippingTwd > 0)}</p>
                     {loss.goodsTwd + loss.shippingTwd > 0 && <p>應退款 NT$ {priceFormat.format(loss.goodsTwd + loss.shippingTwd)}（商品款 NT$ {priceFormat.format(loss.goodsTwd)}、運費 NT$ {priceFormat.format(loss.shippingTwd)}）</p>}
                     {loss.refund && <p>退款 NT$ {priceFormat.format(loss.refund.amountTwd)}：{customerRefundStatusLabel(loss.refund.status)}</p>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+        {
+          order.shipmentReturns.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="shipment-return-info-title">
+              <h2 id="shipment-return-info-title">被物流退回倉庫的商品</h2>
+              <ul class="cancellation-list" aria-label="物流退回紀錄">
+                {order.shipmentReturns.map((entry) => (
+                  <li>
+                    <p><strong>{shipmentReturnStatusLabel(entry.status)}</strong>（{formatDateTime(entry.declaredAt)} 起）</p>
+                    <ul>{entry.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity + item.foundLostQuantity}</li>)}</ul>
+                    <p class="cancellation-note">{customerShipmentReturnNote(entry.status, entry.refund !== null, (entry.goodsTwd ?? 0) + (entry.shippingTwd ?? 0) > 0)}</p>
+                    {entry.status === "completed" && (entry.goodsTwd ?? 0) + (entry.shippingTwd ?? 0) > 0 && <p>應退款 NT$ {priceFormat.format((entry.goodsTwd ?? 0) + (entry.shippingTwd ?? 0))}（商品款 NT$ {priceFormat.format(entry.goodsTwd ?? 0)}、運費 NT$ {priceFormat.format(entry.shippingTwd ?? 0)}）</p>}
+                    {entry.refund && <p>退款 NT$ {priceFormat.format(entry.refund.amountTwd)}：{customerRefundStatusLabel(entry.refund.status)}</p>}
                   </li>
                 ))}
               </ul>

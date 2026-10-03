@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerReturnNote, returnBatchNote, describeReturnRequestFailure, returnFormToInput, returnStatusLabel, returnableQuantity, customerLossNote } from "./return";
+import { customerShipmentReturnNote, shipmentReturnStatusLabel, customerReturnNote, returnBatchNote, describeReturnRequestFailure, returnFormToInput, returnStatusLabel, returnableQuantity, customerLossNote } from "./return";
 
 describe("returnFormToInput", () => {
   it("帶入訂單編號、冪等鍵、原因原文與各明細數量；0 與留空的明細不送", () => {
@@ -37,10 +37,10 @@ describe("returnFormToInput", () => {
 
 describe("returnableQuantity", () => {
   it("已交運扣掉已退貨與進行中的，不會小於 0", () => {
-    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 1, openReturnQuantity: 1, lostQuantity: 0 })).toBe(1);
-    expect(returnableQuantity({ shippedQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0, lostQuantity: 0 })).toBe(0);
-    expect(returnableQuantity({ shippedQuantity: 1, returnedQuantity: 1, openReturnQuantity: 1, lostQuantity: 0 })).toBe(0);
-    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 0, openReturnQuantity: 1, lostQuantity: 1 })).toBe(1);
+    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 1, openReturnQuantity: 1, lostQuantity: 0, shipmentReturnedQuantity: 0 })).toBe(1);
+    expect(returnableQuantity({ shippedQuantity: 0, returnedQuantity: 0, openReturnQuantity: 0, lostQuantity: 0, shipmentReturnedQuantity: 0 })).toBe(0);
+    expect(returnableQuantity({ shippedQuantity: 1, returnedQuantity: 1, openReturnQuantity: 1, lostQuantity: 0, shipmentReturnedQuantity: 0 })).toBe(0);
+    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 0, openReturnQuantity: 1, lostQuantity: 1, shipmentReturnedQuantity: 0 })).toBe(1);
   });
 });
 
@@ -79,5 +79,28 @@ describe("customerLossNote", () => {
     expect(customerLossNote(false)).toContain("客服會與你聯繫");
     expect(customerLossNote(false)).not.toContain("已依原實付單價辦理退款");
     expect(customerLossNote(false, false)).not.toContain("客服會與你聯繫");
+  });
+});
+
+describe("物流退回", () => {
+  it("可退貨數量也扣掉被物流退回的", () => {
+    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 0, openReturnQuantity: 0, lostQuantity: 0, shipmentReturnedQuantity: 2 })).toBe(1);
+    expect(returnableQuantity({ shippedQuantity: 3, returnedQuantity: 1, openReturnQuantity: 0, lostQuantity: 1, shipmentReturnedQuantity: 2 })).toBe(0);
+  });
+
+  it("進度名稱不洩漏代碼", () => {
+    expect(shipmentReturnStatusLabel("returning")).toContain("物流退回中");
+    expect(shipmentReturnStatusLabel("completed")).toBe("已檢查完成");
+    expect(shipmentReturnStatusLabel("boom")).toBe("狀態待確認");
+  });
+
+  it("顧客說明：不補寄、需再購買請重新下單；完成後依退款是否登記、是否有應退金額分文案", () => {
+    expect(customerShipmentReturnNote("returning", false, false)).toContain("重新下單");
+    expect(customerShipmentReturnNote("received", false, false)).toContain("正在檢查");
+    expect(customerShipmentReturnNote("not_received", false, false)).toContain("已結案");
+    expect(customerShipmentReturnNote("completed", true, true)).toContain("退款進度");
+    expect(customerShipmentReturnNote("completed", false, true)).toContain("客服會與你聯繫");
+    expect(customerShipmentReturnNote("completed", false, false)).toContain("沒有需要退款的金額");
+    expect(customerShipmentReturnNote("boom", false, false)).not.toContain("boom");
   });
 });

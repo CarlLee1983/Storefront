@@ -6,6 +6,8 @@ const MOVEMENT_KIND_LABELS: Record<string, string> = {
   return_received: "退貨收回入倉",
   return_inspected: "退貨檢查合格轉可售",
   scrap: "報廢",
+  shipment_return_received: "物流退回收回入倉",
+  shipment_return_inspected: "物流退回檢查合格轉可售",
 };
 
 export function movementKindLabel(kind: string): string {

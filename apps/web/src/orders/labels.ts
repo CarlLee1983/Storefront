@@ -83,6 +83,7 @@ const CUSTOMER_REFUND_REASONS: Record<string, string> = {
   cancellation: "取消申請已核准",
   return: "退貨已收到並檢查完成",
   loss: "物流確認商品遺失",
+  shipment_return: "物流退回的商品已收到並檢查完成",
 };
 
 export function customerRefundReasonLabel(reason: string | null): string | null {
@@ -138,6 +139,7 @@ const REFUND_REASON_LABELS: Record<string, string> = {
   cancellation: "取消申請核准",
   return: "退貨檢查完成",
   loss: "物流確認遺失",
+  shipment_return: "物流退回檢查完成",
 };
 
 export function refundReasonLabel(reason: string | null): string | null {
@@ -168,6 +170,7 @@ const DELIVERY_STATUS_LABELS: Record<string, string> = {
   delivery_failed: "配送未成功，等待再次配送",
   delivered: "已送達",
   lost: "已確認遺失，已辦理退款",
+  returned: "被物流退回倉庫，收到檢查後退款",
 };
 
 /** 批次配送進度的顯示名稱；不認得的狀態不顯示原始代碼。 */
@@ -176,11 +179,12 @@ export function deliveryStatusLabel(status: string): string {
 }
 
 /**
- * 批次進度的顯示文字：確認遺失的批次若已有實際送達時間，依是否還有未遺失的數量說明——
- * 還有未遺失的數量是「部分商品已確認遺失，其餘已送達（時間）」，全數遺失只說遺失（晚到的送達回報不改變結果）。
+ * 批次進度的顯示文字：確認遺失或被物流退回的批次若已有實際送達時間，依是否還有可送達的數量說明——
+ * 還有可送達的數量是「部分商品已確認遺失（或被物流退回），其餘已送達（時間）」，全數遺失或退回只說遺失（退回）（晚到的送達回報不改變結果）。
  */
-export function shipmentProgressLabel(status: string, deliveredAt: number | null, hasUnlost: boolean): string {
-  if (status === "lost" && deliveredAt !== null) return hasUnlost ? `部分商品已確認遺失（退款事宜另行通知），其餘已送達（實際送達：${formatDateTime(deliveredAt)}）` : deliveryStatusLabel(status);
+export function shipmentProgressLabel(status: string, deliveredAt: number | null, hasDeliverable: boolean): string {
+  if (status === "lost" && deliveredAt !== null) return hasDeliverable ? `部分商品已確認遺失（退款事宜另行通知），其餘已送達（實際送達：${formatDateTime(deliveredAt)}）` : deliveryStatusLabel(status);
+  if (status === "returned" && deliveredAt !== null) return hasDeliverable ? `部分商品被物流退回倉庫（退款事宜另行通知），其餘已送達（實際送達：${formatDateTime(deliveredAt)}）` : deliveryStatusLabel(status);
   return `${deliveryStatusLabel(status)}${deliveredAt !== null ? `（實際送達：${formatDateTime(deliveredAt)}）` : ""}`;
 }
 

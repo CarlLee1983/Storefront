@@ -153,6 +153,8 @@ describe("批次配送進度文案", () => {
     expect(deliveryStatusLabel("lost")).toContain("遺失");
     expect(customerRefundReasonLabel("loss")).toContain("遺失");
     expect(refundReasonLabel("loss")).toBe("物流確認遺失");
+    expect(customerRefundReasonLabel("shipment_return")).toContain("物流退回");
+    expect(refundReasonLabel("shipment_return")).toBe("物流退回檢查完成");
     expect(shipmentEventKindLabel("redelivery")).toBe("再次配送");
     for (const code of ["future", "__proto__", "constructor"]) {
       expect(deliveryStatusLabel(code)).toBe("進度未知");
@@ -179,5 +181,8 @@ describe("shipmentProgressLabel", () => {
     expect(shipmentProgressLabel("delivered", at, true)).toBe(`已送達（實際送達：${formatDateTime(at)}）`);
     expect(shipmentProgressLabel("in_transit", null, true)).toBe(deliveryStatusLabel("in_transit"));
     expect(shipmentProgressLabel("lost", null, true)).toBe(deliveryStatusLabel("lost"));
+    expect(shipmentProgressLabel("returned", null, true)).toBe(deliveryStatusLabel("returned"));
+    expect(shipmentProgressLabel("returned", at, true)).toContain("部分商品被物流退回倉庫");
+    expect(shipmentProgressLabel("returned", at, false)).toBe(deliveryStatusLabel("returned"));
   });
 });

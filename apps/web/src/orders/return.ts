@@ -32,9 +32,9 @@ export function customerReturnNote(status: string, refundRegistered = true): str
   return Object.hasOwn(CUSTOMER_NOTES, status) ? CUSTOMER_NOTES[status]! : "目前無法確認這個申請的進度，請稍後重新整理。";
 }
 
-/** 這筆明細還能申請退貨的數量：已交運、未被退貨申請占用（進行中與已退貨）、也沒有確認遺失（遺失的已退款）。 */
-export function returnableQuantity(line: { shippedQuantity: number; returnedQuantity: number; openReturnQuantity: number; lostQuantity: number }): number {
-  return Math.max(0, line.shippedQuantity - line.returnedQuantity - line.openReturnQuantity - line.lostQuantity);
+/** 這筆明細還能申請退貨的數量：已交運、未被退貨申請占用（進行中與已退貨）、沒有確認遺失（遺失的已退款）、也沒有被物流退回。 */
+export function returnableQuantity(line: { shippedQuantity: number; returnedQuantity: number; openReturnQuantity: number; lostQuantity: number; shipmentReturnedQuantity: number }): number {
+  return Math.max(0, line.shippedQuantity - line.returnedQuantity - line.openReturnQuantity - line.lostQuantity - line.shipmentReturnedQuantity);
 }
 
 /**
@@ -85,4 +85,37 @@ export function customerLossNote(refundRegistered: boolean, refundDue = true): s
   const base = "物流確認這些商品在運送中遺失，不會補寄；如需再購買請重新下單。";
   if (!refundDue) return `${base}這些商品沒有需要退款的金額。`;
   return refundRegistered ? `${base}已依原實付單價辦理退款，進度見「退款進度」。` : `${base}這筆退款目前還不能自動辦理，客服會與你聯繫處理。`;
+}
+
+const SHIPMENT_RETURN_STATUS_LABELS: Record<string, string> = {
+  returning: "物流退回中，等待到倉",
+  received: "已收到，檢查中",
+  not_received: "未收到商品，已結案",
+  completed: "已檢查完成",
+};
+
+/** 物流退回進度的顯示名稱；不認得的狀態不顯示原始代碼。 */
+export function shipmentReturnStatusLabel(status: string): string {
+  return Object.hasOwn(SHIPMENT_RETURN_STATUS_LABELS, status) ? SHIPMENT_RETURN_STATUS_LABELS[status]! : "狀態待確認";
+}
+
+/**
+ * 顧客看的物流退回說明：商品由物流送回倉庫，不會從這張訂單補寄、需要再購買請重新下單；收到並檢查後依原實付單價退款。
+ * 完成後依退款是否登記分文案（沒有需要退款的金額、已登記、還不能自動辦理）。
+ */
+export function customerShipmentReturnNote(status: string, refundRegistered: boolean, refundDue: boolean): string {
+  const base = "不會從這張訂單補寄，如需再購買請重新下單。";
+  switch (status) {
+    case "returning":
+      return `物流把這些商品送回倉庫，我們收到並檢查後才會退款。${base}`;
+    case "received":
+      return `我們已收到物流退回的商品，正在檢查，完成後會依原實付單價退款。${base}`;
+    case "not_received":
+      return "物流退回的商品我們並沒有收到，這案已結案；如有疑問請聯絡客服。";
+    case "completed":
+      if (!refundDue) return `已檢查完成，這些商品沒有需要退款的金額。${base}`;
+      return refundRegistered ? `已檢查完成並依原實付單價辦理退款，進度見「退款進度」。${base}` : `已檢查完成，這筆退款目前還不能自動辦理，客服會與你聯繫處理。${base}`;
+    default:
+      return "目前無法確認這案物流退回的進度，請稍後重新整理。";
+  }
 }
