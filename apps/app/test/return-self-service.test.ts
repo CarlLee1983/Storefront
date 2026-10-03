@@ -1,12 +1,13 @@
 import { env, exports } from "cloudflare:workers";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { setNow } from "./clock";
 import { signInCustomer } from "./customers";
 import { forceOrderStatus, resetDb } from "./db";
 import { orderOf, placeMugOrder } from "./payment-helpers";
 import { adminShipment, reportShipmentEvent, shipBatch } from "./shipment-helpers";
+import * as highWaterMark from "../src/shared/high-water-mark";
 import { returnWindowEnd, returnWindowEndSql } from "../src/returns/window";
 import { approveReturn, decideReturn, requestReturn } from "./return-helpers";
 
@@ -261,7 +262,7 @@ describe("窗口計算與有效時間", () => {
     }
   });
 
-  it("高水位已被別的寫入推進到窗口之後，時鐘倒退的自助申請仍以有效時間判斷而被擋下", async () => {
+  it("預檢與讀取端用有效時間：高水位已被別的寫入推進到窗口之後，時鐘倒退的自助申請仍被擋下、`getMyOrder` 顯示已關閉", async () => {
     const { shipmentId, day0 } = await delivered();
     const other = await shipped();
     setNow(day0 + 8 * DAY);
@@ -271,6 +272,23 @@ describe("窗口計算與有效時間", () => {
     setNow(day0 + 8 * DAY - 1);
     expect(await selfService(shipmentId)).toEqual({ ok: false, reason: "return_window_closed" });
     expect(await batchOf(shipmentId)).toMatchObject({ state: "closed", items: [{ selfServiceQuantity: 0 }] });
+  });
+
+  it("寫入條件自己擋窗口：預檢被放行（有效時間倒退）時，INSERT 以高水位判斷仍擋下，回 return_window_closed", async () => {
+    const { shipmentId, day0 } = await delivered();
+    const other = await shipped();
+    setNow(day0 + 8 * DAY);
+    await reportShipmentEvent(other.shipmentId, "advance-clock-2", "delivery_failed", day0 + 8 * DAY);
+
+    // 只讓第一次（預檢）讀到窗口內的時間；事後判斷用真實的有效時間
+    const spy = vi.spyOn(highWaterMark, "readEffectiveNow").mockResolvedValueOnce(day0 + 8 * DAY - 1);
+    try {
+      expect(await selfService(shipmentId)).toEqual({ ok: false, reason: "return_window_closed" });
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await env.DB.prepare("SELECT count(*) AS n FROM return_request_batches WHERE shipment_id = ?").bind(shipmentId).first<{ n: number }>()).toEqual({ n: 0 });
   });
 
   it("一次帶 100 筆不存在的批次：回 return_batch_invalid，不因綁定參數過多而拋錯", async () => {
