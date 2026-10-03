@@ -5,6 +5,7 @@ import { describeNoteFailure, describeShipFailure, describeShipmentEventFailure,
 import { DELIVERY_TYPE_LABELS } from "@storefront/app/shipping-types";
 import OrderFees from "../../../orders/OrderFees.astro";
 import OrderStatus from "../../../orders/OrderStatus.astro";
+import OrderTimeline from "../../../orders/OrderTimeline.astro";
 import ShipmentList from "../../../orders/ShipmentList.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
@@ -238,7 +239,8 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           }
           {!canShip && failure && <p class="error" role="alert">{failure.message}</p>}
         </div>
-        <h2>出貨批次</h2>
+        <OrderTimeline timeline={order.timeline} />
+        <h2 id="shipments">出貨批次</h2>
         {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} submittedLoss={submittedLoss} submittedReturn={submittedReturn} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
@@ -501,7 +503,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
             </>
           )
         }
-        <h2>付款嘗試</h2>
+        <h2 id="payments">付款嘗試</h2>
         {order.payments.length === 0 && <p>沒有付款嘗試。</p>}
         {
           order.payments.length > 0 && (
@@ -524,7 +526,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
             </table></div>
           )
         }
-        <h2>退款</h2>
+        <h2 id="refunds">退款</h2>
         {order.refunds.length === 0 && <p>沒有退款。</p>}
         {
           order.refunds.length > 0 && (

@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import OrderStatus from "../../orders/OrderStatus.astro";
+import OrderTimeline from "../../orders/OrderTimeline.astro";
 import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
 import ShipmentList from "../../orders/ShipmentList.astro";
@@ -126,6 +127,7 @@ const allowanceNotes = new Map((order?.invoices ?? []).map((invoice) => [invoice
             <dl class="shipping-details"><dt>收件人姓名</dt><dd>{order.shippingInfo.name}</dd><dt>收件人電話</dt><dd>{order.shippingInfo.phone}</dd><dt>收件地址</dt><dd>{order.shippingInfo.address}</dd></dl>
           </section>
         </div>
+        <OrderTimeline timeline={order.timeline} customer />
         <section class="order-detail-section" aria-labelledby="order-lines-title">
           <h2 id="order-lines-title">訂單明細</h2>
           <OrderLines lines={order.lines} />

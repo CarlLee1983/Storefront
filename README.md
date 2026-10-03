@@ -52,7 +52,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 取消審核（#116）與退貨審核、檢查完成（#117）通知：`cancellation_approved`／`cancellation_rejected`、`return_approved`／`return_rejected`／`return_completed`（一案一封，事件鍵 `return:<申請編號>:<approved|rejected|completed>`），都與該決定同一個 batch 寫入；檢查完成的信依退款是否已登記分文案。
 - 發票開立通知（#121）：每張已開立的模擬發票寄一封 `invoice_issued`（事件鍵 `invoice:<發票編號>`），與開立同一個 batch 寫入，見下方「模擬發票（#121）」。
 - 折讓完成通知（#122）：每筆已折讓的退款寄一封 `allowance_issued`（事件鍵 `allowance:<退款編號>`），與折讓同一個 batch 寫入，見下方「模擬發票折讓（#122）」。
-- 尚未涵蓋（後續票）：其餘進度與時間線等通知。
+- 進度與時間線（#126）涵蓋的業務事件見下方「訂單進度與事件時間線（#126）」；通知信本身仍各依既有事件鍵寫入。
 
 ## 地址簿
 
@@ -303,6 +303,15 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - `/sitemap.xml` 收錄固定公開頁、有上架商品的分類頁與「上架且至少一個販售中變體」的商品頁；不含帳戶、訂單、購物車、結帳、搜尋與後台。超過 50,000 個網址時改為 sitemap index，指向 `/sitemap-<n>.xml`。商品沒有「最後修改」欄位，所以不輸出 `lastmod`。`/robots.txt` 擋掉非公開路徑並指向 sitemap。
 - sitemap 與分檔以網址為鍵寫入 Workers 邊緣快取 5 分鐘（`apps/web/src/seo/edge-cache.ts`），商品上下架最多延遲 5 分鐘反映；只快取 200。預選變體（`?variant=`）有指定圖片時，首屏圖、縮圖狀態與 og:image 都在伺服器端就是該張。
 - 網址的 origin 取自 Web Worker 的 `SITE_ORIGIN`（`wrangler.jsonc` 各環境設定；本機留空時用請求的 origin）。
+
+### 訂單進度與事件時間線（#126）
+
+- 時間線與進度是從各域既有事實**推導**的讀取模型，沒有自己的資料表、migration 或狀態欄位（`apps/app/src/orders/timeline.ts`）：`getMyOrder`（顧客）與 `getOrderForAdmin`（管理員）的回傳多一個 `timeline`，由同一次已讀取的付款、退款、發票、取消、退貨、遺失、物流退回與出貨批次檢視組成，另加 `timeline-facts.ts` 的三句查詢補各域檢視沒帶的事實時間（付款結果套用時間、物流回報、折讓；每句只綁訂單編號，不受 D1 綁定參數上限 100 影響）。
+- 事件只取業務事實時間：下單、付款成功／未完成、出貨、配送失敗與再次配送、送達、取消申請與審核、退貨申請／審核／收回／檢查、確認遺失、物流退回登記／收回／檢查、退款登記與退回、發票開立、折讓完成。**技術嘗試不是事件**：`refund_attempts`、`invoice_attempts`、`allowance_attempts` 與通知重寄只留在管理員的嘗試紀錄，重試多次仍是一筆退款登記、一筆退回。管理員時間線多一個 `refund_failed`（第一次明確失敗的時間，後續重試不再多一筆）與操作人；顧客時間線沒有退款失敗、操作人、嘗試、備註與冪等鍵。
+- 同時間的事件依 `TIMELINE_KINDS` 的順序、再依來源編號排序，與輸入順序無關；時間一律 UTC 毫秒，Web 以台北時間顯示。
+- `progress.flags` 同時列出成立的進度（待出貨、部分送達、配送失敗、取消審核中、部分取消、退貨處理中、物流退回處理中、遺失、退款未完成／失敗／結果不明、發票待補、折讓待補），不以單一狀態覆蓋；顧客的退款只分處理中與已退回。`progress.quantities`／`money` 是各域檢視的加總（明細數量、退款、折讓、收款），與各域畫面可對帳，測試直接比對兩邊。
+- 管理員的 `todos` 是連到本單頁面可操作區塊的待辦入口（`/admin/orders/<編號>#cancellations`、`#returns`、`#shipment-returns`、`#losses`、`#refunds`、`#invoices`、`#payments`、`#shipments`）。庫存流水不納入時間線（內部帳，已有 `/admin/stock-movements?orderId=` 入口）。
+- 測試見 `apps/app/test/order-timeline.test.ts`（多種進度並存、對帳、重試不冒充新事件、顧客剝除欄位、權限、排序、綁定參數）；Web 用語在 `apps/web/src/orders/timeline.test.ts`，手機與桌機在 `e2e/tests/order-timeline.spec.ts`。
 
 ## 模擬金流閘道
 
