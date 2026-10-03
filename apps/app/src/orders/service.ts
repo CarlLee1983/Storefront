@@ -6,6 +6,7 @@ import { requestCancellationInput } from "../cancellations/input";
 import { selectMyCancellations } from "../cancellations/queries";
 import { requestCancellation } from "../cancellations/request";
 import { requestReturnInput } from "../returns/input";
+import { readEffectiveNow } from "../shared/high-water-mark";
 import { selectReturnBatches } from "../returns/batches";
 import { selectMyReturns } from "../returns/queries";
 import { requestReturn } from "../returns/request";
@@ -112,7 +113,7 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const refunds = await selectRefundSummaries(db, customerId, order.id);
       const cancellations = await selectMyCancellations(db, customerId, order.id);
       const returns = await selectMyReturns(db, customerId, order.id);
-      const returnBatches = await selectReturnBatches(db, order.id, clock.now());
+      const returnBatches = await selectReturnBatches(db, order.id, await readEffectiveNow(db, clock.now()));
       return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns, returnBatches });
     },
 

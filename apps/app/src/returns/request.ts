@@ -1,6 +1,6 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
+import { batchAtEffectiveNow, effectiveNow, readEffectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
 import { dispatchedQuantity } from "../shipments/queries";
 import { orderLines, orders, PARTIALLY_SHIPPED, SHIPPED, type OrderStatus } from "../orders/schema";
@@ -61,7 +61,7 @@ export async function requestReturn(
   const lineIds = new Set((await db.select({ id: orderLines.id }).from(orderLines).where(eq(orderLines.orderId, orderId))).map((line) => line.id));
   if (items.some((item) => !lineIds.has(item.orderLineId))) return fail("return_line_invalid");
   if (selfService && !existing) {
-    const blocked = await batchFailure(db, orderId, batches, now);
+    const blocked = await batchFailure(db, orderId, batches, await readEffectiveNow(db, now));
     if (blocked) return fail(blocked);
   }
 
@@ -125,11 +125,11 @@ export async function requestReturn(
   const [current] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId));
   if (!current || !RETURNABLE_STATUSES.includes(current.status)) return fail("order_not_returnable");
   // 寫入被擋下時，窗口可能在這之間關閉（或送達時間被改寫）；其餘是數量被占用
-  const blocked = selfService ? await batchFailure(db, orderId, batches, now) : null;
+  const blocked = selfService ? await batchFailure(db, orderId, batches, await readEffectiveNow(db, now)) : null;
   return fail(blocked ?? "return_quantity_exceeded");
 }
 
-/** 自助申請的批次檢查（不含數量）：批次不屬於這張訂單或不含該明細、尚未送達（含沒有可靠送達日）、已過窗口；都沒問題回 null。 */
+/** 自助申請的批次檢查（不含數量）；`now` 是有效時間（`readEffectiveNow`）。撈本單全部批次明細再比對，避免批次很多時綁定參數超過上限。批次不屬於這張訂單或不含該明細、尚未送達（含沒有可靠送達日）、已過窗口；都沒問題回 null。 */
 async function batchFailure(
   db: DrizzleD1Database,
   orderId: number,
@@ -140,7 +140,7 @@ async function batchFailure(
     .select({ shipmentId: shipmentItems.shipmentId, orderLineId: shipmentItems.orderLineId, deliveredAt: shipments.deliveredAt })
     .from(shipmentItems)
     .innerJoin(shipments, eq(shipments.id, shipmentItems.shipmentId))
-    .where(and(eq(shipments.orderId, orderId), inArray(shipments.id, batches.map((batch) => batch.shipmentId))));
+    .where(eq(shipments.orderId, orderId));
   const found = batches.map((batch) => rows.find((row) => row.shipmentId === batch.shipmentId && row.orderLineId === batch.orderLineId));
   if (found.some((row) => !row)) return "return_batch_invalid";
   const states = found.map((row) => returnWindowState(row!.deliveredAt, now));

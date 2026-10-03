@@ -17,7 +17,11 @@ export function returnWindowEnd(deliveredAt: number): number {
 
 /** `returnWindowEnd` 的 SQL 版本（寫入端的條件用，與 TypeScript 版本須一致，由邊界測試把關）。 */
 export function returnWindowEndSql(deliveredAt: SQL): SQL<number> {
-  return sql<number>`((${deliveredAt} + ${TAIPEI_OFFSET_MS}) / ${DAY_MS}) * ${DAY_MS} - ${TAIPEI_OFFSET_MS} + ${(RETURN_WINDOW_DAYS + 1) * DAY_MS}`;
+  // 常數內嵌、除法以 CAST 取整：D1 綁定的 JS number 是 real，直接除會變成浮點除法而不是日曆日截斷
+  const offset = sql.raw(String(TAIPEI_OFFSET_MS));
+  const day = sql.raw(String(DAY_MS));
+  const windowMs = sql.raw(String((RETURN_WINDOW_DAYS + 1) * DAY_MS));
+  return sql<number>`(CAST((${deliveredAt} + ${offset}) / ${day} AS INTEGER) * ${day} - ${offset} + ${windowMs})`;
 }
 
 /** 一批的自助窗口狀態：沒有可靠送達時間（未送達、遷移補建的舊批次）不開放自助，保留人工受理，不補假日期。 */

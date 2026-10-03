@@ -1,10 +1,13 @@
 import { env, exports } from "cloudflare:workers";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { setNow } from "./clock";
 import { signInCustomer } from "./customers";
 import { forceOrderStatus, resetDb } from "./db";
 import { orderOf, placeMugOrder } from "./payment-helpers";
 import { adminShipment, reportShipmentEvent, shipBatch } from "./shipment-helpers";
+import { returnWindowEnd, returnWindowEndSql } from "../src/returns/window";
 import { approveReturn, decideReturn, requestReturn } from "./return-helpers";
 
 const app = exports.default;
@@ -31,14 +34,14 @@ beforeAll(async () => {
   await resetDb();
   cookie = await signInCustomer("alice");
   await keepSessionsAlive();
-  const placed = await placeMugOrder(cookie, { onHand: 400, quantity: 90 });
+  const placed = await placeMugOrder(cookie, { onHand: 500, quantity: 99 });
   orderId = placed.orderId;
   await forceOrderStatus(orderId, "paid");
   lineId = (await orderOf(cookie, orderId)).lines[0]!.id;
 });
 
 /** 交運一批（`quantity` 件）。 */
-async function shipped(quantity = 10) {
+async function shipped(quantity = 3) {
   const shipmentId = await shipBatch(orderId, quantity);
   const { shippedAt } = await adminShipment(orderId, shipmentId);
   // 送達日從交運的隔天（台北）起算，之後的時間點都以它為基準
@@ -46,7 +49,7 @@ async function shipped(quantity = 10) {
 }
 
 /** 交運並在送達日（台北）上午 10 點送達，現在時間停在送達當下。 */
-async function delivered(quantity = 10, deliveryDay = 0) {
+async function delivered(quantity = 3, deliveryDay = 0) {
   const { shipmentId, day0 } = await shipped(quantity);
   const deliveredAt = day0 + deliveryDay * DAY + 10 * HOUR;
   setNow(deliveredAt);
@@ -109,7 +112,7 @@ describe("自助退貨窗口（逐批，送達日隔日起算 7 天，台北日�
 
   it("同一張訂單不同批各有各的期限：舊批過期、新批仍可自助申請", async () => {
     const early = await delivered();
-    const late = await delivered(10, 5);
+    const late = await delivered(3, 5);
     // 現在停在 late 窗口的最後一刻；early 比 late 早交運、早送達，窗口早已關閉
     setNow(taipeiMidnight(late.deliveredAt) + 8 * DAY - 1);
     expect(await batchOf(late.shipmentId)).toMatchObject({ state: "open" });
@@ -120,7 +123,7 @@ describe("自助退貨窗口（逐批，送達日隔日起算 7 天，台北日�
   });
 
   it("送達時間被較早的回報改寫：期限隨之提前，已成立的申請不受影響", async () => {
-    const { shipmentId, day0 } = await delivered(10, 1);
+    const { shipmentId, day0 } = await delivered(3, 1);
     const first = await selfService(shipmentId);
     setNow(day0 + 8 * DAY + 12 * HOUR);
     expect(await batchOf(shipmentId)).toMatchObject({ state: "open", windowEndsAt: day0 + 9 * DAY });
@@ -247,5 +250,34 @@ describe("批次與權限檢查", () => {
     expect(await app.requestReturn(cookie, { orderId, requestKey: "z", items: [{ orderLineId: lineId, shipmentId, quantity: 1 }, { orderLineId: lineId, shipmentId, quantity: 1 }] })).toMatchObject({ ok: false, reason: "invalid_input" });
     // 別人的批次不會因為帶了別人的批次編號而洩漏狀態：自己的訂單看不到別人的批次
     expect((await orderOf(cookie, orderId)).returnBatches.some((batch) => batch.shipmentId === otherShipment)).toBe(false);
+  });
+});
+
+describe("窗口計算與有效時間", () => {
+  it("returnWindowEnd 與 SQL 版本在各送達時刻結果相同（含晚上 23:30、台北 00:00、23:59:59.999）", async () => {
+    const day = Date.UTC(2026, 9, 2, 16, 0); // 2026-10-03 00:00 台北
+    const times = [day - 1, day, day + 1, day + 10 * HOUR, day + 15.5 * HOUR, day + 23 * HOUR + 30 * 60_000, day + DAY - 1, day + DAY];
+    const db = drizzle(env.DB);
+    for (const time of times) {
+      const [row] = await db.all<{ end: number }>(sql`SELECT ${returnWindowEndSql(sql.raw("t.d"))} AS end FROM (SELECT CAST(${time} AS INTEGER) AS d) t`);
+      expect(row!.end, `送達 ${new Date(time).toISOString()}`).toBe(returnWindowEnd(time));
+    }
+  });
+
+  it("高水位已被別的寫入推進到窗口之後，時鐘倒退的自助申請仍以有效時間判斷而被擋下", async () => {
+    const { shipmentId, day0 } = await delivered();
+    const other = await shipped();
+    setNow(day0 + 8 * DAY);
+    // 推進高水位的寫入：另一批的配送失敗回報
+    expect(await reportShipmentEvent(other.shipmentId, "advance-clock", "delivery_failed", day0 + 8 * DAY)).toMatchObject({ ok: true });
+
+    setNow(day0 + 8 * DAY - 1);
+    expect(await selfService(shipmentId)).toEqual({ ok: false, reason: "return_window_closed" });
+    expect(await batchOf(shipmentId)).toMatchObject({ state: "closed", items: [{ selfServiceQuantity: 0 }] });
+  });
+
+  it("一次帶 100 筆不存在的批次：回 return_batch_invalid，不因綁定參數過多而拋錯", async () => {
+    const items = Array.from({ length: 100 }, (_, index) => ({ orderLineId: lineId, shipmentId: 900_000 + index, quantity: 1 }));
+    expect(await requestReturn(cookie, orderId, items)).toEqual({ ok: false, reason: "return_batch_invalid" });
   });
 });
