@@ -55,18 +55,18 @@ function seedFailedInvoice(orderId: string): void {
   );
 }
 
-/** 在這張訂單的成功付款上安排一筆已成功的退款與它的待折讓義務（前置資料）。 */
+/** 在這張訂單的成功付款上安排一筆已成功的退款與它的待折讓義務（前置資料，尚未送出折讓）。 */
 function seedSucceededRefund(orderId: string): void {
   const now = Date.now();
   writeFixture(
     `INSERT INTO refunds (order_id, payment_id, reason, gateway_refund_id, amount_twd, goods_twd, shipping_twd, status, created_at, settled_at) ` +
       `SELECT order_id, id, 'duplicate_success', 'rf_e2e_inv_' || order_id, 100, 100, 0, 'succeeded', ${now}, ${now} FROM payments WHERE order_id = ${orderId} AND status = 'succeeded'; ` +
-      `INSERT INTO allowance_obligations (refund_id, payment_id, order_id, amount_twd, created_at) SELECT id, payment_id, order_id, amount_twd, ${now} FROM refunds WHERE order_id = ${orderId};`,
+      `INSERT INTO allowance_obligations (refund_id, payment_id, order_id, amount_twd, created_at, gateway_allowance_key, status) SELECT id, payment_id, order_id, amount_twd, ${now}, 'alw_e2e_' || id, 'pending' FROM refunds WHERE order_id = ${orderId};`,
   );
 }
 
 for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }]) {
-  test(`${viewport.name}：付款成功自動開立模擬發票並通知；開立失敗不影響付款、管理員補辦；已退款標示憑證待補、只顯示原額；管理員重寄憑證；顧客不能看待辦頁`, async ({ browser }) => {
+  test(`${viewport.name}：付款成功自動開立模擬發票並通知；開立失敗不影響付款、管理員補辦；已退款標示憑證待補、只顯示原額；管理員重寄憑證；管理員補辦折讓後顧客看到累計折讓與餘額並收到通知、可重寄通知；顧客不能看待辦頁`, async ({ browser }) => {
     test.setTimeout(300_000);
     const suffix = `${viewport.width}`;
     const adminContext = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport });
@@ -138,6 +138,27 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await assertNoOverflowAndAxe(admin, viewport.width);
       await page.goto("/account/mailbox");
       await expect(page.getByRole("link", { name: new RegExp(`訂單 #${issuedOrder} 的模擬發票已開立`) })).toHaveCount(1);
+
+      // 管理員在待辦補辦折讓：折讓完成後顧客看到累計折讓與餘額（NT$ 900 - 100 = 800），不再憑證待補，並收到折讓通知
+      await admin.goto("/admin/invoices");
+      const allowanceRow = admin.getByRole("region", { name: "待折讓的退款" }).getByRole("row").filter({ has: admin.getByRole("link", { name: `#${issuedOrder}`, exact: true }) });
+      await expect(allowanceRow).toContainText("待折讓");
+      await assertLayout(admin, viewport.width);
+      await allowanceRow.getByRole("button", { name: /補辦折讓/ }).click();
+      await expect(admin.getByRole("status")).toContainText("折讓已完成");
+      await expect(admin.getByRole("link", { name: `#${issuedOrder}`, exact: true })).toHaveCount(0);
+      await page.goto(`/orders/${issuedOrder}`);
+      await expect(page.locator("#invoices")).toContainText("已折讓 1 筆，累計 NT$ 100");
+      await expect(page.locator("#invoices")).toContainText("折讓後餘額 NT$ 800");
+      await expect(page.locator("#invoices")).not.toContainText("憑證待補");
+      await assertNoOverflowAndAxe(page, viewport.width);
+      await page.goto("/account/mailbox");
+      await expect(page.getByRole("link", { name: new RegExp(`訂單 #${issuedOrder} 的退款已折讓`) })).toHaveCount(1);
+      await admin.goto(`/admin/orders/${issuedOrder}`);
+      await expect(invoiceTable).toContainText("已折讓 NT$ 100");
+      await invoiceTable.getByRole("button", { name: /重寄折讓通知/ }).click();
+      await expect(admin.getByRole("status")).toContainText("折讓通知已重寄");
+      await assertNoOverflowAndAxe(admin, viewport.width);
 
       // 顧客沒有管理員身分，看不到發票待辦
       const forbidden = await customerContext.request.get("/admin/invoices", { maxRedirects: 0 });

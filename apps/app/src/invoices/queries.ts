@@ -3,8 +3,8 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { insertInvoiceNotice } from "../contact/notices";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { orders } from "../orders/schema";
-import { allowanceObligations, invoiceAttempts, invoices } from "./schema";
-import type { InvoiceAttemptAction, InvoiceAttemptOutcome, InvoiceStatus } from "./shared";
+import { allowanceAttempts, allowanceObligations, invoiceAttempts, invoices } from "./schema";
+import type { AllowanceStatus, InvoiceAttemptAction, InvoiceAttemptOutcome, InvoiceStatus } from "./shared";
 
 /**
  * 登記一筆成功收款的開立義務（寫進「套用付款結果」的 batch，見 `payments/queries.ts` 的 `applyPaymentEvent`）：
@@ -24,11 +24,12 @@ export function insertInvoiceObligation(gatewayPaymentId: string): SQL {
 /**
  * 登記一筆成功退款的待折讓義務（寫進退款轉為成功的 batch，見 `payments/refunds.ts` 的 `recordRefundAttempt`）：
  * 退款已是 succeeded 才寫；`refund_id` 唯一，重試與重複回呼不重複。義務與發票是否已開立無關（退款可能先於延遲的開票成功）。
+ * 發票服務的冪等鍵在這裡由應用程式產生、隨 INSERT 寫入，之後沒有任何程式會改它。
  */
 export function insertAllowanceObligation(refundId: number): SQL {
   return sql`
-    INSERT INTO allowance_obligations (refund_id, payment_id, order_id, amount_twd, created_at)
-    SELECT r.id, r.payment_id, r.order_id, r.amount_twd, ${effectiveNow}
+    INSERT INTO allowance_obligations (refund_id, payment_id, order_id, amount_twd, created_at, gateway_allowance_key, status)
+    SELECT r.id, r.payment_id, r.order_id, r.amount_twd, ${effectiveNow}, ${`alw_${crypto.randomUUID()}`}, 'pending'
     FROM refunds r
     WHERE r.id = ${refundId} AND r.status = 'succeeded'
     ON CONFLICT (refund_id) DO NOTHING
@@ -91,19 +92,25 @@ export async function recordInvoiceAttempt(d1: D1Database, record: InvoiceAttemp
   return status === "issued" && results[1]!.meta.changes > 0;
 }
 
-/** 待折讓義務的對外檢視（顧客與管理員共用）。 */
+/** 待折讓義務與折讓的對外檢視（管理員用）；不含發票服務的冪等鍵。 */
 export interface AllowanceObligationView {
   refundId: number;
   paymentId: number;
   amountTwd: number;
   /** 退款確認成功、義務成立的時間，UTC epoch 毫秒。 */
   createdAt: number;
+  status: AllowanceStatus;
+  /** 發票服務給的折讓號碼；尚未折讓為 null。 */
+  allowanceNumber: string | null;
+  /** 折讓成功的時間；尚未折讓為 null。 */
+  issuedAt: number | null;
+  attempts: InvoiceAttemptView[];
 }
 
 /**
  * 發票的對外檢視（顧客與管理員共用的部分）；不含發票服務的冪等鍵。
- * `amountTwd` 永遠是原額；`pendingAllowanceTwd` 是已成功退款、憑證還沒折讓的合計：這張票上的退款在折讓完成（#122）前都還沒反映，
- * 所以這裡沒有「剩餘金額」，也不從原額扣除未折讓的退款。
+ * `amountTwd` 永遠是原額；`allowedTwd` 是已折讓（憑證已反映）的退款合計，`pendingAllowanceTwd` 是已成功退款、憑證還沒折讓的合計：
+ * 未折讓的退款不從原額扣除，所以只有在沒有待折讓（`pendingAllowanceCount` 為 0）時，原額減 `allowedTwd` 才是憑證上的餘額。
  */
 export interface InvoiceSummary {
   id: number;
@@ -115,6 +122,8 @@ export interface InvoiceSummary {
   createdAt: number;
   /** 開立成功的時間；尚未開立為 null。 */
   issuedAt: number | null;
+  allowedTwd: number;
+  allowedCount: number;
   pendingAllowanceTwd: number;
   pendingAllowanceCount: number;
 }
@@ -142,8 +151,10 @@ const summaryColumns = {
   invoiceNumber: invoices.invoiceNumber,
   createdAt: invoices.createdAt,
   issuedAt: invoices.issuedAt,
-  pendingAllowanceTwd: sql<number>`COALESCE((SELECT SUM(a.amount_twd) FROM allowance_obligations a WHERE a.payment_id = invoices.payment_id), 0)`,
-  pendingAllowanceCount: sql<number>`(SELECT COUNT(*) FROM allowance_obligations a WHERE a.payment_id = invoices.payment_id)`,
+  allowedTwd: sql<number>`COALESCE((SELECT SUM(a.amount_twd) FROM allowance_obligations a WHERE a.payment_id = invoices.payment_id AND a.status = 'issued'), 0)`,
+  allowedCount: sql<number>`(SELECT COUNT(*) FROM allowance_obligations a WHERE a.payment_id = invoices.payment_id AND a.status = 'issued')`,
+  pendingAllowanceTwd: sql<number>`COALESCE((SELECT SUM(a.amount_twd) FROM allowance_obligations a WHERE a.payment_id = invoices.payment_id AND a.status <> 'issued'), 0)`,
+  pendingAllowanceCount: sql<number>`(SELECT COUNT(*) FROM allowance_obligations a WHERE a.payment_id = invoices.payment_id AND a.status <> 'issued')`,
 };
 
 /** 顧客自己訂單的發票，依訂單分組、舊的在前（永遠限定顧客）；`orderId` 再收窄到某一張。 */
@@ -159,6 +170,34 @@ export async function selectInvoiceSummaries(db: DrizzleD1Database, customerId: 
   return byOrder;
 }
 
+/** 這些收款的待折讓義務與折讓（含嘗試紀錄），舊的在前。 */
+async function selectAllowanceViews(db: DrizzleD1Database, paymentIds: number[]): Promise<(AllowanceObligationView & { id: number })[]> {
+  const rows = await db
+    .select({
+      id: allowanceObligations.id,
+      refundId: allowanceObligations.refundId,
+      paymentId: allowanceObligations.paymentId,
+      amountTwd: allowanceObligations.amountTwd,
+      createdAt: allowanceObligations.createdAt,
+      status: allowanceObligations.status,
+      allowanceNumber: allowanceObligations.allowanceNumber,
+      issuedAt: allowanceObligations.issuedAt,
+    })
+    .from(allowanceObligations)
+    .where(inArray(allowanceObligations.paymentId, paymentIds))
+    .orderBy(asc(allowanceObligations.id));
+  if (rows.length === 0) return [];
+  const attempts = await db
+    .select({ allowanceId: allowanceAttempts.allowanceId, at: allowanceAttempts.at, actor: allowanceAttempts.actor, action: allowanceAttempts.action, outcome: allowanceAttempts.outcome, code: allowanceAttempts.code })
+    .from(allowanceAttempts)
+    .where(inArray(allowanceAttempts.allowanceId, rows.map((row) => row.id)))
+    .orderBy(asc(allowanceAttempts.id));
+  return rows.map((row) => ({
+    ...row,
+    attempts: attempts.filter((attempt) => attempt.allowanceId === row.id).map(({ allowanceId: _allowanceId, ...attempt }) => attempt),
+  }));
+}
+
 async function withDetails(db: DrizzleD1Database, rows: (InvoiceSummary & { orderId: number })[]): Promise<AdminInvoice[]> {
   if (rows.length === 0) return [];
   const attempts = await db
@@ -166,11 +205,7 @@ async function withDetails(db: DrizzleD1Database, rows: (InvoiceSummary & { orde
     .from(invoiceAttempts)
     .where(inArray(invoiceAttempts.invoiceId, rows.map((row) => row.id)))
     .orderBy(asc(invoiceAttempts.id));
-  const allowances = await db
-    .select({ refundId: allowanceObligations.refundId, paymentId: allowanceObligations.paymentId, amountTwd: allowanceObligations.amountTwd, createdAt: allowanceObligations.createdAt })
-    .from(allowanceObligations)
-    .where(inArray(allowanceObligations.paymentId, rows.map((row) => row.paymentId)))
-    .orderBy(asc(allowanceObligations.id));
+  const allowances = await selectAllowanceViews(db, rows.map((row) => row.paymentId));
   return rows.map((row) => ({
     ...row,
     attempts: attempts.filter((attempt) => attempt.invoiceId === row.id).map(({ invoiceId: _invoiceId, ...attempt }) => attempt),
@@ -206,20 +241,26 @@ export interface PendingAllowanceView extends AllowanceObligationView {
   invoiceStatus: InvoiceStatus | null;
 }
 
-/** 憑證待補清單：所有待折讓義務（舊的在前，最多 200 筆）；逐筆折讓完成於 #122。 */
+/** 憑證待補清單：所有尚未折讓的義務（結果不明的在前，其次明確失敗與待折讓），同順位舊的在前，最多 200 筆。 */
 export async function selectPendingAllowances(db: DrizzleD1Database): Promise<{ allowances: PendingAllowanceView[]; omitted: number }> {
+  const open = ne(allowanceObligations.status, "issued");
   const rows = await db
     .select({
-      refundId: allowanceObligations.refundId,
-      paymentId: allowanceObligations.paymentId,
+      id: allowanceObligations.id,
       orderId: allowanceObligations.orderId,
-      amountTwd: allowanceObligations.amountTwd,
-      createdAt: allowanceObligations.createdAt,
+      paymentId: allowanceObligations.paymentId,
       invoiceStatus: sql<InvoiceStatus | null>`(SELECT i.status FROM invoices i WHERE i.payment_id = allowance_obligations.payment_id)`,
     })
     .from(allowanceObligations)
-    .orderBy(asc(allowanceObligations.id))
+    .where(open)
+    .orderBy(sql`CASE ${allowanceObligations.status} WHEN 'unknown' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END`, asc(allowanceObligations.id))
     .limit(ADMIN_INVOICE_LIMIT);
-  const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)` }).from(allowanceObligations);
-  return { allowances: rows, omitted: Math.max(0, total - rows.length) };
+  const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)` }).from(allowanceObligations).where(open);
+  if (rows.length === 0) return { allowances: [], omitted: 0 };
+  const views = new Map((await selectAllowanceViews(db, [...new Set(rows.map((row) => row.paymentId))])).map((view) => [view.id, view]));
+  const allowances = rows.map(({ id, orderId, invoiceStatus }) => {
+    const { id: _id, ...view } = views.get(id)!;
+    return { ...view, orderId, invoiceStatus };
+  });
+  return { allowances, omitted: Math.max(0, total - rows.length) };
 }

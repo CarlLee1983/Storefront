@@ -357,7 +357,7 @@ describe("承諾退款額度（#116、#121、#122 共用的單句條件寫入）
     await env.DB.prepare("UPDATE orders SET status = 'paid'").run();
     await app.applyPaymentResult(settleFirst());
     const payment = (await env.DB.prepare("SELECT id, amount_twd FROM payments WHERE gateway_payment_id = ?").bind(first).first<{ id: number; amount_twd: number }>())!;
-    await env.DB.prepare("DELETE FROM allowance_obligations").run();
+    await env.DB.batch([env.DB.prepare("DELETE FROM allowance_attempts"), env.DB.prepare("DELETE FROM allowance_obligations")]);
     await env.DB.prepare("DELETE FROM refund_attempts").run();
     await env.DB.prepare("DELETE FROM refunds").run();
     const commit = (reason: "late_success_unreclaimable" | "cancelled_order" | "duplicate_success", amountTwd: number) =>

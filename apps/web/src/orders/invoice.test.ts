@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerAllowanceNote, customerInvoiceStatusLabel, customerInvoiceStatusNote, invoiceAttemptLabel, invoiceStatusLabel } from "./invoice";
+import { allowanceStatusLabel, customerAllowanceNote, customerAllowanceSummary, customerInvoiceStatusLabel, customerInvoiceStatusNote, invoiceAttemptLabel, invoiceStatusLabel } from "./invoice";
 
 const format = (amount: number) => new Intl.NumberFormat("zh-TW").format(amount);
 
@@ -31,5 +31,25 @@ describe("憑證待補的說明", () => {
     expect(note).toContain("2 筆退款共 NT$ 1,300");
     expect(note).toContain("仍顯示開立時的原額");
     expect(note).not.toMatch(/已結清|剩餘/);
+  });
+});
+
+describe("折讓進度與顧客的折讓摘要", () => {
+  it("管理員看到如實的各狀態，不認得的原樣顯示", () => {
+    expect(["unknown", "failed", "issued"].map(allowanceStatusLabel)).toEqual(["結果不明（須先查證）", "明確失敗（可補辦）", "已折讓"]);
+    expect(allowanceStatusLabel("pending")).toContain("待折讓");
+    expect(allowanceStatusLabel("mystery")).toBe("mystery");
+  });
+
+  it("沒有已折讓的不顯示；全部折讓完成才給餘額", () => {
+    const base = { status: "issued", amountTwd: 1_000, allowedTwd: 300, allowedCount: 1, pendingAllowanceCount: 0 };
+    expect(customerAllowanceSummary({ ...base, allowedTwd: 0, allowedCount: 0 }, format)).toEqual({ allowed: null, balance: null });
+    expect(customerAllowanceSummary(base, format)).toEqual({ allowed: "已折讓 1 筆，累計 NT$ 300", balance: "折讓後餘額 NT$ 700" });
+  });
+
+  it("還有未折讓的退款時只顯示已折讓的累計，不給餘額（不把原額標成已結清）", () => {
+    const summary = customerAllowanceSummary({ status: "issued", amountTwd: 1_000, allowedTwd: 300, allowedCount: 1, pendingAllowanceCount: 1 }, format);
+    expect(summary.allowed).toContain("累計 NT$ 300");
+    expect(summary.balance).toBeNull();
   });
 });

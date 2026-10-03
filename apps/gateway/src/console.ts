@@ -3,6 +3,7 @@ import type { Clock } from "./clock";
 import { escapeHtml, htmlResponse } from "./html";
 import { failure, safeEqual } from "./http";
 import type { GatewayConfig } from "./config";
+import { readAllowanceConsole, toggleAllowanceControl } from "./allowances";
 import { readInvoiceConsole, toggleInvoiceControl } from "./invoices";
 import { effectiveStatus, findPayment, makeDb, toggleFailNextRefund } from "./payments";
 import { deliveries, events, payments, refunds } from "./schema";
@@ -94,10 +95,19 @@ async function renderConsole(env: Env, clock: Clock): Promise<Response> {
 <p>最近開立的發票：</p><ul>${invoiceItems || "<li>尚無發票</li>"}</ul>
 </section>`;
 
-  return htmlResponse(`<h1>模擬金流閘道主控頁</h1>\n${sections.join("\n") || "<p>還沒有付款。</p>"}\n${invoiceSection}`, "主控頁");
+  const allowance = await readAllowanceConsole(env);
+  const allowanceItems = allowance.recent.map((row) => `<li><code>${escapeHtml(row.allowanceKey)}</code> ${escapeHtml(row.allowanceNumber)} NT$ ${escapeHtml(row.amountTwd)}（發票 <code>${escapeHtml(row.invoiceKey)}</code>，${formatTime(row.issuedAt)}）</li>`).join("\n");
+  const allowanceSection = `<section>
+<h2>模擬發票折讓</h2>
+<form method="post" action="/console/allowances/toggle-failure">下一次折讓失敗：${allowance.failNext ? "是" : "否"} <button type="submit">切換</button></form>
+<form method="post" action="/console/allowances/toggle-lost-response">下一次折讓已成立但回應遺失：${allowance.loseNextResponse ? "是" : "否"} <button type="submit">切換</button></form>
+<p>最近開立的折讓：</p><ul>${allowanceItems || "<li>尚無折讓</li>"}</ul>
+</section>`;
+
+  return htmlResponse(`<h1>模擬金流閘道主控頁</h1>\n${sections.join("\n") || "<p>還沒有付款。</p>"}\n${invoiceSection}\n${allowanceSection}`, "主控頁");
 }
 
-/** GET /console、POST /console/events/:id/send、POST /console/payments/:id/toggle-refund-failure、POST /console/invoices/toggle-failure、POST /console/invoices/toggle-lost-response。 */
+/** GET /console、POST /console/events/:id/send、POST /console/payments/:id/toggle-refund-failure、POST /console/invoices/toggle-failure、POST /console/invoices/toggle-lost-response、POST /console/allowances/toggle-failure、POST /console/allowances/toggle-lost-response。 */
 export async function handleConsole(
   request: Request,
   pathname: string,
@@ -108,8 +118,9 @@ export async function handleConsole(
   const send = /^\/console\/events\/([A-Za-z0-9_]+)\/send$/.exec(pathname);
   const toggle = /^\/console\/payments\/([A-Za-z0-9_]+)\/toggle-refund-failure$/.exec(pathname);
   const invoiceToggle = /^\/console\/invoices\/(toggle-failure|toggle-lost-response)$/.exec(pathname);
+  const allowanceToggle = /^\/console\/allowances\/(toggle-failure|toggle-lost-response)$/.exec(pathname);
   const isList = request.method === "GET" && pathname === "/console";
-  if (!isList && !((send || toggle || invoiceToggle) && request.method === "POST")) return undefined;
+  if (!isList && !((send || toggle || invoiceToggle || allowanceToggle) && request.method === "POST")) return undefined;
 
   if (!(await hasBasicKey(request, config.apiKey))) return challenge();
   if (isList) return renderConsole(env, clock);
@@ -122,6 +133,11 @@ export async function handleConsole(
 
   if (invoiceToggle) {
     await toggleInvoiceControl(env, invoiceToggle[1] === "toggle-failure" ? "failNext" : "loseNextResponse");
+    return new Response(null, { status: 303, headers: { Location: "/console" } });
+  }
+
+  if (allowanceToggle) {
+    await toggleAllowanceControl(env, allowanceToggle[1] === "toggle-failure" ? "failNext" : "loseNextResponse");
     return new Response(null, { status: 303, headers: { Location: "/console" } });
   }
 

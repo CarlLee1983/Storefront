@@ -51,5 +51,8 @@ export function adminDeps(images?: ProductImageBucket) {
     retryInvoice: (): never => {
       throw new Error("這個測試不該補辦發票");
     },
+    retryAllowance: (): never => {
+      throw new Error("這個測試不該補辦折讓");
+    },
   };
 }

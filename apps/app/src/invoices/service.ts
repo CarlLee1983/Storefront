@@ -3,6 +3,8 @@ import { deliverNoticeSafely } from "../contact/notify";
 import { fail, ok } from "../shared/result";
 import type { Clock } from "../shared/clock";
 import { GatewayError } from "../payments/gateway";
+import { createAllowanceService } from "./allowance-service";
+import { selectAllowanceToRun } from "./allowance-queries";
 import { isExplicitInvoiceFailure, type GatewayInvoice, type InvoiceGateway } from "./gateway";
 import { recordInvoiceAttempt, selectInvoiceToRun, selectInvoiceToRunByPayment, type InvoiceToRun } from "./queries";
 import type { InvoiceStatus } from "./shared";
@@ -13,6 +15,7 @@ import type { InvoiceStatus } from "./shared";
  */
 export function createInvoiceService(d1: D1Database, clock: Clock, gateway: InvoiceGateway | null) {
   const db = drizzle(d1);
+  const allowances = createAllowanceService(d1, clock, gateway);
 
   /** 發票服務回的冪等鍵、金額與商家參照必須與本站記錄一致，否則不信任這個回應（結果當作不明）。 */
   function invoiceMatches(found: GatewayInvoice, invoice: InvoiceToRun): boolean {
@@ -35,13 +38,18 @@ export function createInvoiceService(d1: D1Database, clock: Clock, gateway: Invo
     if (!invoice) return fail("invoice_not_found");
     if (invoice.status === "issued") {
       await deliverNoticeSafely(db, `invoice:${invoiceId}`, clock.now());
+      await allowances.settleForPayment(invoice.paymentId);
       return ok({ status: "issued" as InvoiceStatus });
     }
 
     const record = (step: { action: "send" | "verify"; outcome: "succeeded" | "failed" | "unknown" | "not_found"; code?: string; status: "issued" | "failed" | "unknown" | null; invoiceNumber?: string }) =>
       recordInvoiceAttempt(d1, { invoiceId, actor, action: step.action, outcome: step.outcome, code: step.code ?? null, status: step.status, invoiceNumber: step.invoiceNumber }, clock.now());
     const finish = async (status: "issued" | "failed" | "unknown") => {
-      if (status === "issued") await deliverNoticeSafely(db, `invoice:${invoiceId}`, clock.now());
+      if (status === "issued") {
+        await deliverNoticeSafely(db, `invoice:${invoiceId}`, clock.now());
+        // 原票開立成功（含補辦）：先前因原票未開立而等著的待折讓義務在這裡接手
+        await allowances.settleForPayment(invoice.paymentId);
+      }
       console.log(JSON.stringify({ event: "invoice_attempted", invoiceId, orderId: invoice.orderId, actor, status }));
       return ok({ status: (await selectInvoiceToRun(db, invoiceId))?.status ?? status });
     };
@@ -89,6 +97,28 @@ export function createInvoiceService(d1: D1Database, clock: Clock, gateway: Invo
   }
 
   return {
+    /** 管理員補辦一筆退款的折讓（`refundId` 是本站退款編號）：失敗的直接重送，結果不明的先查證；原票未開立回 `invoice_not_issued`；已折讓的冪等回成功。 */
+    retryAllowance(refundId: number, actor: string) {
+      return allowances.runAllowance(refundId, actor);
+    },
+
+    /**
+     * 退款轉為成功之後折讓（`payments/service.ts` 的退款流程在 batch 之後呼叫；重試成功與重複呼叫也會呼叫）：
+     * 原票已開立才送出，否則只保留義務、等原票開立後由 `runInvoice` 接手。任何錯誤都只記 log 並吞下：折讓不得讓退款失敗。
+     */
+    async allowForRefund(refundId: number): Promise<void> {
+      try {
+        const allowance = await selectAllowanceToRun(db, refundId);
+        if (!allowance) {
+          console.error(JSON.stringify({ event: "allowance_missing", refundId }));
+          return;
+        }
+        if (allowance.invoiceStatus === "issued") await allowances.runAllowance(refundId, "system");
+      } catch (error) {
+        console.error(JSON.stringify({ event: "allowance_issue_failed", refundId, error: error instanceof Error ? error.message : String(error) }));
+      }
+    },
+
     /** 管理員補辦一張發票（`invoiceId` 是本站發票編號）：失敗的直接重送，結果不明的先查證；已開立的冪等回成功。 */
     retryInvoice(invoiceId: number, actor: string) {
       return runInvoice(invoiceId, actor);

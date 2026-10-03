@@ -41,4 +41,4 @@ export async function startPaymentFor(cookie: string, orderId: number, gateway: 
 }
 
 /** 不開立發票的替身：直接建 `createPaymentService` 的測試不關心發票。 */
-export const noInvoices = { issueForPayment: async (): Promise<void> => undefined };
+export const noInvoices = { issueForPayment: async (): Promise<void> => undefined, allowForRefund: async (): Promise<void> => undefined };

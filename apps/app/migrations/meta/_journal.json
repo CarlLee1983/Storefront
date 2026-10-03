@@ -218,6 +218,13 @@
       "when": 1791000391075,
       "tag": "0030_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1791009102681,
+      "tag": "0031_allowances",
+      "breakpoints": true
     }
   ]
 }

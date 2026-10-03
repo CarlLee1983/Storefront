@@ -1,10 +1,10 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { describeInvoiceFailure, describeInvoiceRetryOutcome, parseInvoiceResult } from "../../../admin/invoice";
+import { describeAllowanceFailure, describeInvoiceFailure, describeInvoiceResult, parseInvoiceResult } from "../../../admin/invoice";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { formatDateTime } from "../../../orders/labels";
-import { invoiceAttemptLabel, invoiceStatusLabel } from "../../../orders/invoice";
+import { allowanceStatusLabel, invoiceAttemptLabel, invoiceStatusLabel } from "../../../orders/invoice";
 import { toText } from "../../../shared/form-values";
 
 export const prerender = false;
@@ -17,16 +17,22 @@ let unauthorized = false;
 // 補辦（POST）：明確失敗的直接重送，結果不明的先向發票服務查證再決定；成功後 303 回本頁並帶結果
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  const result = await env.APP.retryInvoice(jwt, { invoiceId: Number(toText(form.get("invoiceId"))) });
-  if (result.ok) return Astro.redirect(`/admin/invoices?invoice=${result.data.status}`, 303);
-  if (result.reason === "unauthorized") unauthorized = true;
-  else failure = describeInvoiceFailure(result);
+  if (form.get("intent") === "retry-allowance") {
+    const result = await env.APP.retryAllowance(jwt, { refundId: Number(toText(form.get("refundId"))) });
+    if (result.ok) return Astro.redirect(`/admin/invoices?allowance=${result.data.status}#allowances`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeAllowanceFailure(result);
+  } else {
+    const result = await env.APP.retryInvoice(jwt, { invoiceId: Number(toText(form.get("invoiceId"))) });
+    if (result.ok) return Astro.redirect(`/admin/invoices?invoice=${result.data.status}`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeInvoiceFailure(result);
+  }
 }
 
 const listing = unauthorized ? null : await env.APP.listInvoicesToHandle(jwt);
 if (unauthorized || (listing && !listing.ok)) Astro.response.status = 403;
-const saved = parseInvoiceResult(Astro.url.searchParams);
-const notice = saved?.kind === "retry" ? describeInvoiceRetryOutcome(saved.status) : null;
+const notice = describeInvoiceResult(parseInvoiceResult(Astro.url.searchParams));
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -77,13 +83,16 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
           </table></div>
         )}
         <h2 id="allowances">憑證待補（待折讓）</h2>
-        <p>已成功退款、發票尚未折讓的款項。原票仍只顯示原額，沒有從原額扣除；逐筆折讓於後續票完成，在那之前請勿當作已結清。</p>
+        <p>
+          退款已完成、折讓尚未完成的款項（<strong>憑證待補</strong>）。原票仍只顯示原額，沒有從原額扣除，請勿當作已結清。
+          原票尚未開立時折讓會等著，原票開立（含補辦）成功後自動補折讓；折讓失敗或結果不明可在這裡補辦（沿用同一個冪等鍵，不會重複折讓）。
+        </p>
         {listing.data.omittedAllowances > 0 && <p class="error" role="alert">另有 {listing.data.omittedAllowances} 筆待折讓未列出。</p>}
         {listing.data.allowances.length === 0 && <p>目前沒有待折讓的退款。</p>}
         {listing.data.allowances.length > 0 && (
           <div class="table-scroll" tabindex="0" role="region" aria-label="待折讓的退款"><table>
             <thead>
-              <tr><th>退款</th><th>訂單</th><th>折讓金額</th><th>原票狀態</th></tr>
+              <tr><th>退款</th><th>訂單</th><th>折讓金額</th><th>原票狀態</th><th>折讓狀態</th><th>嘗試紀錄</th><th>操作</th></tr>
             </thead>
             <tbody>
               {listing.data.allowances.map((allowance) => (
@@ -92,6 +101,25 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                   <td data-label="訂單"><a href={`/admin/orders/${allowance.orderId}#invoices`}>#{allowance.orderId}</a></td>
                   <td data-label="折讓金額">NT$ {priceFormat.format(allowance.amountTwd)}</td>
                   <td data-label="原票狀態">{allowance.invoiceStatus === null ? "沒有發票" : invoiceStatusLabel(allowance.invoiceStatus)}</td>
+                  <td data-label="折讓狀態"><strong class={allowance.status === "unknown" || allowance.status === "failed" ? "pending" : undefined}>{allowanceStatusLabel(allowance.status)}</strong></td>
+                  <td data-label="嘗試紀錄">
+                    {allowance.attempts.length === 0 ? "尚未送出" : (
+                      <ul class="attempts">
+                        {allowance.attempts.map((attempt) => (
+                          <li>{formatDateTime(attempt.at)} {attempt.actor === "system" ? "系統" : attempt.actor}：{invoiceAttemptLabel(attempt.action, attempt.outcome)}{attempt.code && `（${attempt.code}）`}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                  <td data-label="操作">
+                    {allowance.invoiceStatus !== "issued" ? <small>等原票開立</small> : (
+                      <form method="post">
+                        <input type="hidden" name="intent" value="retry-allowance" />
+                        <input type="hidden" name="refundId" value={allowance.refundId} />
+                        <button type="submit" aria-label={`${allowance.status === "unknown" ? "查證並補辦折讓" : "補辦折讓"}（退款 #${allowance.refundId}）`}>{allowance.status === "unknown" ? "查證並補辦" : "補辦"}</button>
+                      </form>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

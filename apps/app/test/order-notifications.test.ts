@@ -172,7 +172,7 @@ describe("付款結果通知", () => {
     expect((await app.getMyOrder(alice, { orderId }))).toMatchObject({ ok: true, data: { status: "pending_payment" } });
   });
 
-  it("遲到付款（訂單已取消而退款）寄一封未生效通知與一封退款通知，重送不重複", async () => {
+  it("遲到付款（訂單已取消而退款）寄未生效、退款與折讓通知各一封（外加發票開立通知），重送不重複", async () => {
     const { alice, orderId, gateway, gatewayPaymentId } = await paidSetup();
     await forceOrderStatus(orderId, "cancelled");
     const event = gateway.settle(gatewayPaymentId, "succeeded");
@@ -180,7 +180,7 @@ describe("付款結果通知", () => {
     await app.applyPaymentResult(event);
     await app.applyPaymentResult(event);
 
-    expect(kindsOf(await mailOf(alice))).toEqual(["invoice_issued", "order_placed", "payment_unsettled", "refund_succeeded"]);
+    expect(kindsOf(await mailOf(alice))).toEqual(["allowance_issued", "invoice_issued", "order_placed", "payment_unsettled", "refund_succeeded"]);
   });
 
   it("通知投遞失敗不讓付款失敗：訂單照常轉為已付款，信留在待處理", async () => {

@@ -3,15 +3,17 @@ import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-o
 import { orders } from "../orders/schema";
 import { payments, refunds } from "../payments/schema";
 import {
+  ALLOWANCE_STATUSES,
   INVOICE_ATTEMPT_ACTIONS,
   INVOICE_ATTEMPT_OUTCOMES,
   INVOICE_STATUSES,
+  type AllowanceStatus,
   type InvoiceAttemptAction,
   type InvoiceAttemptOutcome,
   type InvoiceStatus,
 } from "./shared";
 
-export type { InvoiceAttemptAction, InvoiceAttemptOutcome, InvoiceStatus };
+export type { AllowanceStatus, InvoiceAttemptAction, InvoiceAttemptOutcome, InvoiceStatus };
 
 const sqlList = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
 
@@ -77,10 +79,11 @@ export const invoiceAttempts = sqliteTable(
 );
 
 /**
- * 待折讓義務：一筆成功的退款一列（`refund_id` 唯一），與退款轉為成功同一個 batch 寫入（見 `payments/refunds.ts` 的 `recordRefundAttempt`）。
- * 義務綁定收款而不是發票：退款可能先於延遲開立的發票成功，先保留退款事實，等原票開立後再補折讓。
- * 逐筆折讓與完成標記是 #122：在那之前每一列都是「憑證待補」，原票仍只顯示原額，不扣除未折讓的退款。
- * 保留不隨訂單或發票狀態刪除，也不改寫金額（退款成功後金額不變）。
+ * 待折讓義務與折讓：一筆成功的退款一列（`refund_id` 唯一），與退款轉為成功同一個 batch 寫入（見 `payments/refunds.ts` 的 `recordRefundAttempt`），
+ * 之後在交易外向發票服務逐筆折讓（`status` 由 `pending` 轉為 `issued`），折讓金額是退款原額，累計不超過原票金額（收款實收）。
+ * 義務綁定收款而不是發票：退款可能先於延遲開立的發票成功，先保留退款事實；原票開立成功（含補辦）之前不送出折讓，不產生無原票的折讓。
+ * `gateway_allowance_key` 是向發票服務送出與查證用的冪等鍵：登記時由應用程式產生、之後永不更改，所以重送、補辦與查證永遠帶同一個鍵，不會重複折讓。
+ * 保留不隨訂單或發票狀態刪除，也不改寫金額（退款成功後金額不變）；已折讓的不會被蓋回。
  */
 export const allowanceObligations = sqliteTable(
   "allowance_obligations",
@@ -99,11 +102,44 @@ export const allowanceObligations = sqliteTable(
     amountTwd: integer("amount_twd").notNull(),
     /** 退款確認成功的時間，UTC epoch 毫秒（高水位時鐘的有效時間）。 */
     createdAt: integer("created_at").notNull(),
+    gatewayAllowanceKey: text("gateway_allowance_key").notNull(),
+    status: text("status").$type<AllowanceStatus>().notNull().default("pending"),
+    /** 發票服務給的折讓號碼；尚未折讓為 null。 */
+    allowanceNumber: text("allowance_number"),
+    /** 折讓成功的時間；尚未折讓為 null。 */
+    issuedAt: integer("issued_at"),
   },
   (table) => [
     uniqueIndex("allowance_obligations_refund_uidx").on(table.refundId),
+    uniqueIndex("allowance_obligations_gateway_key_uidx").on(table.gatewayAllowanceKey),
     index("allowance_obligations_payment_idx").on(table.paymentId),
     index("allowance_obligations_order_idx").on(table.orderId),
     check("allowance_obligations_amount_check", sql`${table.amountTwd} > 0`),
+    check("allowance_obligations_status_check", sql`${table.status} IN (${sqlList(ALLOWANCE_STATUSES)})`),
+    check("allowance_obligations_gateway_key_check", sql`${table.gatewayAllowanceKey} <> ''`),
+    check("allowance_obligations_issued_check", sql`(${table.status} = 'issued') = (${table.allowanceNumber} IS NOT NULL AND ${table.issuedAt} IS NOT NULL)`),
+  ],
+);
+
+/** 折讓嘗試紀錄（只增不改）：每次向發票服務送出或查證留一列，欄位同 `invoiceAttempts`。 */
+export const allowanceAttempts = sqliteTable(
+  "allowance_attempts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    allowanceId: integer("allowance_id")
+      .notNull()
+      .references(() => allowanceObligations.id),
+    /** 嘗試的時間，UTC epoch 毫秒。 */
+    at: integer("at").notNull(),
+    actor: text("actor").notNull(),
+    action: text("action").$type<InvoiceAttemptAction>().notNull(),
+    outcome: text("outcome").$type<InvoiceAttemptOutcome>().notNull(),
+    /** 失敗或不明時發票服務／連線的錯誤碼；其他為 null。 */
+    code: text("code"),
+  },
+  (table) => [
+    index("allowance_attempts_allowance_idx").on(table.allowanceId),
+    check("allowance_attempts_action_check", sql`${table.action} IN (${sqlList(INVOICE_ATTEMPT_ACTIONS)})`),
+    check("allowance_attempts_outcome_check", sql`${table.outcome} IN (${sqlList(INVOICE_ATTEMPT_OUTCOMES)})`),
   ],
 );

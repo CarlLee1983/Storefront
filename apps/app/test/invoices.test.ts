@@ -46,6 +46,14 @@ const mailOf = async (cookie: string) => {
   if (!list.ok) throw new Error("讀信失敗");
   return list.data.filter((message) => message.kind === "invoice_issued");
 };
+const unusedAllowances = {
+  issueAllowance: async (): Promise<never> => {
+    throw new Error("這個測試不該折讓");
+  },
+  getAllowance: async (): Promise<never> => {
+    throw new Error("這個測試不該查證折讓");
+  },
+};
 const myInvoices = async (cookie: string, orderId: number) => (await orderOf(cookie, orderId)).invoices;
 
 describe("成功收款開立一次原額模擬發票", () => {
@@ -56,7 +64,7 @@ describe("成功收款開立一次原額模擬發票", () => {
 
     expect(gateway.invoiceRequests).toEqual([{ invoiceKey: expect.stringMatching(/^inv_/), merchantReference: String(orderId), amountTwd: totalTwd }]);
     expect(await myInvoices(cookie, orderId)).toEqual([
-      { id: expect.any(Number), paymentId: expect.any(Number), status: "issued", amountTwd: totalTwd, invoiceNumber: "SM-00000001", createdAt: expect.any(Number), issuedAt: expect.any(Number), pendingAllowanceTwd: 0, pendingAllowanceCount: 0 },
+      { id: expect.any(Number), paymentId: expect.any(Number), status: "issued", amountTwd: totalTwd, invoiceNumber: "SM-00000001", createdAt: expect.any(Number), issuedAt: expect.any(Number), allowedTwd: 0, allowedCount: 0, pendingAllowanceTwd: 0, pendingAllowanceCount: 0 },
     ]);
     const [message] = await mailOf(cookie);
     expect(message).toMatchObject({ kind: "invoice_issued", recipientAddress: "contact-alice@example.com" });
@@ -212,6 +220,7 @@ describe("開立失敗不阻擋付款與出貨，可補辦", () => {
     await app.applyPaymentResult(succeed());
     const [invoice] = await adminInvoices(orderId);
     const lying: InvoiceGateway = {
+      ...unusedAllowances,
       getInvoice: async () => null,
       issueInvoice: async (input) => ({ ...input, amountTwd: input.amountTwd + 1, invoiceNumber: "SM-X", issuedAt: 1 }),
     };
@@ -245,6 +254,7 @@ describe("已開立的發票不被後來的寫入蓋回", () => {
     await app.applyPaymentResult(succeed());
     const [invoice] = await adminInvoices(orderId);
     const conflicting: InvoiceGateway = {
+      ...unusedAllowances,
       getInvoice: async () => null,
       issueInvoice: async () => {
         throw new GatewayError("invoice_conflict", 409, "衝突");
@@ -332,13 +342,14 @@ describe("權限隔離", () => {
 
     const [invoice] = await myInvoices(cookie, orderId);
 
-    expect(Object.keys(invoice!).sort()).toEqual(["amountTwd", "createdAt", "id", "invoiceNumber", "issuedAt", "paymentId", "pendingAllowanceCount", "pendingAllowanceTwd", "status"]);
+    expect(Object.keys(invoice!).sort()).toEqual(["allowedCount", "allowedTwd", "amountTwd", "createdAt", "id", "invoiceNumber", "issuedAt", "paymentId", "pendingAllowanceCount", "pendingAllowanceTwd", "status"]);
   });
 });
 
 describe("待折讓義務：成功退款都建立，憑證待補、原票只顯示原額", () => {
   it("退款與開立同時成立：發票原額是整筆收款，待折讓義務是退款金額（不從原額扣除）；顧客與管理員都看得到", async () => {
-    const { cookie, orderId, totalTwd, succeed } = await lateOrderWithPayment();
+    const { cookie, orderId, totalTwd, gateway, succeed } = await lateOrderWithPayment();
+    gateway.failNextAllowanceExplicitly();
 
     await app.applyPaymentResult(succeed());
 
@@ -346,12 +357,13 @@ describe("待折讓義務：成功退款都建立，憑證待補、原票只顯�
     expect(order.refunds).toMatchObject([{ status: "succeeded", amountTwd: totalTwd }]);
     expect(order.invoices).toMatchObject([{ status: "issued", amountTwd: totalTwd, pendingAllowanceTwd: totalTwd, pendingAllowanceCount: 1 }]);
     const [admin] = await adminInvoices(orderId);
-    expect(admin).toMatchObject({ allowances: [{ refundId: order.refunds[0]!.id, amountTwd: totalTwd }] });
-    expect((await todos()).allowances).toMatchObject([{ orderId, refundId: order.refunds[0]!.id, amountTwd: totalTwd, invoiceStatus: "issued" }]);
+    expect(admin).toMatchObject({ allowances: [{ refundId: order.refunds[0]!.id, amountTwd: totalTwd, status: "failed" }] });
+    expect((await todos()).allowances).toMatchObject([{ orderId, refundId: order.refunds[0]!.id, amountTwd: totalTwd, invoiceStatus: "issued", status: "failed" }]);
   });
 
   it("已取消訂單上的遲到付款：照樣開立原額發票並通知，整筆退款成功後建立待折讓義務，顧客收到未生效、退款與發票三封通知", async () => {
     const { cookie, orderId, totalTwd, gateway, succeed } = await lateOrderWithPayment();
+    gateway.failNextAllowanceExplicitly();
 
     await app.applyPaymentResult(succeed());
 
@@ -361,10 +373,10 @@ describe("待折讓義務：成功退款都建立，憑證待補、原票只顯�
     expect(gateway.invoiceRequests).toHaveLength(1);
     const list = await app.listMyMail(cookie);
     expect(list.ok && list.data.map((message) => message.kind).sort()).toEqual(["invoice_issued", "order_placed", "payment_unsettled", "refund_succeeded"]);
-    expect((await todos()).allowances).toMatchObject([{ orderId, amountTwd: totalTwd, invoiceStatus: "issued" }]);
+    expect((await todos()).allowances).toMatchObject([{ orderId, amountTwd: totalTwd, invoiceStatus: "issued", status: "failed" }]);
   });
 
-  it("退款先於延遲開立的發票成功：先保留退款與義務，原票補開後仍是原額，義務不變不重複", async () => {
+  it("退款先於延遲開立的發票成功：先保留退款與義務，原票補開後仍是原額，義務不重複（折讓見 allowances.test.ts）", async () => {
     const { cookie, orderId, totalTwd, gateway, succeed } = await lateOrderWithPayment();
     gateway.loseNextInvoiceResponse();
 
@@ -375,7 +387,8 @@ describe("待折讓義務：成功退款都建立，憑證待補、原票只顯�
     expect(before.invoices).toMatchObject([{ status: "unknown", invoiceNumber: null, amountTwd: totalTwd, pendingAllowanceTwd: totalTwd }]);
     await retry(before.invoices[0]!.id);
     await retry(before.invoices[0]!.id);
-    expect((await orderOf(cookie, orderId)).invoices).toMatchObject([{ status: "issued", amountTwd: totalTwd, pendingAllowanceTwd: totalTwd, pendingAllowanceCount: 1 }]);
+    expect((await orderOf(cookie, orderId)).invoices).toMatchObject([{ status: "issued", amountTwd: totalTwd, allowedTwd: totalTwd, allowedCount: 1, pendingAllowanceTwd: 0, pendingAllowanceCount: 0 }]);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM allowance_obligations").first<{ n: number }>()).toEqual({ n: 1 });
   });
 
   it("後續成功的退款（失敗後重試成功）才建立義務，重試與重複只算一次", async () => {
@@ -389,7 +402,7 @@ describe("待折讓義務：成功退款都建立，憑證待補、原票只顯�
     await app.retryRefund(await mintAccessJwt(), { refundId });
     await app.retryRefund(await mintAccessJwt(), { refundId });
 
-    expect((await myInvoices(cookie, orderId))[0]).toMatchObject({ amountTwd: totalTwd, pendingAllowanceTwd: totalTwd, pendingAllowanceCount: 1 });
+    expect((await myInvoices(cookie, orderId))[0]).toMatchObject({ amountTwd: totalTwd, allowedTwd: totalTwd, allowedCount: 1, pendingAllowanceTwd: 0, pendingAllowanceCount: 0 });
     expect(await env.DB.prepare("SELECT refund_id, amount_twd FROM allowance_obligations").all()).toMatchObject({ results: [{ refund_id: refundId, amount_twd: totalTwd }] });
   });
 
@@ -417,6 +430,7 @@ describe("待折讓義務：成功退款都建立，憑證待補、原票只顯�
 
   it("其他人的待折讓義務不出現在顧客的發票上", async () => {
     const alice = await lateOrderWithPayment();
+    alice.gateway.failNextAllowanceExplicitly();
     await app.applyPaymentResult(alice.succeed());
     const bob = await orderWithPayment("bob", alice.gateway);
     await app.applyPaymentResult(bob.succeed());

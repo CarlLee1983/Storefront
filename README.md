@@ -51,7 +51,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 退款成功通知（#115）：每筆成功的退款寄一封 `refund_succeeded`（事件鍵 `refund:<退款編號>`），與退款轉為成功同一個 batch 寫入；重試與重複回呼不重複。
 - 取消審核（#116）與退貨審核、檢查完成（#117）通知：`cancellation_approved`／`cancellation_rejected`、`return_approved`／`return_rejected`／`return_completed`（一案一封，事件鍵 `return:<申請編號>:<approved|rejected|completed>`），都與該決定同一個 batch 寫入；檢查完成的信依退款是否已登記分文案。
 - 發票開立通知（#121）：每張已開立的模擬發票寄一封 `invoice_issued`（事件鍵 `invoice:<發票編號>`），與開立同一個 batch 寫入，見下方「模擬發票（#121）」。
-- 尚未涵蓋（後續票）：折讓完成（#122）等通知。
+- 折讓完成通知（#122）：每筆已折讓的退款寄一封 `allowance_issued`（事件鍵 `allowance:<退款編號>`），與折讓同一個 batch 寫入，見下方「模擬發票折讓（#122）」。
+- 尚未涵蓋（後續票）：其餘進度與時間線等通知。
 
 ## 地址簿
 
@@ -219,7 +220,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 畫面：後台訂單頁批次清單的「登記物流退回」表單，與「物流退回」區塊（收回、檢查、重新登記退款）；顧客訂單頁「被物流退回倉庫的商品」；退款待辦頁列出未登記退款的物流退回；手機與桌機皆可操作（e2e 驗證）。
 - 部署順序：先 migration，再 App，再 Web。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0029_shipment_returns.down.sql`（已有任何物流退回、物流退回退款、物流退回庫存流水或 `returned` 批次時守門檢查讓回復失敗，須先確認可以捨棄）。回復順序是 0029 → 0028 → 0027 → …。0029 重建 `refunds`（CHECK 要加新原因），做法同 0028；回復時重建 `stock_movements`（含外鍵的欄位不能 DROP COLUMN），並還原只增不改不刪的 trigger。
 - 測試：`apps/app/test/shipment-return.test.ts`（入倉與庫存、損壞品與報廢、未收到與部分收回、運費互斥與取消／退貨／遺失交錯、尋回的遺失品、與物流回報的先後與亂序、數量互斥含並行、退款失敗與額度占用的復原、冪等與漏通知補回、權限與輸入）、`shipment-returns-migration.test.ts`（遷移、約束與回復）、`apps/web/src/admin/shipment-return-form.test.ts`、`e2e/tests/shipment-return.spec.ts`（手機與桌機）。
-- 尚未實作：逐筆發票折讓（#122；#121 已開立模擬發票並為成功退款建立待折讓義務，見下一節）；ADR 0008 仍待決（本票的退款失敗同取消、退貨、遺失，沒有人工結案）；物流退回案件沒有獨立的待辦清單，管理員從訂單頁處理。
+- 尚未實作：ADR 0008 仍待決（本票的退款失敗同取消、退貨、遺失，沒有人工結案）；物流退回案件沒有獨立的待辦清單，管理員從訂單頁處理。
 - 部署順序：先 migration，再 App，再 Web（新 App 的 `getOrderForAdmin`、`getMyOrder` 多回傳 `returns`，明細多回傳 `returnedQuantity`、`openReturnQuantity`，變體多回傳 `unavailable`，舊 Web 不受影響；0027 只新增一張表，回復腳本 `apps/app/rollback/0027_return_batches.down.sql` 在已有批次對應時守門檢查讓回復失敗，回復順序 0027 → 0026 → …）。0026 重建 `refunds`（CHECK 要加新原因），做法同 0021、0024、0025。回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0026_returns.down.sql`；已有任何退貨申請、不可售數量、不可售流水或退貨退款時守門檢查讓回復失敗（收回與檢查已改變實體與不可售，舊版無法表達），須先確認可以捨棄。回復順序是 0026 → 0025 → …。
 - 測試：`apps/app/test/return-request.test.ts`（申請、占用、並行、冪等、權限與輸入、審核）、`return-flow.test.ts`（收回、檢查、報廢、可售算式、運費與取消混合）、`return-refund.test.ts`（退款失敗不反轉實物、額度占用、同單逐筆）、`return-self-service.test.ts`（自助窗口邊界：送達當日、第 7 天 23:59:59、第 8 天 00:00:00，台北日曆日、各批各自期限、送達時間被較早回報改寫、未送達與無送達日、批次數量與並行、冪等、權限）、`returns-migration.test.ts`（遷移、約束與回復，含 0027）、`e2e/tests/returns.spec.ts`（手機與桌機完整流程）、`e2e/tests/return-self-service.spec.ts`（未送達只有人工受理、送達後自助申請、管理員看到自助申請、顧客隔離）。
 
@@ -231,8 +232,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 冪等與不重複：發票服務以 `invoices.gateway_invoice_key`（`inv_<UUID>`，登記時產生、之後永不更改）為冪等鍵，同一個鍵重送、並行與補辦都回同一張發票；本地狀態只會有一次轉為已開立（`recordInvoiceAttempt` 的條件 UPDATE），發票通知信的事件鍵唯一，所以只有一張發票、一封通知。
 - 失敗不阻擋、可補辦（比照 #115 退款）：進度 `pending`（待開立）、`unknown`（結果不明）、`failed`（明確失敗）、`issued`（已開立）。發票服務明確拒絕（`invoice_failed` 或 4xx）記 `failed`；連不上、逾時、5xx、回應異常記 `unknown`，補辦時**先向發票服務查證**（`GET /v1/invoices/:invoiceKey`）：已開立就記成功、不重送，從未收過才以同一個鍵送出；回應的鍵、金額、訂單參照與本站不符一律當作不明。每次嘗試（操作者、動作、結果、錯誤碼）留在 `invoice_attempts`。付款、出貨與退款都不看發票狀態。系統只在付款事件進來時開立一次（含事件重送補開 `pending`）；失敗與不明沒有 Cron，由管理員在 `/admin/invoices`（導覽「發票待辦」；RPC `listInvoicesToHandle`、`retryInvoice`）按「補辦」／「查證並補辦」。發票服務與金流閘道同一組設定（`GATEWAY_BASE_URL`、`GATEWAY_API_KEY`），設定不全時補辦回 `payment_unavailable`，開立義務留著。
 - 憑證交付與重寄：開立成功時寫一封 `invoice_issued`（發票號碼與開立當時的原額，內容固定）到顧客的模擬信箱，收件地址是當下已驗證的聯絡 email。管理員在後台訂單頁「發票」表按「重寄憑證」（RPC `resendInvoice`）＝同一封信的新投遞（沿用 `resendMessage`），寄到顧客**目前**已驗證的 email（沒有回 `no_verified_contact`），不改既有投遞紀錄、信件內容與發票；尚未開立回 `invoice_not_issued`。
-- 待折讓義務：每筆**成功**的退款一列 `allowance_obligations`（`refund_id` 唯一），與退款轉為成功同一個 batch 寫入——退款轉 `succeeded` 的唯一寫入點是 `recordRefundAttempt`，所以取消、退貨、遺失、物流退回與付款異常的退款（含失敗後重試成功的「後續成功退款」）都會建立；0030 另為遷移前已成功的退款補義務、為已成功的收款補待開立的發票義務（冪等鍵 `inv_legacy_<付款編號>`）。義務綁定收款而不是發票：退款可能先於延遲開立的發票成功，先保留退款事實，原票開立後仍是原額，義務不變。
-- 只顯示原額：顧客與管理員看到的 `amountTwd` 永遠是開立原額，`pendingAllowanceTwd` 是已成功退款但憑證尚未折讓的合計，畫面標示「憑證待補」並說明原票沒有扣除退款；**沒有「剩餘金額」或「已結清」**。逐筆折讓與完成標記是 #122，本票不做、也不宣稱已完成全部憑證處理；ADR 0008 人工結案同樣未實作。
+- 待折讓義務（逐筆折讓見「模擬發票折讓（#122）」）：每筆**成功**的退款一列 `allowance_obligations`（`refund_id` 唯一），與退款轉為成功同一個 batch 寫入——退款轉 `succeeded` 的唯一寫入點是 `recordRefundAttempt`，所以取消、退貨、遺失、物流退回與付款異常的退款（含失敗後重試成功的「後續成功退款」）都會建立；0030 另為遷移前已成功的退款補義務、為已成功的收款補待開立的發票義務（冪等鍵 `inv_legacy_<付款編號>`）。義務綁定收款而不是發票：退款可能先於延遲開立的發票成功，先保留退款事實，原票開立後仍是原額，義務不變。
+- 只顯示原額：顧客與管理員看到的 `amountTwd` 永遠是開立原額，`pendingAllowanceTwd` 是已成功退款但憑證尚未折讓的合計，畫面標示「憑證待補」並說明原票沒有扣除退款；**沒有「剩餘金額」或「已結清」**。逐筆折讓於 #122 完成，見下一節；ADR 0008 人工結案同樣未實作。
 - 模擬服務（`apps/gateway`，見「模擬金流閘道」）：`POST /v1/invoices`、`GET /v1/invoices/:invoiceKey`；開發主控頁可切換「下一次開立失敗」與「下一次開立已成立但回應遺失」演練失敗與延遲（結果不明）。
 - 畫面：顧客訂單頁「發票」（只分「已開立」與「開立中」，不揭露內部的失敗與不明；有待折讓時標「憑證待補」）、後台「發票待辦」（待開立發票與憑證待補清單）、後台訂單頁「發票」（嘗試紀錄、待折讓、補辦／重寄）；手機與桌機皆可操作（e2e 驗證）。
 - 部署順序：先停止寫入，再套用 migration（App 的 `0030_invoices.sql` 與閘道的 `0003_invoices.sql`），然後部署閘道、App，最後 Web，與 0024、0029 一致；新 App 在付款成功時會寫 `invoices`，0030 缺表時付款結果的套用會整批失敗，所以 migration 必須先套用。閘道 0003 只新增資料表、沒有回復腳本（模擬服務，需要時整張刪除即可）。
@@ -247,10 +248,31 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
   ON CONFLICT (refund_id) DO NOTHING;
   ```
 
+  套用 0031（#122）之後，待折讓義務多了冪等鍵與狀態欄位，補登義務改用下面這句（冪等鍵 `alw_late_<退款編號>`，與 0031 為舊義務補的 `alw_legacy_<義務編號>` 不會相撞；補登的義務停在待折讓，原票開立後或管理員補辦才送出）：
+
+  ```sql
+  INSERT INTO allowance_obligations (refund_id, payment_id, order_id, amount_twd, created_at, gateway_allowance_key, status)
+  SELECT id, payment_id, order_id, amount_twd, COALESCE(settled_at, created_at), 'alw_late_' || id, 'pending' FROM refunds WHERE status = 'succeeded'
+  ON CONFLICT (refund_id) DO NOTHING;
+  ```
+
 - 舊收款（遷移前或補登的）只能逐張補辦：它們停在「待開立」，系統只在付款事件進來時開立，沒有 Cron 也沒有批次補開，管理員要在 `/admin/invoices` 逐張按「補辦」。
 - 付款確認路徑的延遲：開立在套用付款結果的同一個請求裡、batch 之後同步呼叫發票服務（webhook、導回查詢與補查都是），所以發票服務慢時（逾時上限 5 秒）這些請求會變慢，但結果不受影響。沒有改成 `ctx.waitUntil`：測試與冪等補開依賴「套用結果回傳時開立已有結果」，且 App 的服務層沒有執行環境的 context。
 - 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0030_invoices.down.sql`（已有已開立的發票，或任何開立嘗試紀錄——含結果不明，發票服務那邊可能已開立——時守門檢查讓回復失敗；其餘由收款與退款推得、重新套用會補回）。回復順序是 0030 → 0029 → …。
 - 測試：`apps/app/test/invoices.test.ts`（開立一次與重送不重複、失敗與不明與查證、補辦並行、重寄憑證、權限、待折讓義務與先後順序）、`invoices-migration.test.ts`（遷移補資料、約束與回復）、`apps/gateway/test/invoice.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
+
+### 模擬發票折讓（#122）
+
+依設計文件 A10（Migration `0031_allowances.sql`；`apps/app/src/invoices/allowance-service.ts`、`allowance-queries.ts`）。每筆成功退款在模擬發票上折讓一次，金額是該筆退款原額，累計折讓不超過原票金額；折讓失敗或延遲不阻擋付款、出貨或退款。
+
+- 義務即折讓：`allowance_obligations`（#121 建立，每筆成功退款一列）多了 `gateway_allowance_key`（`alw_<UUID>`，與退款成功同一個 batch 由應用程式產生寫入、之後永不更改，非空、唯一）、`status`（`pending` 待折讓、`unknown` 結果不明、`failed` 明確失敗、`issued` 已折讓）、`allowance_number`、`issued_at`；每次嘗試留在 `allowance_attempts`（只增不改）。
+- 原票未開立不折讓：義務綁定收款，退款先成功而原票尚未完成（待開立、失敗、結果不明）時，只保留退款與義務，**不向發票服務送出折讓**（不產生無原票的折讓）、也不阻擋退款；管理員在原票未開立時按補辦折讓回 `invoice_not_issued`。原票開立成功（含管理員補辦成功，`runInvoice`）時，同一個流程會對這筆收款上尚未折讓的義務逐筆折讓，不必有人手動；付款事件重送與退款轉為成功之後（`runRefund` 的 `finish`）也會觸發同一條路徑。
+- 開立同款的補辦模式（比照 #121）：交易外呼叫、沒有 processing 租約；以冪等鍵加本地條件更新（`status <> 'issued'`，已折讓不可被蓋回）保證同筆退款只折讓一次，並行與重送回同一張折讓；結果不明先 `GET /v1/allowances/:allowanceKey` 查證再用同一個鍵送出；回應的鍵、原票鍵、金額與本站不符、409 `allowance_conflict` 一律當作結果不明並 log；明確失敗（`allowance_failed`、422 `allowance_exceeds_invoice`、其他 4xx）留待補辦。折讓成功時折讓通知（`allowance_issued`，折讓號碼、金額與原票號碼，內容固定）與狀態同一個 batch 寫入，之後才投遞；首次投遞遺失由管理員重寄（RPC `resendAllowance`，同一封信的新投遞，寄到顧客目前已驗證的 email）。RPC：`retryAllowance`、`resendAllowance`（輸入 `{ refundId }`）。
+- 畫面：顧客訂單頁「發票」同時表達退款完成與憑證待補——還有未折讓的退款時標「憑證待補」且只顯示已折讓累計、**不給餘額**（不把未折讓的原額標成已結清）；全部折讓完成才顯示「折讓後餘額」（原額減累計折讓）。後台「發票待辦」的「憑證待補（待折讓）」清單列出所有未完成的折讓（結果不明在前）與嘗試紀錄，原票已開立的可補辦，否則標「等原票開立」；後台訂單頁「發票」表逐筆顯示折讓進度、號碼與補辦／重寄通知按鈕；手機與桌機皆可操作（e2e 驗證）。
+- 模擬服務（`apps/gateway`，migration `0004_allowances.sql`）：`POST /v1/invoices/:invoiceKey/allowances`（`{ allowanceKey, amountTwd }`）、`GET /v1/allowances/:allowanceKey`，見「模擬金流閘道」；主控頁可切換「下一次折讓失敗」與「下一次折讓已成立但回應遺失」。
+- 部署順序：先停止寫入，再套用 migration（App 的 `0031_allowances.sql` 與閘道的 `0004_allowances.sql`），然後部署閘道、App，最後 Web；0031 重建 `allowance_obligations`（要加 CHECK 與 NOT NULL 欄位），遷移前（0030）已存在的義務補成 `alw_legacy_<義務編號>`、狀態 `pending`，由原票已開立後的付款事件重送或管理員逐筆補辦折讓送出（沒有 Cron 與批次補送）。migration 套用到新 App 上線之間若有成功退款，補登 SQL 見上節「安全網」的第二段（可重跑、冪等）。閘道 0004 只新增資料表、沒有回復腳本。
+- 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0031_allowances.down.sql`（只要有任何已折讓的義務，或任何折讓嘗試紀錄——含結果不明，發票服務那邊可能已折讓——守門檢查就讓回復失敗；其餘由成功退款推得，義務本身保留）。回復順序是 0031 → 0030 → …。
+- 測試：`apps/app/test/allowances.test.ts`（自動折讓一次、退款先於原票、原票補辦後補折讓、重送與並行不重複、失敗與不明與查證與補辦、已折讓不被蓋回、通知重送、權限）、`allowances-migration.test.ts`（遷移補冪等鍵、約束與回復）、`apps/gateway/test/allowance.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
 
 ## 模擬金流閘道
 
@@ -268,10 +290,12 @@ API（JSON，`Authorization: Bearer <GATEWAY_API_KEY>`；回應 `{ ok: true, dat
 | `POST /v1/payments/:id/cancel` | 讓進行中的付款失效：取消後狀態就是 `expired`（沒有獨立的 cancelled 狀態，也不產生事件）；已 `expired` 冪等成功，已有結果者 409 `payment_not_cancellable` |
 | `POST /v1/payments/:id/refunds` | `{ refundId, amountTwd }` → 200 `{ refundId, paymentId, status: "succeeded", amountTwd }`。部分退款，以呼叫端給的 `refundId`（1–100 個英數、`_`、`-`）為冪等鍵：同一個 ID 已成功再送回同一筆結果、不重複退；明確失敗過的可用同一個 ID 重試。只有 `succeeded` 的付款可退（409 `payment_not_refundable`）；累計成功退款加這一筆超過付款金額回 409 `refund_exceeds_payment`；同一個 ID 帶不同金額或用在別筆付款回 409 `refund_conflict`；模擬的失敗回 502 `refund_failed`（款項不動）。不送 webhook |
 | `POST /v1/invoices` | `{ invoiceKey, merchantReference, amountTwd }` → 200 `{ invoiceKey, invoiceNumber, merchantReference, amountTwd, issuedAt }`。開立模擬發票，以 `invoiceKey`（1–100 個英數、`_`、`-`）為冪等鍵：同一個鍵重送回同一張發票（同號碼）、不重複開立；同鍵不同金額或參照回 409 `invoice_conflict`；模擬的失敗回 502 `invoice_failed`（沒有開立，可用同一個鍵重試）；模擬的回應遺失回 504 `invoice_timeout`（發票已開立，呼叫端須查證） |
+| `POST /v1/invoices/:invoiceKey/allowances` | `{ allowanceKey, amountTwd }` → 200 `{ allowanceKey, invoiceKey, allowanceNumber, amountTwd, issuedAt }`。對已開立的發票折讓，以 `allowanceKey`（1–100 個英數、`_`、`-`）為冪等鍵：同一個鍵重送回同一張折讓、不重複；同鍵不同金額或不同發票回 409 `allowance_conflict`；發票不存在回 404 `invoice_not_found`（不產生無原票的折讓）；累計折讓超過發票原額回 422 `allowance_exceeds_invoice`；模擬的失敗回 502 `allowance_failed`（沒有折讓，可用同一個鍵重試）；模擬的回應遺失回 504 `allowance_timeout`（折讓已成立，呼叫端須查證） |
+| `GET /v1/allowances/:allowanceKey` | 查證一張折讓（同上形狀）；從未收過這個鍵回 404 `allowance_not_found` |
 | `GET /v1/invoices/:invoiceKey` | 查證一張發票（同上形狀）；從未收過這個鍵回 404 `invoice_not_found` |
 | `GET /v1/payments/:id/refunds/:refundId` | 查證一筆退款：`{ refundId, paymentId, status: "succeeded" \| "failed", amountTwd }`；閘道從未收過這個 ID 回 404 `refund_not_found`。呼叫端逾時、結果不明時先用它查，再決定要不要用同一個 ID 重送 |
 
-付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款嘗試回 502 `refund_failed`（那筆退款記為 `failed`，款項不動），旗標隨即消耗，以同一個 `refundId` 重試即成功；主控頁列出每筆付款的各筆退款。主控頁的「模擬發票」區可切換「下一次開立失敗」（502 `invoice_failed`、沒有開立）與「下一次開立已成立但回應遺失」（504 `invoice_timeout`、發票已開立），旗標用完即清，並列出最近開立的發票。
+付款頁 `GET /pay/:id`（免認證）讓顧客選成功／失敗、立即／延遲回呼、是否重複回呼、是否「不導回」（模擬顧客關閉視窗：不 303，只顯示「付款已完成，您可以關閉此頁」，搭配延遲回呼即可在瀏覽器重現遲到的付款成功），否則送出後 303 導回 `returnUrl?paymentId=...`。延遲回呼只記錄事件、不送；開發主控頁 `GET /console`（HTTP Basic，帳號任意、密碼為 `GATEWAY_API_KEY`）可對任一事件「立即送出」或「重送」，用來確定地重現遲到的付款成功與重複回呼。主控頁也能對每筆付款切換「下一次退款失敗」：切換後該筆付款的下一次退款嘗試回 502 `refund_failed`（那筆退款記為 `failed`，款項不動），旗標隨即消耗，以同一個 `refundId` 重試即成功；主控頁列出每筆付款的各筆退款。主控頁的「模擬發票」區可切換「下一次開立失敗」（502 `invoice_failed`、沒有開立）與「下一次開立已成立但回應遺失」（504 `invoice_timeout`、發票已開立），旗標用完即清，並列出最近開立的發票；「模擬發票折讓」區同樣可切換「下一次折讓失敗」與「下一次折讓已成立但回應遺失」，並列出最近的折讓。
 
 Webhook：`POST <webhookUrl>`，本文 `{ eventId, type, paymentId, merchantReference, amountTwd, occurredAt }`（`type` 為 `payment.succeeded / payment.failed`；退款不送 webhook；`occurredAt` 是事件建立時間的 epoch 毫秒，重送不變）。Header `Gateway-Signature: t=<unix 秒>,v1=<hex(HMAC-SHA256(GATEWAY_WEBHOOK_SECRET, "<t>.<原始 body>"))>`，`t` 是每次投遞當下的時間。接收端用 `@storefront/gateway/webhook-signature` 的 `verifyWebhookSignature` 驗證（預設容忍 5 分鐘），並以 `eventId` 去重。
 

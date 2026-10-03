@@ -5,6 +5,7 @@ import rollbackSql from "../rollback/0030_invoices.down.sql?raw";
 
 const db = env.MIGRATION_DB;
 const THROUGH_0029 = 30;
+const THROUGH_0030 = 31;
 const rollbackStatements = () => rollbackSql.split("--> statement-breakpoint").map((statement) => db.prepare(statement));
 const rows = async (query: string) => (await db.prepare(query).all()).results;
 
@@ -38,7 +39,7 @@ async function seed0029() {
 it("0030 為遷移前已成功的收款補待開立的發票義務（原額取實收、冪等鍵 inv_legacy_<付款編號>），為已成功的退款補待折讓義務（時間取退款成功時間）；失敗或待付款的收款、未成功的退款不補", async () => {
   await seed0029();
 
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0030));
 
   expect(await rows("SELECT order_id, payment_id, gateway_invoice_key, amount_twd, status, invoice_number, created_at, issued_at FROM invoices ORDER BY id")).toEqual([
     { order_id: 1, payment_id: 1, gateway_invoice_key: "inv_legacy_1", amount_twd: 1000, status: "pending", invoice_number: null, created_at: 10, issued_at: null },
@@ -52,7 +53,7 @@ it("0030 為遷移前已成功的收款補待開立的發票義務（原額取�
 
 it("發票與待折讓義務的唯一性與 CHECK：一筆收款一張發票、一筆退款一個義務，狀態與已開立欄位須一致", async () => {
   await seed0029();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0030));
 
   const invoice = (paymentId: number, key: string, status: string, number: string | null, issuedAt: number | null) =>
     db.prepare("INSERT INTO invoices (order_id, payment_id, gateway_invoice_key, amount_twd, status, invoice_number, created_at, issued_at) VALUES (1, ?, ?, 1000, ?, ?, 0, ?)").bind(paymentId, key, status, number, issuedAt);
@@ -68,20 +69,20 @@ it("發票與待折讓義務的唯一性與 CHECK：一筆收款一張發票、�
 
 it("回復程序移除發票與待折讓義務，之後可重新套用 0030 並從收款與成功退款補回", async () => {
   await seed0029();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0030));
 
   await db.batch(rollbackStatements());
 
   expect(await rows("SELECT name FROM sqlite_master WHERE name IN ('invoices', 'invoice_attempts', 'allowance_obligations')")).toEqual([]);
   expect(await rows("SELECT name FROM d1_migrations WHERE name = '0030_invoices.sql'")).toEqual([]);
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0030));
   expect(await rows("SELECT payment_id FROM invoices ORDER BY id")).toEqual([{ payment_id: 1 }, { payment_id: 3 }]);
   expect(await rows("SELECT refund_id FROM allowance_obligations")).toEqual([{ refund_id: 1 }]);
 });
 
 it("已有已開立的發票時，回復的守門檢查讓整段失敗且資料不動", async () => {
   await seed0029();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0030));
   await db.prepare("UPDATE invoices SET status = 'issued', invoice_number = 'SM-1', issued_at = 5 WHERE payment_id = 1").run();
 
   await expect(db.batch(rollbackStatements())).rejects.toThrow();
@@ -92,7 +93,7 @@ it("已有已開立的發票時，回復的守門檢查讓整段失敗且資料�
 
 it("有任何開立嘗試紀錄（例如結果不明、發票服務可能已開立）時，回復的守門檢查同樣讓整段失敗", async () => {
   await seed0029();
-  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await applyD1Migrations(db, env.TEST_MIGRATIONS.slice(0, THROUGH_0030));
   await db.batch([
     db.prepare("UPDATE invoices SET status = 'unknown' WHERE payment_id = 1"),
     db.prepare("INSERT INTO invoice_attempts (invoice_id, at, actor, action, outcome, code) SELECT id, 1, 'system', 'send', 'unknown', 'unreachable' FROM invoices WHERE payment_id = 1"),

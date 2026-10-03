@@ -35,6 +35,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       reconcilePayment: (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor),
       retryRefund: (refundId, actor) => this.#payments().retryRefund(refundId, actor),
       retryInvoice: (invoiceId, actor) => this.#invoices().retryInvoice(invoiceId, actor),
+      retryAllowance: (refundId, actor) => this.#invoices().retryAllowance(refundId, actor),
     });
   }
 
@@ -372,6 +373,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   resendInvoice(jwt: string, input: unknown) {
     return this.#admin().resendInvoice(jwt, input);
+  }
+
+  retryAllowance(jwt: string, input: unknown) {
+    return this.#admin().retryAllowance(jwt, input);
+  }
+
+  resendAllowance(jwt: string, input: unknown) {
+    return this.#admin().resendAllowance(jwt, input);
   }
 
   listCancellationsToReview(jwt: string) {

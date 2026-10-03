@@ -10,6 +10,7 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DROP TRIGGER IF EXISTS stock_movements_no_update"),
     env.DB.prepare("DELETE FROM stock_movements"),
     ...triggers.map((statement) => env.DB.prepare(statement.replace(/^[\s\S]*?(CREATE TRIGGER)/, "$1").trim())),
+    env.DB.prepare("DELETE FROM allowance_attempts"),
     env.DB.prepare("DELETE FROM allowance_obligations"),
     env.DB.prepare("DELETE FROM invoice_attempts"),
     env.DB.prepare("DELETE FROM invoices"),

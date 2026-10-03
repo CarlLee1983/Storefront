@@ -1,4 +1,4 @@
-import { INVOICE_STATUSES, type InvoiceStatus } from "@storefront/app/invoices-shared";
+import { ALLOWANCE_STATUSES, INVOICE_STATUSES, type AllowanceStatus, type InvoiceStatus } from "@storefront/app/invoices-shared";
 
 const isKnown = (status: string): status is InvoiceStatus => (INVOICE_STATUSES as readonly string[]).includes(status);
 
@@ -29,7 +29,7 @@ export function customerInvoiceStatusNote(status: string): string {
 
 /**
  * 憑證待補的說明：已有成功退款、折讓尚未完成時，提醒顧客發票仍顯示原額、沒有扣除退款；沒有待折讓回 null。
- * 不寫成「已結清」或「剩餘金額」：折讓完成（逐筆，#122）之前，原額不代表實際剩下的金額。
+ * 不寫成「已結清」或「剩餘金額」：折讓完成（逐筆）之前，原額不代表實際剩下的金額。
  */
 export function customerAllowanceNote(pendingAllowanceTwd: number, pendingAllowanceCount: number, format: (amount: number) => string): string | null {
   if (pendingAllowanceCount === 0) return null;
@@ -49,4 +49,32 @@ export function invoiceAttemptLabel(action: string, outcome: string): string {
   const actionLabel = Object.hasOwn(INVOICE_ACTION_LABELS, action) ? INVOICE_ACTION_LABELS[action]! : action;
   const outcomeLabel = Object.hasOwn(INVOICE_OUTCOME_LABELS, outcome) ? INVOICE_OUTCOME_LABELS[outcome]! : outcome;
   return `${actionLabel}：${outcomeLabel}`;
+}
+
+const isKnownAllowance = (status: string): status is AllowanceStatus => (ALLOWANCE_STATUSES as readonly string[]).includes(status);
+
+/** 折讓進度給管理員看的名稱：如實區分待折讓、結果不明與明確失敗。不認得的原樣顯示。 */
+const ALLOWANCE_STATUS_LABELS: Record<AllowanceStatus, string> = {
+  pending: "待折讓（尚未送出或等原票開立）",
+  unknown: "結果不明（須先查證）",
+  failed: "明確失敗（可補辦）",
+  issued: "已折讓",
+};
+
+export function allowanceStatusLabel(status: string): string {
+  return isKnownAllowance(status) ? ALLOWANCE_STATUS_LABELS[status] : status;
+}
+
+/**
+ * 顧客看的折讓摘要：已折讓的累計（有才顯示），以及憑證上的餘額。
+ * 餘額只在原票已開立、且沒有任何未折讓的退款時才給：還有待補的折讓時，憑證尚未反映全部退款，原額減已折讓不等於實際餘額，不能標成已結清。
+ */
+export function customerAllowanceSummary(
+  invoice: { status: string; amountTwd: number; allowedTwd: number; allowedCount: number; pendingAllowanceCount: number },
+  format: (amount: number) => string,
+): { allowed: string | null; balance: string | null } {
+  if (invoice.allowedCount === 0) return { allowed: null, balance: null };
+  const allowed = `已折讓 ${invoice.allowedCount} 筆，累計 NT$ ${format(invoice.allowedTwd)}`;
+  const settled = invoice.status === "issued" && invoice.pendingAllowanceCount === 0;
+  return { allowed, balance: settled ? `折讓後餘額 NT$ ${format(invoice.amountTwd - invoice.allowedTwd)}` : null };
 }

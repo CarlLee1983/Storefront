@@ -25,6 +25,15 @@ export interface FakeInvoice {
   issuedAt: number;
 }
 
+/** 發票服務上的一張折讓（與真實服務一致：以呼叫端給的 allowanceKey 為冪等鍵，掛在已開立的發票上）。 */
+export interface FakeAllowance {
+  allowanceKey: string;
+  invoiceKey: string;
+  allowanceNumber: string;
+  amountTwd: number;
+  issuedAt: number;
+}
+
 /** 可操控的金流閘道替身：在 HTTP 層實作閘道的 API 契約（apps/gateway/README），由 `installFakeGateway` 攔截全域 fetch。 */
 export class FakeGateway {
   readonly payments = new Map<string, FakePayment>();
@@ -63,7 +72,14 @@ export class FakeGateway {
   /** 下一次開立請求在服務成功開立，但回應遺失（呼叫端只看到連線失敗）。 */
   private lostInvoiceResponses = 0;
 
-  failNext(operation: "create" | "get" | "cancel" | "refund" | "getRefund" | "issueInvoice" | "getInvoice", status = 502): void {
+  /** 發票服務上已開立的折讓，鍵是 allowanceKey。 */
+  readonly allowances = new Map<string, FakeAllowance>();
+  /** 到達發票服務、通過驗證的折讓請求（含明確失敗與回應遺失的），依序。 */
+  readonly allowanceRequests: { invoiceKey: string; allowanceKey: string; amountTwd: number }[] = [];
+  private explicitAllowanceFailures = 0;
+  private lostAllowanceResponses = 0;
+
+  failNext(operation: "create" | "get" | "cancel" | "refund" | "getRefund" | "issueInvoice" | "getInvoice" | "issueAllowance" | "getAllowance", status = 502): void {
     this.failures.set(operation, status);
   }
 
@@ -85,6 +101,16 @@ export class FakeGateway {
   /** 下一次開立請求發票服務已開立，但回應在途中遺失：呼叫端逾時，結果不明。 */
   loseNextInvoiceResponse(): void {
     this.lostInvoiceResponses += 1;
+  }
+
+  /** 下一次折讓請求發票服務明確拒絕（502 allowance_failed）：呼叫端確定沒有折讓。 */
+  failNextAllowanceExplicitly(): void {
+    this.explicitAllowanceFailures += 1;
+  }
+
+  /** 下一次折讓請求發票服務已折讓，但回應在途中遺失：呼叫端逾時，結果不明。 */
+  loseNextAllowanceResponse(): void {
+    this.lostAllowanceResponses += 1;
   }
 
   /** 這筆付款在閘道上已成功退回的累計金額。 */
@@ -151,6 +177,15 @@ export class FakeGateway {
       return success({ paymentId: id, paymentUrl: `${TEST_GATEWAY_BASE_URL}/pay/${id}`, expiresAt }, 201);
     }
     if (url.pathname === "/v1/invoices" && request.method === "POST") return this.handleIssueInvoice(request);
+    const allowanceIssue = /^\/v1\/invoices\/([A-Za-z0-9_-]+)\/allowances$/.exec(url.pathname);
+    if (allowanceIssue && request.method === "POST") return this.handleIssueAllowance(allowanceIssue[1]!, request);
+    const allowanceLookup = /^\/v1\/allowances\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+    if (allowanceLookup && request.method === "GET") {
+      const failed = this.takeFailure("getAllowance");
+      if (failed) return failed;
+      const found = this.allowances.get(allowanceLookup[1]!);
+      return found ? success(found) : error(404, "allowance_not_found");
+    }
     const invoiceLookup = /^\/v1\/invoices\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
     if (invoiceLookup && request.method === "GET") {
       const failed = this.takeFailure("getInvoice");
@@ -239,6 +274,30 @@ export class FakeGateway {
       throw new TypeError("fetch failed");
     }
     return success(invoice);
+  }
+
+  private async handleIssueAllowance(invoiceKey: string, request: Request): Promise<Response> {
+    const failed = this.takeFailure("issueAllowance");
+    if (failed) return failed;
+    const { allowanceKey, amountTwd } = (await request.json()) as { allowanceKey: string; amountTwd: number };
+    this.allowanceRequests.push({ invoiceKey, allowanceKey, amountTwd });
+    const existing = this.allowances.get(allowanceKey);
+    if (existing) return existing.invoiceKey === invoiceKey && existing.amountTwd === amountTwd ? success(existing) : error(409, "allowance_conflict");
+    const invoice = this.invoices.get(invoiceKey);
+    if (!invoice) return error(404, "invoice_not_found");
+    const allowed = [...this.allowances.values()].filter((allowance) => allowance.invoiceKey === invoiceKey).reduce((total, allowance) => total + allowance.amountTwd, 0);
+    if (allowed + amountTwd > invoice.amountTwd) return error(422, "allowance_exceeds_invoice");
+    if (this.explicitAllowanceFailures > 0) {
+      this.explicitAllowanceFailures -= 1;
+      return error(502, "allowance_failed");
+    }
+    const allowance: FakeAllowance = { allowanceKey, invoiceKey, allowanceNumber: `SA-${String(this.allowances.size + 1).padStart(8, "0")}`, amountTwd, issuedAt: Date.now() };
+    this.allowances.set(allowanceKey, allowance);
+    if (this.lostAllowanceResponses > 0) {
+      this.lostAllowanceResponses -= 1;
+      throw new TypeError("fetch failed");
+    }
+    return success(allowance);
   }
 
   private takeFailure(operation: string): Response | undefined {

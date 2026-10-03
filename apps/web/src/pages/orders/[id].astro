@@ -10,7 +10,7 @@ import Layout from "../../layouts/Layout.astro";
 import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
 import { customerLossNote, customerReturnNote, customerShipmentReturnNote, describeReturnRequestFailure, returnBatchNote, returnFormToInput, returnStatusLabel, returnableQuantity, shipmentReturnStatusLabel } from "../../orders/return";
 import { formToRecord } from "../../shared/form-values";
-import { customerAllowanceNote, customerInvoiceStatusLabel, customerInvoiceStatusNote } from "../../orders/invoice";
+import { customerAllowanceNote, customerAllowanceSummary, customerInvoiceStatusLabel, customerInvoiceStatusNote } from "../../orders/invoice";
 import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
@@ -85,6 +85,7 @@ const hasSelfServiceQuantity = returnBatches.some((batch) => batch.items.some((i
 const cancellationFieldErrors = cancellationFailure?.fields.items ?? [];
 const priceFormat = new Intl.NumberFormat("zh-TW");
 // 已有成功退款、折讓尚未完成的發票：提醒原額不代表退款後的實際金額（逐筆折讓完成於 #122）
+const allowanceSummaries = new Map((order?.invoices ?? []).map((invoice) => [invoice.id, customerAllowanceSummary(invoice, (amount) => priceFormat.format(amount))]));
 const allowanceNotes = new Map((order?.invoices ?? []).map((invoice) => [invoice.id, customerAllowanceNote(invoice.pendingAllowanceTwd, invoice.pendingAllowanceCount, (amount) => priceFormat.format(amount))]));
 ---
 
@@ -355,6 +356,8 @@ const allowanceNotes = new Map((order?.invoices ?? []).map((invoice) => [invoice
                       <td data-label="進度"><span class="payment-state">
                         {customerInvoiceStatusLabel(invoice.status)}
                         <small>（{customerInvoiceStatusNote(invoice.status)}）</small>
+                        {allowanceSummaries.get(invoice.id)?.allowed && <strong class="invoice-allowance-done">{allowanceSummaries.get(invoice.id)!.allowed}</strong>}
+                        {allowanceSummaries.get(invoice.id)?.balance && <strong class="invoice-allowance-done">{allowanceSummaries.get(invoice.id)!.balance}</strong>}
                         {allowanceNotes.get(invoice.id) && <strong class="invoice-allowance-pending">憑證待補：{allowanceNotes.get(invoice.id)}</strong>}
                       </span></td>
                     </tr>
@@ -458,6 +461,7 @@ const allowanceNotes = new Map((order?.invoices ?? []).map((invoice) => [invoice
   .payment-history { table-layout: auto; min-width: 0; }
   .payment-history td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .payment-state small { display: block; }
+  .invoice-allowance-done { display: block; font-weight: 600; font-size: var(--text-sm); }
   .invoice-allowance-pending { display: block; color: var(--color-error); font-weight: 600; font-size: var(--text-sm); }
   .cancel-container {
     margin-top: var(--space-8);

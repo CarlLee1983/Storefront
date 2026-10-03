@@ -323,3 +323,23 @@ export function insertInvoiceNotice(invoiceId: number): SQL {
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
+
+/**
+ * 折讓完成通知：一筆折讓一封，事件鍵 `allowance:<退款編號>`；只在該筆折讓已完成時寫，與折讓同一個 batch（見 `invoices/allowance-queries.ts` 的 `recordAllowanceAttempt`）。
+ * 信件內容寫信當下就固定：折讓號碼、折讓金額與原票號碼；重寄是同一封信的新投遞（見 `contact/admin.ts` 的 `resendMessage`）。
+ */
+export function insertAllowanceNotice(refundId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'allowance_issued', '訂單 #' || orders.id || ' 的退款已折讓',
+      '訂單 #' || orders.id || ' 的退款 NT$' || a.amount_twd || ' 已在模擬發票上折讓：折讓號碼 ' || a.allowance_number ||
+      COALESCE('，原票發票號碼 ' || invoices.invoice_number || '（原額 NT$' || invoices.amount_twd || '）', '') || '。' ||
+      '這是演練用的模擬折讓，不是真實電子發票的折讓；原票的原額不會改寫，折讓以另一張憑證記錄。',
+      'allowance:' || a.refund_id, ${effectiveNow}
+    FROM allowance_obligations a
+    JOIN orders ON orders.id = a.order_id
+    LEFT JOIN invoices ON invoices.payment_id = a.payment_id
+    WHERE a.refund_id = ${refundId} AND a.status = 'issued'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}

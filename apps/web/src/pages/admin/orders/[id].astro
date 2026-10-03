@@ -14,8 +14,8 @@ import { describeReturnFailure, describeReturnOutcome, inspectionFormToInput, re
 import { returnStatusLabel, shipmentReturnStatusLabel } from "../../../orders/return";
 import { describeLossFailure, describeLossOutcome, lossFormToInput } from "../../../admin/loss-form";
 import { declareReturnFormToInput, describeShipmentReturnFailure, describeShipmentReturnOutcome, shipmentReturnInspectionFormToInput, shipmentReturnReceiptFormToInput } from "../../../admin/shipment-return-form";
-import { describeInvoiceFailure, describeInvoiceRetryOutcome, describeResendOutcome, parseInvoiceResult } from "../../../admin/invoice";
-import { invoiceAttemptLabel, invoiceStatusLabel } from "../../../orders/invoice";
+import { describeAllowanceFailure, describeInvoiceFailure, describeInvoiceResult, parseInvoiceResult } from "../../../admin/invoice";
+import { allowanceStatusLabel, invoiceAttemptLabel, invoiceStatusLabel } from "../../../orders/invoice";
 import { formToRecord, toText } from "../../../shared/form-values";
 import { formatDateTime, parseOrderId, paymentStatusLabel, refundAttemptLabel, refundReasonLabel, refundStatusLabel } from "../../../orders/labels";
 
@@ -37,7 +37,7 @@ let submittedReturn: { shipmentId: number; returnKey: string } | undefined;
 let unauthorized = false;
 let invoiceFailure: string | undefined;
 
-// POST 有十三種：補辦發票與重寄憑證（intent=retry-invoice、resend-invoice）、登記物流退回、記錄物流退回的收回與檢查（intent=declare-return、record-shipment-return-receipt、record-shipment-return-inspection，檢查的同內容重送會重新登記退款）、確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
+// POST 有十五種：補辦發票與重寄憑證（intent=retry-invoice、resend-invoice）、補辦折讓與重寄折讓通知（intent=retry-allowance、resend-allowance）、登記物流退回、記錄物流退回的收回與檢查（intent=declare-return、record-shipment-return-receipt、record-shipment-return-inspection，檢查的同內容重送會重新登記退款）、確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   if (form.get("intent") === "retry-invoice") {
@@ -50,6 +50,16 @@ if (orderId !== null && Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?resend=${result.data.delivered ? "delivered" : "failed"}#invoices`, 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else invoiceFailure = describeInvoiceFailure(result);
+  } else if (form.get("intent") === "retry-allowance") {
+    const result = await env.APP.retryAllowance(jwt, { refundId: Number(toText(form.get("refundId"))) });
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?allowance=${result.data.status}#invoices`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else invoiceFailure = describeAllowanceFailure(result);
+  } else if (form.get("intent") === "resend-allowance") {
+    const result = await env.APP.resendAllowance(jwt, { refundId: Number(toText(form.get("refundId"))) });
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?resend-allowance=${result.data.delivered ? "delivered" : "failed"}#invoices`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else invoiceFailure = describeAllowanceFailure(result);
   } else if (form.get("intent") === "decide-cancellation") {
     const result = await env.APP.decideCancellation(jwt, decideFormToInput(form));
     if (result.ok) {
@@ -138,7 +148,7 @@ const returnSaved = describeReturnOutcome(Astro.url.searchParams.get("saved"), A
 const shipmentReturnSaved = describeShipmentReturnOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const lossSaved = describeLossOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const invoiceResult = parseInvoiceResult(Astro.url.searchParams);
-const invoiceNotice = invoiceResult === null ? null : invoiceResult.kind === "retry" ? describeInvoiceRetryOutcome(invoiceResult.status) : describeResendOutcome(invoiceResult.delivered);
+const invoiceNotice = describeInvoiceResult(invoiceResult);
 const priceFormat = new Intl.NumberFormat("zh-TW");
 // 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一批
 const dispatchKey = submitted.dispatchKey || crypto.randomUUID();
@@ -544,7 +554,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           order.invoices.length > 0 && (
             <div class="table-scroll admin-order-invoices" tabindex="0" role="region" aria-label="發票資料表"><table>
               <thead>
-                <tr><th>發票</th><th>原額</th><th>狀態</th><th>待折讓</th><th>嘗試紀錄</th><th>操作</th></tr>
+                <tr><th>發票</th><th>原額</th><th>狀態</th><th>折讓</th><th>嘗試紀錄</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {order.invoices.map((invoice) => (
@@ -555,16 +565,33 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                       <strong class={invoice.status === "unknown" || invoice.status === "failed" ? "error" : undefined}>{invoiceStatusLabel(invoice.status)}</strong>
                       {invoice.status !== "issued" && <><br /><a href="/admin/invoices">到發票待辦處理</a></>}
                     </td>
-                    <td data-label="待折讓">
+                    <td data-label="折讓">
                       {invoice.allowances.length === 0 ? "無" : (
                         <>
-                          <strong class="error">憑證待補：NT$ {priceFormat.format(invoice.pendingAllowanceTwd)}</strong>
+                          {invoice.pendingAllowanceCount > 0 && <strong class="error">憑證待補：NT$ {priceFormat.format(invoice.pendingAllowanceTwd)}（退款已完成）</strong>}
+                          {invoice.allowedCount > 0 && <div>已折讓 NT$ {priceFormat.format(invoice.allowedTwd)}</div>}
                           <ul class="attempts">
                             {invoice.allowances.map((allowance) => (
-                              <li>退款 #{allowance.refundId}：NT$ {priceFormat.format(allowance.amountTwd)}（{formatDateTime(allowance.createdAt)}）</li>
+                              <li>
+                                退款 #{allowance.refundId}：NT$ {priceFormat.format(allowance.amountTwd)}（{formatDateTime(allowance.createdAt)}）<br />
+                                <strong class={allowance.status === "unknown" || allowance.status === "failed" ? "error" : undefined}>{allowanceStatusLabel(allowance.status)}</strong>
+                                {allowance.allowanceNumber && <> {allowance.allowanceNumber}</>}
+                                {allowance.attempts.length > 0 && (
+                                  <ul class="attempts">
+                                    {allowance.attempts.map((attempt) => (
+                                      <li>{formatDateTime(attempt.at)} {attempt.actor === "system" ? "系統" : attempt.actor}：{invoiceAttemptLabel(attempt.action, attempt.outcome)}{attempt.code && `（${attempt.code}）`}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                                <form method="post">
+                                  <input type="hidden" name="intent" value={allowance.status === "issued" ? "resend-allowance" : "retry-allowance"} />
+                                  <input type="hidden" name="refundId" value={allowance.refundId} />
+                                  <button type="submit" disabled={allowance.status !== "issued" && invoice.status !== "issued"} aria-label={`${allowance.status === "issued" ? "重寄折讓通知" : allowance.status === "unknown" ? "查證並補辦折讓" : "補辦折讓"}（退款 #${allowance.refundId}）`}>{allowance.status === "issued" ? "重寄折讓通知" : allowance.status === "unknown" ? "查證並補辦折讓" : "補辦折讓"}</button>
+                                </form>
+                              </li>
                             ))}
                           </ul>
-                          <small>原票仍只顯示原額，未折讓的退款沒有從原額扣除；逐筆折讓於 #122</small>
+                          {invoice.pendingAllowanceCount > 0 && <small>原票只顯示原額，未折讓的退款沒有從原額扣除；原票開立後會自動補折讓</small>}
                         </>
                       )}
                     </td>

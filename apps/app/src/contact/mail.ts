@@ -3,7 +3,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { mailDeliveries } from "./schema";
 
 /** 信件種類；新增通知種類在這裡加一個值（資料表不限制 kind）。 */
-export const MAIL_KINDS = ["contact_verification", "order_placed", "payment_succeeded", "payment_failed", "payment_unsettled", "refund_succeeded", "shipment_dispatched", "cancellation_approved", "cancellation_rejected", "return_approved", "return_rejected", "return_completed", "shipment_loss_confirmed", "shipment_return_declared", "shipment_return_completed", "invoice_issued"] as const;
+export const MAIL_KINDS = ["contact_verification", "order_placed", "payment_succeeded", "payment_failed", "payment_unsettled", "refund_succeeded", "shipment_dispatched", "cancellation_approved", "cancellation_rejected", "return_approved", "return_rejected", "return_completed", "shipment_loss_confirmed", "shipment_return_declared", "shipment_return_completed", "invoice_issued", "allowance_issued"] as const;
 export type MailKind = (typeof MAIL_KINDS)[number];
 
 /** 驗證請求的有效期限。 */

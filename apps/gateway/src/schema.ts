@@ -94,3 +94,32 @@ export const invoiceControls = sqliteTable(
   },
   (table) => [check("invoice_controls_check", sql`${table.id} = 1 AND ${table.failNext} IN (0, 1) AND ${table.loseNextResponse} IN (0, 1)`)],
 );
+
+/**
+ * 模擬發票折讓：以呼叫端給的 `allowance_key` 為冪等鍵，同一個鍵重送回同一張折讓（同金額、同發票），不會重複折讓。
+ * 折讓一定掛在已開立的發票上（`invoice_key`），同一張發票累計折讓不超過發票原額；折讓號碼由閘道隨機產生並唯一。
+ */
+export const allowances = sqliteTable(
+  "allowances",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    allowanceKey: text("allowance_key").notNull(),
+    invoiceKey: text("invoice_key").notNull(),
+    /** 折讓金額，新台幣整數元。 */
+    amountTwd: integer("amount_twd").notNull(),
+    allowanceNumber: text("allowance_number").notNull(),
+    issuedAt: integer("issued_at").notNull(),
+  },
+  (table) => [uniqueIndex("allowances_allowance_key_uidx").on(table.allowanceKey), uniqueIndex("allowances_allowance_number_uidx").on(table.allowanceNumber)],
+);
+
+/** 模擬折讓的演練控制，單列表（`id` 恆為 1）：語意同 `invoiceControls`，作用在下一次折讓。 */
+export const allowanceControls = sqliteTable(
+  "allowance_controls",
+  {
+    id: integer("id").primaryKey(),
+    failNext: integer("fail_next").notNull().default(0),
+    loseNextResponse: integer("lose_next_response").notNull().default(0),
+  },
+  (table) => [check("allowance_controls_check", sql`${table.id} = 1 AND ${table.failNext} IN (0, 1) AND ${table.loseNextResponse} IN (0, 1)`)],
+);

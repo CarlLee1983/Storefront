@@ -56,7 +56,7 @@ export function createPaymentService(
   authenticate: AuthenticateCustomer,
   gateway: PaymentGateway | null,
   webOrigin: string,
-  invoices: Pick<InvoiceService, "issueForPayment">,
+  invoices: Pick<InvoiceService, "issueForPayment" | "allowForRefund">,
 ) {
   const db = drizzle(d1);
   const unauthorized: Unauthorized = { ok: false, reason: "unauthorized" };
@@ -102,7 +102,11 @@ export function createPaymentService(
     const record = (step: { action: RefundAttemptAction; outcome: "succeeded" | "failed" | "unknown" | "not_found"; code?: string; status: "succeeded" | "failed" | "unknown" | null }) =>
       recordRefundAttempt(d1, { refundId, claimedAt: startedAt, actor, action: step.action, outcome: step.outcome, code: step.code ?? null, status: step.status }, clock.now());
     const finish = async (status: "succeeded" | "failed" | "unknown") => {
-      if (status === "succeeded") await deliverNoticeSafely(db, `refund:${refundId}`, clock.now());
+      if (status === "succeeded") {
+        await deliverNoticeSafely(db, `refund:${refundId}`, clock.now());
+        // 成功退款折讓：原票已開立才送出，否則保留義務等原票開立（見 `invoices/service.ts`）；折讓出錯不影響退款
+        await invoices.allowForRefund(refundId);
+      }
       console.log(JSON.stringify({ event: "refund_attempted", refundId, orderId: refund.orderId, actor, status }));
       return ok({ status: (await selectRefundToRun(db, refundId))?.status ?? status });
     };
