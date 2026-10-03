@@ -78,5 +78,6 @@ describe("customerLossNote", () => {
     expect(customerLossNote(true)).toContain("已依原實付單價辦理退款");
     expect(customerLossNote(false)).toContain("客服會與你聯繫");
     expect(customerLossNote(false)).not.toContain("已依原實付單價辦理退款");
+    expect(customerLossNote(false, false)).not.toContain("客服會與你聯繫");
   });
 });

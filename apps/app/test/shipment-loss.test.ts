@@ -140,6 +140,32 @@ describe("確認遺失：與物流回報的先後", () => {
     expect(await requestReturn(cookie, orderId, [{ orderLineId: mugLine.id, shipmentId: mugA, quantity: 1 }])).toMatchObject({ ok: true });
   });
 
+  it("部分遺失之後才送達：批次仍是遺失但已送達，不能再確認遺失；送達通知照寄、只列未遺失的數量，送達回報應有通知", async () => {
+    const { cookie, orderId, mugLine, mugA } = await shippedInBatches();
+    await confirmLossOk(mugA, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    await reportAfter(orderId, mugA, "ev-late", "delivered", 30);
+
+    expect(await confirmLoss(mugA, [{ orderLineId: mugLine.id, quantity: 1 }])).toEqual({ ok: false, reason: "shipment_delivered" });
+
+    const shipment = await adminShipment(orderId, mugA);
+    expect(shipment).toMatchObject({ deliveryStatus: "lost", deliveredAt: expect.any(Number) });
+    expect(shipment.events).toMatchObject([{ eventKey: "ev-late", noticeExpected: true, noticeMessageId: expect.any(Number) }]);
+    const body = await bodyOf(cookie, "shipment_delivered");
+    expect(body).toContain("× 1");
+    expect(body).not.toContain("× 2");
+    expect(body).toContain("7 天內可在訂單頁自助申請退貨");
+    expect((await adminOrder(orderId)).losses).toHaveLength(1);
+  });
+
+  it("顧客看到的遺失不含管理員備註與確認人，管理員看得到", async () => {
+    const { cookie, orderId, mugLine, mugA } = await shippedInBatches();
+    await confirmLossOk(mugA, [{ orderLineId: mugLine.id, quantity: 1 }]).then(() => confirmLoss(mugA, [{ orderLineId: mugLine.id, quantity: 1 }], { note: "內部查證" }));
+
+    const mine = await app.getMyOrder(cookie, { orderId });
+    expect(mine.ok && mine.data.losses.every((loss) => !("note" in loss) && !("actor" in loss))).toBe(true);
+    expect((await adminOrder(orderId)).losses).toMatchObject([{}, { note: "內部查證" }]);
+  });
+
   it("不存在的批次回 shipment_not_found，不留下遺失", async () => {
     const { orderId, tableLine } = await shippedInBatches();
 
@@ -218,6 +244,18 @@ describe("確認遺失：與取消、退貨的運費互斥，不雙退", () => {
     const inspected = await inspectReturn(requestId, [{ orderLineId: mugLine.id, sellableQuantity: 2, damagedQuantity: 0 }]);
 
     expect(inspected).toMatchObject({ ok: true, data: { refund: { status: "succeeded" } } });
+    expect(splitOf(await refundsOf(orderId))).toEqual([["loss", 320, 100], ["return", 640, 0]]);
+  });
+
+  it("遺失在先、之後退貨完成：同類即使全退出（含遺失）也不再退運費", async () => {
+    const { cookie, orderId, mugLine, mugB } = await shippedInBatches();
+    await confirmLossOk(mugB, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    const requestId = await requestReturnOk(cookie, orderId, [{ orderLineId: mugLine.id, quantity: 2 }]);
+    await approveReturn(requestId);
+    await receiveReturn(requestId, [{ orderLineId: mugLine.id, receivedQuantity: 2 }]);
+
+    await inspectReturn(requestId, [{ orderLineId: mugLine.id, sellableQuantity: 2, damagedQuantity: 0 }]);
+
     expect(splitOf(await refundsOf(orderId))).toEqual([["loss", 320, 100], ["return", 640, 0]]);
   });
 

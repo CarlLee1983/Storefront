@@ -175,6 +175,15 @@ export function deliveryStatusLabel(status: string): string {
   return Object.hasOwn(DELIVERY_STATUS_LABELS, status) ? DELIVERY_STATUS_LABELS[status]! : "進度未知";
 }
 
+/**
+ * 批次進度的顯示文字：確認遺失的批次若已有實際送達時間，依是否還有未遺失的數量說明——
+ * 還有未遺失的數量是「部分商品已確認遺失，其餘已送達（時間）」，全數遺失只說遺失（晚到的送達回報不改變結果）。
+ */
+export function shipmentProgressLabel(status: string, deliveredAt: number | null, hasUnlost: boolean): string {
+  if (status === "lost" && deliveredAt !== null) return hasUnlost ? `部分商品已確認遺失並退款，其餘已送達（實際送達：${formatDateTime(deliveredAt)}）` : deliveryStatusLabel(status);
+  return `${deliveryStatusLabel(status)}${deliveredAt !== null ? `（實際送達：${formatDateTime(deliveredAt)}）` : ""}`;
+}
+
 const SHIPMENT_EVENT_KIND_LABELS: Record<string, string> = {
   delivered: "送達",
   delivery_failed: "配送失敗",

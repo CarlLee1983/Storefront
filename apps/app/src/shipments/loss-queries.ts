@@ -21,7 +21,6 @@ export interface LossView {
   id: number;
   orderId: number;
   shipmentId: number;
-  note: string;
   /** 確認時間，UTC epoch 毫秒。 */
   confirmedAt: number;
   goodsTwd: number;
@@ -32,6 +31,8 @@ export interface LossView {
 }
 
 export interface AdminLossView extends LossView {
+  /** 管理員備註（可能含物流查證細節），不給顧客。 */
+  note: string;
   actor: string;
   /** 管理員表單一次提交的冪等鍵；重新登記退款時重送同一個確認要帶它。 */
   lossKey: string;
@@ -86,10 +87,10 @@ async function selectViews(db: DrizzleD1Database, where: SQL | undefined, limit?
   }));
 }
 
-/** 顧客自己訂單的確認遺失（不含確認人）；永遠含 `orders.customer_id` 條件。 */
+/** 顧客自己訂單的確認遺失（不含確認人與管理員備註）；永遠含 `orders.customer_id` 條件。 */
 export async function selectMyLosses(db: DrizzleD1Database, customerId: string, orderId: number): Promise<LossView[]> {
   const views = await selectViews(db, sql`${orders.customerId} = ${customerId} AND ${orders.id} = ${orderId}`);
-  return views.map(({ actor: _actor, lossKey: _lossKey, ...view }) => view);
+  return views.map(({ note: _note, actor: _actor, lossKey: _lossKey, ...view }) => view);
 }
 
 /** 管理員讀某張訂單的全部確認遺失。 */

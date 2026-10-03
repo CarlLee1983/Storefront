@@ -29,7 +29,7 @@ export type ConfirmLossResult =
 
 /**
  * 管理員確認某一批的部分商品遺失（ADR 0006、0007；設計文件 Q5、Q20、Q25）。單一 batch，同成同敗，是否成立由條件寫入的結果判斷（不先讀再寫）：
- * 1. 建立遺失案件：批次尚未送達（已送達是終點，不可再確認遺失；暫時配送失敗不是遺失，所以失敗與再次配送中的批次可以確認），
+ * 1. 建立遺失案件：批次尚未送達（有實際送達時間就是已送達，包含部分遺失之後才送達的批次；已送達是終點，不可再確認遺失；暫時配送失敗不是遺失，所以失敗與再次配送中的批次可以確認），
  *    且每筆遺失明細都在這一批裡，「該批已遺失 + 該批自助退貨占用 + 本次」不超過該批數量，
  *    「明細已遺失 + 退貨占用 + 本次」不超過明細已交運數量（與退貨申請 `returns/request.ts` 共用同一份數量，兩邊同一句條件寫入互斥；待審與核准中的退貨也占用，須先處理）。
  *    同一句算定退款拆分：商品款 = 遺失數量 × 原實付單價，原運費依 `lossShippingRefundSql`（任一該類遺失就退該類整類原運費一次，與取消、退貨、別案遺失互斥，見 `payments/exit-refund.ts`）。
@@ -66,7 +66,7 @@ export async function confirmShipmentLoss(
         ${lossShippingRefundSql(sql`ship.order_id`, itemsJson, "standard", "standard_shipping_fee_twd", "standard_shipping_twd")},
         ${lossShippingRefundSql(sql`ship.order_id`, itemsJson, "large", "large_shipping_fee_twd", "large_shipping_twd")}
       FROM shipments ship
-      WHERE ship.id = ${shipmentId} AND ship.delivery_status <> 'delivered' AND ${lossId} IS NULL
+      WHERE ship.id = ${shipmentId} AND ship.delivery_status <> 'delivered' AND ship.delivered_at IS NULL AND ${lossId} IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM json_each(${itemsJson}) item
           LEFT JOIN shipment_items ship_item ON ship_item.shipment_id = ship.id AND ship_item.order_line_id = json_extract(item.value, '$.orderLineId')
@@ -104,8 +104,8 @@ export async function confirmShipmentLoss(
   const found = results[results.length - 1]!.results[0] as { id: number; requestHash: string; refundId: number | null; refundStatus: RefundStatus | null } | undefined;
   if (!found) {
     // 寫入被擋下：已送達、明細不在這一批，或數量被占用／已遺失（全部由上面那句條件寫入判斷，這裡只讀出原因）
-    const [current] = await db.select({ deliveryStatus: shipments.deliveryStatus }).from(shipments).where(eq(shipments.id, shipmentId));
-    if (current?.deliveryStatus === "delivered") return fail("shipment_delivered");
+    const [current] = await db.select({ deliveryStatus: shipments.deliveryStatus, deliveredAt: shipments.deliveredAt }).from(shipments).where(eq(shipments.id, shipmentId));
+    if (current?.deliveryStatus === "delivered" || (current?.deliveredAt ?? null) !== null) return fail("shipment_delivered");
     const inBatch = new Set((await db.select({ orderLineId: shipmentItems.orderLineId }).from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId))).map((row) => row.orderLineId));
     return fail(items.some((item) => !inBatch.has(item.orderLineId)) ? "loss_line_invalid" : "loss_quantity_exceeded");
   }

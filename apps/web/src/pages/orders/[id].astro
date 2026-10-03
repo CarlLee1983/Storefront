@@ -258,8 +258,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                   <li>
                     <p><strong>物流確認遺失</strong>（{formatDateTime(loss.confirmedAt)}）</p>
                     <ul>{loss.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}</li>)}</ul>
-                    <p class="cancellation-note">{customerLossNote(loss.refund !== null)}</p>
-                    <p>應退款 NT$ {priceFormat.format(loss.goodsTwd + loss.shippingTwd)}（商品款 NT$ {priceFormat.format(loss.goodsTwd)}、運費 NT$ {priceFormat.format(loss.shippingTwd)}）</p>
+                    <p class="cancellation-note">{customerLossNote(loss.refund !== null, loss.goodsTwd + loss.shippingTwd > 0)}</p>
+                    {loss.goodsTwd + loss.shippingTwd > 0 && <p>應退款 NT$ {priceFormat.format(loss.goodsTwd + loss.shippingTwd)}（商品款 NT$ {priceFormat.format(loss.goodsTwd)}、運費 NT$ {priceFormat.format(loss.shippingTwd)}）</p>}
                     {loss.refund && <p>退款 NT$ {priceFormat.format(loss.refund.amountTwd)}：{customerRefundStatusLabel(loss.refund.status)}</p>}
                   </li>
                 ))}

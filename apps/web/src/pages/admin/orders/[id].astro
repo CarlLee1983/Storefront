@@ -178,7 +178,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
         {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} submittedLoss={submittedLoss} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
           <thead>
-            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>已取消</th><th>取消審核中</th><th>已退貨</th><th>退貨處理中</th><th>配送類型</th><th>小計</th></tr>
+            <tr><th>商品</th><th>單價（下單當時）</th><th>數量</th><th>已交運</th><th>已取消</th><th>取消審核中</th><th>已退貨</th><th>退貨處理中</th><th>已遺失</th><th>配送類型</th><th>小計</th></tr>
           </thead>
           <tbody>
             {order.lines.map((line) => (
@@ -191,6 +191,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
                 <td data-label="取消審核中">{line.pendingCancellationQuantity}</td>
                 <td data-label="已退貨">{line.returnedQuantity}</td>
                 <td data-label="退貨處理中">{line.openReturnQuantity}</td>
+                <td data-label="已遺失">{line.lostQuantity}</td>
                 <td data-label="配送類型">{DELIVERY_TYPE_LABELS[line.deliveryType]}</td>
                 <td data-label="小計">NT$ {priceFormat.format(line.unitPriceTwd * line.quantity)}</td>
               </tr>

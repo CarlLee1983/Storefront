@@ -14,7 +14,9 @@ async function assertNoOverflowAndAxe(page: Page, width: number) {
 
 /** 目前台北時間（到秒）的 `datetime-local` 值。 */
 function taipeiLocalNow(): string {
-  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 19);
+  const value = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 19);
+  // 秒數為 0 時 Chrome 把 datetime-local 正規化成 HH:MM，帶 :00 的值會被判為格式錯誤
+  return value.endsWith(":00") ? value.slice(0, 16) : value;
 }
 
 for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }]) {

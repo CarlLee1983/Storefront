@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { effectiveNow } from "../shared/high-water-mark";
-import { isLatestEvent } from "../shipments/queries";
+import { hasUnlostQuantity, isLatestEvent, lostInBatchQuantity } from "../shipments/queries";
 
 /**
  * 交易通知的信件本體（outbox）：和業務變化寫在同一個 batch，所以業務事實成立，信就一定存在，
@@ -97,20 +97,26 @@ export function insertShipmentNotice(orderId: number, dispatchKey: string): SQL 
   `;
 }
 
+/** 批次實際送達的商品與數量一段文字（以 `shipments` 為外層列）：扣掉確認遺失的數量，只列未遺失的。 */
+const deliveredItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || (item.quantity - ${lostInBatchQuantity(sql`item.order_line_id`, sql`shipments.id`)}), '、')
+  FROM shipment_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.shipment_id = shipments.id AND item.quantity > ${lostInBatchQuantity(sql`item.order_line_id`, sql`shipments.id`)})`;
+
 /**
- * 送達通知：一個出貨批次一封，事件鍵 `shipment_delivered:<批次編號>`；只在該批目前已送達時寫，信件記載寫信當下的送達時間（之後才到的較早送達回報會改 `delivered_at`，但不改寫已寄出的信）；
+ * 送達通知：一個出貨批次一封，事件鍵 `shipment_delivered:<批次編號>`；只在該批已有實際送達時間、且還有未遺失的數量時寫（部分遺失的批次照寄，只列未遺失的數量；全數遺失的批次不寄），信件記載寫信當下的送達時間（之後才到的較早送達回報會改 `delivered_at`，但不改寫已寄出的信）；
  * 多筆送達回報、重送都只會有一封（信遺失時同一事件重送會補回）。信件描述這一批的商品與實際送達時間（台灣時間）。
  */
 export function insertDeliveredNotice(shipmentId: number): SQL {
   return sql`
     INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
     SELECT orders.customer_id, 'shipment_delivered', '訂單 #' || orders.id || ' 有一批商品已送達',
-      '訂單 #' || orders.id || ' 有一批商品已送達：' || ${shipmentItemsText} || '。' ||
+      '訂單 #' || orders.id || ' 有一批商品已送達：' || ${deliveredItemsText} || '。' ||
       '送達時間：' || strftime('%Y-%m-%d %H:%M', shipments.delivered_at / 1000, 'unixepoch', '+8 hours') || '（台灣時間）。' ||
-      '各批出貨進度請至訂單頁查看。',
+      CASE WHEN EXISTS (SELECT 1 FROM shipment_loss_items WHERE loss_id IN (SELECT id FROM shipment_losses WHERE shipment_id = shipments.id))
+        THEN '這一批另有商品經物流確認遺失，已另行通知並退款，上面只列實際送達的數量。' ELSE '' END ||
+      '送達隔日起 7 天內可在訂單頁自助申請退貨。各批出貨進度請至訂單頁查看。',
       'shipment_delivered:' || shipments.id, ${effectiveNow}
     FROM shipments JOIN orders ON orders.id = shipments.order_id
-    WHERE shipments.id = ${shipmentId} AND shipments.delivery_status = 'delivered'
+    WHERE shipments.id = ${shipmentId} AND shipments.delivered_at IS NOT NULL AND ${hasUnlostQuantity(sql`shipments.id`)}
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
@@ -242,10 +248,11 @@ export function insertLossConfirmedNotice(lossId: number | SQL): SQL {
     SELECT orders.customer_id, 'shipment_loss_confirmed', '訂單 #' || orders.id || ' 有商品確認在運送中遺失',
       '訂單 #' || orders.id || ' 有商品經物流確認在運送中遺失：' || ${lossItemsText} || '。' ||
       '這些商品不會補寄，如需再購買請重新下單。' ||
-      '應退款 NT$' || (sl.goods_twd + sl.standard_shipping_twd + sl.large_shipping_twd) || '（商品款 NT$' || sl.goods_twd || '、運費 NT$' || (sl.standard_shipping_twd + sl.large_shipping_twd) || '），' ||
-      CASE WHEN EXISTS (SELECT 1 FROM refunds WHERE refunds.shipment_loss_id = sl.id)
-        THEN '退款完成會另行通知；各筆退款的進度請至訂單頁查看。'
-        ELSE '這筆退款目前還不能自動辦理，客服會與你聯繫處理。' END,
+      CASE WHEN sl.goods_twd + sl.standard_shipping_twd + sl.large_shipping_twd = 0 THEN '這些商品沒有需要退款的金額。'
+        ELSE '應退款 NT$' || (sl.goods_twd + sl.standard_shipping_twd + sl.large_shipping_twd) || '（商品款 NT$' || sl.goods_twd || '、運費 NT$' || (sl.standard_shipping_twd + sl.large_shipping_twd) || '），' ||
+          CASE WHEN EXISTS (SELECT 1 FROM refunds WHERE refunds.shipment_loss_id = sl.id)
+            THEN '退款完成會另行通知；各筆退款的進度請至訂單頁查看。'
+            ELSE '這筆退款目前還不能自動辦理，客服會與你聯繫處理。' END END,
       'shipment_loss:' || sl.id || ':confirmed', ${effectiveNow}
     FROM shipment_losses sl JOIN orders ON orders.id = sl.order_id
     WHERE sl.id = ${lossId}

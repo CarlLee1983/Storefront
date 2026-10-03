@@ -81,7 +81,8 @@ export function describeReturnRequestFailure(result: { reason: string; fields?: 
 }
 
 /** 顧客看的遺失說明：不補寄、需要再購買請重新下單；退款尚未登記（額度被占用等）時不承諾自動辦理，改說明客服會聯繫。 */
-export function customerLossNote(refundRegistered: boolean): string {
+export function customerLossNote(refundRegistered: boolean, refundDue = true): string {
   const base = "物流確認這些商品在運送中遺失，不會補寄；如需再購買請重新下單。";
+  if (!refundDue) return `${base}這些商品沒有需要退款的金額。`;
   return refundRegistered ? `${base}已依原實付單價辦理退款，進度見「退款進度」。` : `${base}這筆退款目前還不能自動辦理，客服會與你聯繫處理。`;
 }

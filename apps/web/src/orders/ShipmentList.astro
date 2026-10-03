@@ -1,6 +1,6 @@
 ---
 import { DELIVERY_TYPE_LABELS, type DeliveryType } from "@storefront/app/shipping-types";
-import { appointmentSummary, customerShipmentSummary, deliveryStatusLabel, formatDateTime, shipmentEventKindLabel, shipmentSummary } from "./labels";
+import { appointmentSummary, customerShipmentSummary, formatDateTime, shipmentEventKindLabel, shipmentProgressLabel, shipmentSummary } from "./labels";
 interface Props {
   shipments: Array<{
     id: number;
@@ -10,7 +10,7 @@ interface Props {
     deliveryStatus: string;
     deliveredAt: number | null;
     events: Array<{ id: number; eventKey: string; kind: string; occurredAt: number; noticeExpected: boolean; noticeMessageId: number | null }>;
-    items: Array<{ orderLineId?: number; productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }>;
+    items: Array<{ orderLineId?: number; lostQuantity?: number; productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }>;
   }>;
   /** 顧客頁用較口語的物流單號說明；後台顯示「（未附）」。 */
   customer?: boolean;
@@ -27,11 +27,11 @@ const { shipments, customer = false, admin = false, submittedEvent, submittedLos
   {shipments.map((shipment, index) => <li>
     <p class="shipment-title"><strong>第 {index + 1} 批</strong></p>
     <ul class="shipment-items">
-      {shipment.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}（{DELIVERY_TYPE_LABELS[item.deliveryType]}）</li>)}
+      {shipment.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}（{DELIVERY_TYPE_LABELS[item.deliveryType]}）{(item.lostQuantity ?? 0) > 0 && `・已遺失 ${item.lostQuantity}`}</li>)}
     </ul>
     <p>{customer ? customerShipmentSummary(shipment.shippedAt, shipment.trackingNumber) : shipmentSummary(shipment.shippedAt, shipment.trackingNumber)}</p>
     {shipment.appointment && <p>{appointmentSummary(shipment.appointment)}</p>}
-    <p class="shipment-progress"><strong>配送進度：</strong>{deliveryStatusLabel(shipment.deliveryStatus)}{shipment.deliveredAt !== null && `（實際送達：${formatDateTime(shipment.deliveredAt)}）`}</p>
+    <p class="shipment-progress"><strong>配送進度：</strong>{shipmentProgressLabel(shipment.deliveryStatus, shipment.deliveredAt, shipment.items.some((item) => item.quantity > (item.lostQuantity ?? 0)))}</p>
     {admin && <details class="shipment-events" open={shipment.deliveryStatus === "delivery_failed"}>
       <summary>物流回報（{shipment.events.length}）</summary>
       {shipment.events.length > 0 && <ul>
@@ -67,7 +67,7 @@ const { shipments, customer = false, admin = false, submittedEvent, submittedLos
         <button type="submit" class="button-primary">記錄物流回報</button>
       </form>
     </details>}
-    {admin && shipment.deliveryStatus !== "delivered" && <details class="shipment-loss">
+    {admin && shipment.deliveredAt === null && shipment.deliveryStatus !== "delivered" && <details class="shipment-loss">
       <summary>確認遺失</summary>
       <form method="post" class="shipment-loss-form" onsubmit="return confirm('確定確認這批商品遺失嗎？會依原實付單價退款並通知顧客，不會回補庫存、也不會補寄，無法撤回。')">
         <input type="hidden" name="intent" value="confirm-loss" />
