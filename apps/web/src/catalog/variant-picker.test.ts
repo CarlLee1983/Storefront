@@ -1,6 +1,6 @@
 import type { VariantDetail } from "@storefront/app/catalog-types";
 import { describe, expect, it } from "vitest";
-import { describeAvailability, findVariant, initialVariant, optionChoices, selectOption, variantLabel } from "./variant-picker";
+import { describeAvailability, findVariant, initialVariant, optionChoices, selectOption, variantFromParam, variantLabel } from "./variant-picker";
 
 const variant = (id: number, optionValues: string[], available: number, overrides: Partial<VariantDetail> = {}): VariantDetail => ({
   id, isDefault: id === 1, optionValues, priceTwd: 1000 * id, compareAtPriceTwd: null, available, imageId: null, deliveryType: "standard", ...overrides,
@@ -18,6 +18,17 @@ describe("initialVariant", () => {
     expect(initialVariant(table)?.id).toBe(2);
     expect(initialVariant([variant(1, ["a"], 0), variant(2, ["b"], 0)])?.id).toBe(1);
     expect(initialVariant([])).toBeNull();
+  });
+});
+
+describe("variantFromParam", () => {
+  it("依編號選到販售中的變體，包含已售完的", () => {
+    expect(variantFromParam(table, "3")?.id).toBe(3);
+    expect(variantFromParam(table, "1")?.id).toBe(1);
+  });
+
+  it.each([null, "", "abc", "0", "-1", "2.5", "02", "99", "1e1"])("無效或不存在的 %s 為 null", (param) => {
+    expect(variantFromParam(table, param)).toBeNull();
   });
 });
 

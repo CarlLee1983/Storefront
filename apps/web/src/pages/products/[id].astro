@@ -1,7 +1,7 @@
 ---
 import { env } from "cloudflare:workers";
 import { MAX_QUANTITY } from "../../cart/cart";
-import { describeAvailability, initialVariant, optionChoices } from "../../catalog/variant-picker";
+import { describeAvailability, initialVariant, optionChoices, variantFromParam } from "../../catalog/variant-picker";
 import CartToast from "../../components/CartToast.astro";
 import NotFoundContent from "../../components/NotFoundContent.astro";
 import ProductGallery from "../../components/ProductGallery.astro";
@@ -21,16 +21,19 @@ if (!product) Astro.response.status = 404;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 const variants = product?.variants ?? [];
 // 初始選取的變體：與瀏覽器端的選取邏輯共用 variant-picker，伺服器端渲染與互動後的畫面一致
-const selected = initialVariant(variants);
+// `?variant=<id>` 讓每個變體有可直接開啟的網址；無效或已停賣時退回預設選取
+const selected = variantFromParam(variants, Astro.url.searchParams.get("variant")) ?? initialVariant(variants);
 const selection = selected?.optionValues ?? [];
 const sale = selected ? saleDisplay(selected.priceTwd, selected.compareAtPriceTwd) : null;
 const specs = product ? [["尺寸", product.dimensions], ["材質", product.material], ["保養", product.care]].filter(([, text]) => text !== "") : [];
 const variantsData = product ? JSON.stringify({ productId: product.id, name: product.name, images: product.images, variants }).replace(/</g, "\\u003c") : "";
-const jsonLd = product ? serializeJsonLd(productJsonLd(product, new URL(Astro.url.pathname, siteOrigin(env.SITE_ORIGIN, Astro.url)).href, siteOrigin(env.SITE_ORIGIN, Astro.url))) : "";
+const origin = siteOrigin(env.SITE_ORIGIN, Astro.url);
+const productData = product ? productJsonLd(product, new URL(Astro.url.pathname, origin).href, origin) : null;
+const jsonLd = productData ? serializeJsonLd(productData) : "";
 ---
 <Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={product?.images[0]?.variants.at(-1)?.key ? `/images/${product.images[0]!.variants.at(-1)!.key}` : undefined} noindex={!product} hideTitle={!!product}>
   {product ? <>
-    <script is:inline type="application/ld+json" set:html={jsonLd} />
+    {jsonLd && <script is:inline type="application/ld+json" set:html={jsonLd} />}
     <nav class="breadcrumb" aria-label="麵包屑">
       <ol>
         <li><a href="/products">全部商品</a></li>
@@ -113,7 +116,8 @@ const jsonLd = product ? serializeJsonLd(productJsonLd(product, new URL(Astro.ur
     const availability = document.querySelector<HTMLElement>("#variant-availability")!;
     const summary = document.querySelector<HTMLElement>("#variant-summary");
     const gallery = document.querySelector<HTMLElement>(".gallery");
-    let current = initialVariant(variants)!;
+    // 伺服器端已依網址選定變體（form 帶著它的編號），客戶端從同一個起點接手
+    let current = variants.find((variant) => variant.id === Number(form.dataset.variantId)) ?? initialVariant(variants)!;
 
     // 圖庫跳到變體指定的那一張；沒有指定就維持目前顯示
     function showVariantImage() {

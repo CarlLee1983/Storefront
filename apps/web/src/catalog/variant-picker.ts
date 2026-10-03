@@ -10,6 +10,12 @@ export function initialVariant(variants: readonly VariantDetail[]): VariantDetai
   return variants.find(isPurchasable) ?? variants[0] ?? null;
 }
 
+/** 網址 `?variant=<id>` 指定的變體：只認販售中的變體編號（正整數）；缺少、不合法或已停賣為 null，呼叫端退回預設選取。 */
+export function variantFromParam(variants: readonly VariantDetail[], param: string | null): VariantDetail | null {
+  if (param === null || !/^[1-9]\d*$/.test(param)) return null;
+  return variants.find((variant) => variant.id === Number(param)) ?? null;
+}
+
 /** 選取的選項值剛好對應的變體；那組選項沒有販售（或已停賣）時為 undefined。 */
 export function findVariant(variants: readonly VariantDetail[], selection: Selection): VariantDetail | undefined {
   return variants.find((variant) => variant.optionValues.every((value, index) => value === selection[index]));

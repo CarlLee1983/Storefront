@@ -297,7 +297,9 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 
 ### 結構化資料與 sitemap（#125）
 
-- 商品頁輸出 schema.org JSON-LD：無選項商品是 `Product`＋`Offer`；有選項商品是 `ProductGroup`，每個販售中變體各有自己的價格（TWD）與供貨（`InStock`／`OutOfStock`），不以最低價代表全部；全部停賣時不輸出報價。不輸出評價與品牌。名稱與說明序列化時 `<`、`>`、`&` 轉成 `\uXXXX`，`</script>` 無法跳出標籤。
+- 商品頁輸出 schema.org JSON-LD：無選項商品是 `Product`＋`Offer`；有選項商品是 `ProductGroup`，每個販售中變體各有自己的價格（TWD）、供貨（`InStock`／`OutOfStock`）與網址，不以最低價代表全部。`variesBy` 只放 Google 接受的屬性：選項名稱「顏色／尺寸／材質／花色／圖案」對應 `color`／`size`／`material`／`pattern`（對應表在 `apps/web/src/seo/product-jsonld.ts`），其他名稱不放進 `variesBy`。全部停賣（頁面不給報價）時不輸出 JSON-LD。不輸出評價與品牌。名稱與說明序列化時 `<`、`>`、`&` 轉成 `\uXXXX`，`</script>` 無法跳出標籤。
+- 商品頁支援 `?variant=<變體編號>`：伺服器端依參數預選該變體（價格、可售量、加入購物車），編號無效或已停賣時退回預設選取；canonical 維持不帶參數。各變體 Offer 的網址即此網址。
+- 尚未達到 Google merchant listing 資格的部分：沒有圖片的商品、0 元變體不符資格；運費與退貨政策尚未標記（`shippingDetails`、`hasMerchantReturnPolicy`）。
 - `/sitemap.xml` 收錄固定公開頁、有上架商品的分類頁與「上架且至少一個販售中變體」的商品頁；不含帳戶、訂單、購物車、結帳、搜尋與後台。超過 50,000 個網址時改為 sitemap index，指向 `/sitemap-<n>.xml`。商品沒有「最後修改」欄位，所以不輸出 `lastmod`。`/robots.txt` 擋掉非公開路徑並指向 sitemap。
 - 網址的 origin 取自 Web Worker 的 `SITE_ORIGIN`（`wrangler.jsonc` 各環境設定；本機留空時用請求的 origin）。
 

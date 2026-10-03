@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { productJsonLd, serializeJsonLd, type JsonLdProduct } from "./product-jsonld";
+import { productJsonLd, serializeJsonLd, VARIES_BY_PROPERTIES, type JsonLdProduct } from "./product-jsonld";
 
 const origin = "https://shop.example";
 const pageUrl = `${origin}/products/7`;
@@ -17,11 +17,13 @@ const table: JsonLdProduct = {
   ],
 };
 
+const condition = "https://schema.org/NewCondition";
+
 describe("productJsonLd", () => {
-  it("無選項商品是 Product＋單一 Offer，幣別 TWD、有貨為 InStock，圖片用最大尺寸的絕對網址", () => {
+  it("無選項商品是 Product＋單一 Offer，幣別 TWD、有貨為 InStock、全新，圖片用最大尺寸的絕對網址", () => {
     expect(productJsonLd(plain, pageUrl, origin)).toEqual({
-      "@context": "https://schema.org", "@type": "Product", name: "馬克杯", description: "手作", image: [`${origin}/images/a-1280`], sku: "7",
-      offers: { "@type": "Offer", url: pageUrl, price: 320, priceCurrency: "TWD", availability: "https://schema.org/InStock" },
+      "@context": "https://schema.org", "@type": "Product", name: "馬克杯", url: pageUrl, description: "手作", image: [`${origin}/images/a-1280`], sku: "7",
+      offers: { "@type": "Offer", url: pageUrl, price: 320, priceCurrency: "TWD", itemCondition: condition, availability: "https://schema.org/InStock" },
     });
   });
 
@@ -30,24 +32,37 @@ describe("productJsonLd", () => {
     expect(productJsonLd(soldOut, pageUrl, origin)).toMatchObject({ offers: { availability: "https://schema.org/OutOfStock" } });
   });
 
-  it("有選項的商品是 ProductGroup，每個變體各自的價格與供貨，不以最低價代表全部，也沒有 AggregateOffer", () => {
+  it("有選項的商品是 ProductGroup：variesBy 用 schema.org 屬性，每個變體各自的價格、供貨與可直接開啟的網址，沒有 AggregateOffer", () => {
     const data = productJsonLd(table, pageUrl, origin) as { hasVariant: Record<string, unknown>[] } & Record<string, unknown>;
-    expect(data).toMatchObject({ "@type": "ProductGroup", productGroupID: "8", variesBy: ["尺寸"] });
+    expect(data).toMatchObject({ "@type": "ProductGroup", url: pageUrl, productGroupID: "8", variesBy: ["https://schema.org/size"] });
     expect(data).not.toHaveProperty("offers");
     expect(data).not.toHaveProperty("description");
     expect(data.hasVariant).toEqual([
-      { "@type": "Product", sku: "variant-80", name: "餐桌 / 120", offers: { "@type": "Offer", url: pageUrl, price: 9000, priceCurrency: "TWD", availability: "https://schema.org/InStock" } },
-      { "@type": "Product", sku: "variant-81", name: "餐桌 / 150", image: `${origin}/images/a-1280`, offers: { "@type": "Offer", url: pageUrl, price: 12000, priceCurrency: "TWD", availability: "https://schema.org/OutOfStock" } },
+      { "@type": "Product", sku: "variant-80", name: "餐桌 / 120", size: "120", offers: { "@type": "Offer", url: `${pageUrl}?variant=80`, price: 9000, priceCurrency: "TWD", itemCondition: condition, availability: "https://schema.org/InStock" } },
+      { "@type": "Product", sku: "variant-81", name: "餐桌 / 150", size: "150", image: `${origin}/images/a-1280`, offers: { "@type": "Offer", url: `${pageUrl}?variant=81`, price: 12000, priceCurrency: "TWD", itemCondition: condition, availability: "https://schema.org/OutOfStock" } },
     ]);
   });
 
-  it("全部停賣沒有變體：不輸出報價，也不虛構評價或品牌", () => {
-    const data = productJsonLd({ ...table, variants: [] }, pageUrl, origin);
-    expect(data).toMatchObject({ "@type": "Product" });
-    expect(data).not.toHaveProperty("offers");
-    expect(data).not.toHaveProperty("aggregateRating");
-    expect(data).not.toHaveProperty("review");
-    expect(data).not.toHaveProperty("brand");
+  it("兩個選項維度各自對應屬性；對應不到的維度不放進 variesBy 也不帶屬性值", () => {
+    const sofa: JsonLdProduct = { ...table, optionNames: ["顏色", "款式"], variants: [{ id: 90, optionValues: ["灰", "三人座"], priceTwd: 100, available: 1, imageId: null }] };
+    const data = productJsonLd(sofa, pageUrl, origin) as { hasVariant: Record<string, unknown>[] } & Record<string, unknown>;
+    expect(data.variesBy).toEqual(["https://schema.org/color"]);
+    expect(data.hasVariant[0]).toMatchObject({ color: "灰" });
+    expect(data.hasVariant[0]).not.toHaveProperty("款式");
+  });
+
+  it("全部都對應不到時沒有 variesBy", () => {
+    const data = productJsonLd({ ...table, optionNames: ["款式"] }, pageUrl, origin);
+    expect(data).not.toHaveProperty("variesBy");
+  });
+
+  it("選項名稱對應表", () => {
+    expect(VARIES_BY_PROPERTIES).toEqual({ 顏色: "color", 尺寸: "size", 材質: "material", 花色: "pattern", 圖案: "pattern" });
+  });
+
+  it("全部停賣沒有變體：整段不輸出", () => {
+    expect(productJsonLd({ ...table, variants: [] }, pageUrl, origin)).toBeNull();
+    expect(productJsonLd({ ...plain, variants: [] }, pageUrl, origin)).toBeNull();
   });
 });
 
