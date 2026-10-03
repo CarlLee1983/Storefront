@@ -22,9 +22,9 @@ export interface PaidMixedOrder {
 
 /**
  * 走完整付款流程成立一張已付款的混合訂單：馬克杯 3 件（一般配送，運費 100）、餐桌 1 件（大型配送，運費 600），
- * 付款成功後訂單由這筆付款支付（取消退款綁定它）。總額 960 + 6000 + 700 = 7660。
+ * 付款成功後訂單由這筆付款支付（取消退款綁定它）。總額 960 + 6000 + 700 = 7660。`beforePayment` 在付款成功之前對閘道注入情境（例如讓開立發票失敗）。
  */
-export async function paidMixedOrder(name = "alice"): Promise<PaidMixedOrder> {
+export async function paidMixedOrder(name = "alice", { beforePayment }: { beforePayment?: (gateway: FakeGateway) => void } = {}): Promise<PaidMixedOrder> {
   const cookie = await signInCustomer(name);
   const mug = await createStockedListing("馬克杯", 320, 10);
   const table = await createStockedListing("餐桌", 6000, 5, "large");
@@ -35,6 +35,7 @@ export async function paidMixedOrder(name = "alice"): Promise<PaidMixedOrder> {
   if (!placed.ok) throw new Error(`結帳失敗：${placed.reason}`);
   const orderId = placed.data.orderId;
   const gateway = installFakeGateway();
+  beforePayment?.(gateway);
   const gatewayPaymentId = await startPaymentFor(cookie, orderId, gateway);
   const applied = await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
   if (!applied.ok || applied.data.orderStatus !== "paid") throw new Error("付款未使訂單轉為已付款");

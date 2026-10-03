@@ -72,6 +72,7 @@ describe("結帳成功", () => {
         shipmentReturns: [],
         returnBatches: [],
         shipments: [],
+        timeline: { events: [expect.objectContaining({ kind: "order_placed" })], progress: expect.objectContaining({ flags: [] }) },
       },
     });
   });

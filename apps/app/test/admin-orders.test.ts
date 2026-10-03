@@ -320,6 +320,7 @@ describe("管理員訂單明細", () => {
         shipmentReturns: [],
         shipments: [],
         notes: [],
+        timeline: { events: [expect.objectContaining({ kind: "order_placed", refId: orderId })], progress: expect.objectContaining({ flags: [] }), todos: [expect.objectContaining({ kind: "payment_attention", href: `/admin/orders/${orderId}#payments` })] },
       },
     });
   });

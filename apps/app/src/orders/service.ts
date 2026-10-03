@@ -23,6 +23,8 @@ import { diagnoseLines } from "./diagnosis";
 import { checkoutInput, orderIdInput } from "./input";
 import { cancelPendingOrder, markOverdueOrdersExpired, placeOrderIfAvailable, selectOrderStatus, selectOrders, selectVariantStates, selectRequestHash } from "./queries";
 import { requestHash } from "./request-hash";
+import { buildCustomerTimeline } from "./timeline";
+import { selectTimelineFacts } from "./timeline-facts";
 import { CANCELLED, PENDING_PAYMENT } from "./schema";
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
@@ -120,7 +122,10 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const losses = await selectMyLosses(db, customerId, order.id);
       const shipmentReturns = await selectMyShipmentReturns(db, customerId, order.id);
       const returnBatches = await selectReturnBatches(db, order.id, await readEffectiveNow(db, clock.now()));
-      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], invoices: invoices.get(order.id) ?? [], cancellations, returns, returnBatches, losses, shipmentReturns });
+      const detail = { payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], invoices: invoices.get(order.id) ?? [], cancellations, returns, losses, shipmentReturns };
+      // 時間線與進度由上面各域的檢視推導，不另存；只多查各域檢視沒帶的事實時間
+      const timeline = buildCustomerTimeline({ order, ...detail, facts: await selectTimelineFacts(db, order.id) });
+      return ok({ ...order, ...detail, returnBatches, timeline });
     },
 
     /**

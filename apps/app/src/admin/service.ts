@@ -22,6 +22,8 @@ import { selectOrderExportBatch, selectOrdersForAdmin } from "../orders/admin-qu
 import { addOrderNote, selectOrderNotes } from "../order-notes/notes";
 import { orderIdInput } from "../orders/input";
 import { selectOrderForAdmin } from "../orders/queries";
+import { buildAdminTimeline } from "../orders/timeline";
+import { selectTimelineFacts } from "../orders/timeline-facts";
 import { dispatchShipment } from "../shipments/dispatch";
 import { recordShipmentEvent } from "../shipments/events";
 import { declareShipmentReturn } from "../shipment-returns/declare";
@@ -610,13 +612,12 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       });
     },
 
-    /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */
+    /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間，以及由各域推導的事件時間線、進度與待辦入口。 */
     getOrderForAdmin(jwt: unknown, input: unknown) {
       return authorized(jwt, orderIdInput, input, async (_actor, { orderId }) => {
         const order = await selectOrderForAdmin(db, orderId);
         if (!order) return fail("order_not_found");
-        return ok({
-          ...order,
+        const detail = {
           payments: await selectOrderPaymentSummaries(db, clock.now(), orderId),
           refunds: await selectOrderRefunds(db, orderId),
           invoices: await selectOrderInvoices(db, orderId),
@@ -624,8 +625,10 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           returns: await selectOrderReturns(db, orderId),
           losses: await selectOrderLosses(db, orderId),
           shipmentReturns: await selectOrderShipmentReturns(db, orderId),
-          notes: await selectOrderNotes(db, orderId),
-        });
+        };
+        // 時間線與待辦由上面各域的檢視推導，不另存
+        const timeline = buildAdminTimeline({ order, ...detail, facts: await selectTimelineFacts(db, orderId) });
+        return ok({ ...order, ...detail, notes: await selectOrderNotes(db, orderId), timeline });
       });
     },
   };
