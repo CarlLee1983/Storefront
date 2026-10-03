@@ -1,15 +1,26 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { BASE_URL } from "./constants";
 
-const ROOT = resolve(import.meta.dirname, "../..");
 const DAY_MS = 86_400_000;
+/** wrangler dev 內建的 Local Explorer：由執行 App 的同一個 workerd 行程執行 SQL（D1 binding 的 raw 查詢）。 */
+const D1_RAW_URL = `${BASE_URL}/cdn-cgi/local/explorer/api/d1/database/DB/raw`;
 
-/** 對 E2E 專用的 App D1 執行 SQL（與 serve.ts 建立的狀態與設定相同），只用來安排顧客等前置資料，斷言一律走畫面。 */
+/**
+ * 對 E2E 專用的 App D1 執行 SQL，只用來安排顧客等前置資料，斷言一律走畫面。
+ * 經受測伺服器自己的 Local Explorer 端點寫入，不從別的行程直接開 SQLite 檔：外部行程的寫入會與 workerd 內的
+ * 查詢爭用檔案鎖，讓伺服器的 D1 查詢以 internal error 失敗、夾具本身也會 SQLITE_BUSY；從行程內寫入就沒有跨行程爭用。
+ * 維持同步（用 curl）：夾具在測試裡是同步呼叫，且一次呼叫的多個語句在同一個請求內依序執行。
+ */
 export function writeFixture(sql: string): void {
-  const config = resolve(ROOT, ".wrangler/e2e/app/wrangler.json");
-  const database = JSON.parse(readFileSync(config, "utf8")).d1_databases[0].database_name as string;
-  execFileSync("bunx", ["wrangler", "d1", "execute", database, "--local", "-c", config, "--persist-to", resolve(ROOT, ".wrangler/e2e/state-app"), "--command", sql], { cwd: resolve(ROOT, "apps/app"), stdio: "pipe" });
+  const output = execFileSync(
+    "curl",
+    ["--silent", "--show-error", "--max-time", "30", "--request", "POST", "--header", "content-type: application/json", "--data-binary", "@-", "--write-out", "\n%{http_code}", D1_RAW_URL],
+    { input: JSON.stringify({ sql }), encoding: "utf8" },
+  );
+  const separator = output.lastIndexOf("\n");
+  const status = Number(output.slice(separator + 1));
+  const body = output.slice(0, separator);
+  if (status !== 200) throw new Error(`夾具 SQL 執行失敗（HTTP ${status}）：${body}`);
 }
 
 /** 新增一位有效 session 的顧客；`verifiedEmail` 有給就同時安排一筆已驗證的聯絡 email（結帳的前提），沒給則是尚未驗證的新顧客。 */
