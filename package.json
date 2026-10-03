@@ -26,5 +26,8 @@
     "db:migrate:production": "bun run --filter @storefront/app db:migrate:production",
     "deploy:app:production": "bun run --filter @storefront/app deploy:production",
     "deploy:web:production": "bun run --filter @storefront/web deploy:production"
+  },
+  "patchedDependencies": {
+    "@cloudflare/vitest-pool-workers@0.22.0": "patches/@cloudflare%2Fvitest-pool-workers@0.22.0.patch"
   }
 }
