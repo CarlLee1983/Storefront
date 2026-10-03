@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer, writeFixture } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { expectNothingOmitted } from "../harness/admin-list";
 
 /** 無水平捲動、主要區域的操作元件至少 44px、無 axe 違規。 */
 async function assertLayout(page: Page, width: number) {
@@ -102,6 +103,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 管理員的發票待辦如實列出明確失敗，補辦後同一張發票開立、顧客收到通知
       await admin.goto("/admin/invoices");
+      await expectNothingOmitted(admin);
       await expect(admin.getByRole("heading", { level: 1, name: "發票待辦" })).toBeVisible();
       const failedRow = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${failedOrder}`, exact: true }) });
       await expect(failedRow).toContainText("明確失敗");
@@ -125,6 +127,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await expect(page.locator("#invoices")).not.toContainText(/已結清|剩餘/);
       await assertNoOverflowAndAxe(page, viewport.width);
       await admin.goto("/admin/invoices");
+      await expectNothingOmitted(admin);
       await expect(admin.getByRole("region", { name: "待折讓的退款" })).toContainText(`#${issuedOrder}`);
       await assertLayout(admin, viewport.width);
 
@@ -141,6 +144,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 管理員在待辦補辦折讓：折讓完成後顧客看到累計折讓與餘額（NT$ 900 - 100 = 800），不再憑證待補，並收到折讓通知
       await admin.goto("/admin/invoices");
+      await expectNothingOmitted(admin);
       const allowanceRow = admin.getByRole("region", { name: "待折讓的退款" }).getByRole("row").filter({ has: admin.getByRole("link", { name: `#${issuedOrder}`, exact: true }) });
       await expect(allowanceRow).toContainText("待折讓");
       await assertLayout(admin, viewport.width);

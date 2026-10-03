@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer, writeFixture } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { expectNothingOmitted } from "../harness/admin-list";
 
 /** 無水平捲動、主要區域的操作元件至少 44px、無 axe 違規。 */
 async function assertLayout(page: Page, width: number) {
@@ -84,6 +85,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 管理員的待辦如實區分兩種狀態，並給出各自的操作
       await admin.goto("/admin/refunds");
+      await expectNothingOmitted(admin);
       await expect(admin.getByRole("heading", { level: 1, name: "退款待辦" })).toBeVisible();
       const failedRow = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${failedOrder}`, exact: true }) });
       const unknownRow = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${unknownOrder}`, exact: true }) });

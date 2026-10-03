@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { expectNothingOmitted } from "../harness/admin-list";
 
 /** 既有的訂單頁（返回連結、交運按鈕等）有尺寸不足的控制項（不在這張票範圍）：只檢查無水平捲動與 axe 零違規。 */
 async function assertNoOverflowAndAxe(page: Page, width: number) {
@@ -66,6 +67,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 管理員待辦看得到；核准
       await admin.goto("/admin/returns");
+      await expectNothingOmitted(admin);
       await expect(admin.getByRole("heading", { level: 1, name: "退貨處理" })).toBeVisible();
       const row = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: new RegExp(`#${orderId}`) }) });
       await expect(row).toContainText(`${lampName} × 2`);
@@ -101,6 +103,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 損壞品報廢：在庫與不可售同減，原因進流水
       await admin.goto("/admin/returns");
+      await expectNothingOmitted(admin);
       const scrap = admin.getByRole("region", { name: "不可售庫存" }).getByRole("row").filter({ hasText: lampName });
       await expect(scrap).toContainText("1");
       const ledgerUrl = await scrap.getByRole("link", { name: new RegExp(lampName) }).getAttribute("href");

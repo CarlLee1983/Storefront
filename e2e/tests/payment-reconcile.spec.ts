@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { expectNothingOmitted } from "../harness/admin-list";
 
 /** 無水平捲動、主要區域的操作元件至少 44px、無 axe 違規。 */
 async function assertLayout(page: Page, width: number) {
@@ -55,6 +56,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 管理員在補查頁看到這筆待查證的付款，補查後訂單轉已付款
       await admin.goto("/admin/payments");
+      await expectNothingOmitted(admin);
       await expect(admin.getByRole("heading", { level: 1, name: "付款補查" })).toBeVisible();
       const row = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${orderId}`, exact: true }) });
       await expect(row).toContainText("尚未發現問題");

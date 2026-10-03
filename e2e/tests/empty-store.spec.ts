@@ -56,6 +56,7 @@ test("桌機 header 在示範目錄數量的分類下仍為一排主要導覽，
   try {
     // 名稱與示範目錄同字數、不同文字：別的 spec 以分類名稱在下拉選單找分類，不能撞到這裡的
     const names = catalog.categories.map((category, index) => "標頭甲乙丙丁戊己庚辛".slice(index * 2, index * 2 + category.name.length).padEnd(category.name.length, "壬"));
+    expect(new Set(names).size, "分類名稱不可重複").toBe(names.length);
     for (const [index, category] of catalog.categories.entries()) {
       await seedListedProducts(context, { slug: `header-${category.slug}`, name: names[index]!, description: category.blurb }, [
         { name: `header-${category.slug}-商品`, priceTwd: 100, stock: 1 },
