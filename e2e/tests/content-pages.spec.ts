@@ -37,7 +37,10 @@ test("關於、常見問題與退換貨頁提供完整購物資訊和聯絡出�
   await expect(faq).toContainText("兩種登入方式各自獨立");
   await expect(faq).toContainText("購物車只保存在目前的瀏覽器，換裝置不會同步");
   await expect(faq).toContainText("訂單可能轉為已逾期");
-  await expect(faq).toContainText("電子發票會寄到你登入時使用的 email。");
+  await expect(faq).toContainText("一般宅配 NT$ 100、大型配送 NT$ 600");
+  await expect(faq).toContainText("分批出貨不會另外加收運費");
+  await expect(faq).toContainText("每一批各自計算期限");
+  await expect(faq).toContainText("本站使用模擬電子發票：付款成功後開立原額發票");
   await expect(faq).not.toContainText("編輯審閱註記");
   await expect(faq.getByRole("link", { name: "退換貨說明" })).toHaveAttribute("href", "/returns");
   await expect(faq.getByRole("link", { name: "hello@gravito.dev" })).toHaveCount(2);
@@ -45,10 +48,12 @@ test("關於、常見問題與退換貨頁提供完整購物資訊和聯絡出�
   await page.goto("/returns");
   const returns = page.locator("main");
   await expect(returns.locator("h2")).toHaveText(["申請期限", "商品條件", "收回與運費", "退款"]);
-  await expect(returns).toContainText("自到貨隔日起 7 天內可提出退換貨申請");
+  await expect(returns).toContainText("自商品送達日的隔日起 7 天內");
   await expect(returns).toContainText("退回運費由靜物負擔");
+  await expect(returns).toContainText("每一批依各自的送達日分別計算期限");
+  await expect(returns).toContainText("確認遺失時，退回商品款與該類原運費一次");
   await expect(returns).toContainText("14 個工作天內將款項退至原付款方式");
-  await expect(returns).toContainText("付款後無法自行取消");
+  await expect(returns).toContainText("付款後、出貨前可在訂單頁申請取消");
   await expect(returns.getByRole("link", { name: "hello@gravito.dev" })).toHaveCount(2);
   for (const link of await returns.getByRole("link", { name: "hello@gravito.dev" }).all()) {
     await expect(link).toHaveAttribute("href", "mailto:hello@gravito.dev");

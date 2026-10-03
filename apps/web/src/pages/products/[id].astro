@@ -85,7 +85,7 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
           <CartToast />
         </form>}
         {variantsData && <script is:inline type="application/json" id="product-variants" set:html={variantsData} />}
-        <p class="policy">售價含稅，運費依配送類型於結帳時計算。付款後無法自行取消訂單；商品或訂單問題請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。詳情請見<a href="/returns">退換貨說明</a>。</p>
+        <p class="policy">售價含稅，運費依配送類型於結帳時計算。付款後、出貨前可在訂單頁申請取消；商品或訂單問題請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。詳情請見<a href="/returns">退換貨說明</a>。</p>
       </section>
     </div>
     {product.related.length > 0 && <section class="related" aria-labelledby="related-heading">

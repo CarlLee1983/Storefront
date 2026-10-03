@@ -80,7 +80,7 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   await expect(information).toContainText(CATEGORY.name);
   await expect(information).toContainText("NT$ 680");
   await expect(information).toContainText("現貨，可售 10 件");
-  await expect(information).toContainText("售價含稅，運費依配送類型於結帳時計算。付款後無法自行取消訂單；商品或訂單問題請寫信至 hello@gravito.dev。");
+  await expect(information).toContainText("售價含稅，運費依配送類型於結帳時計算。付款後、出貨前可在訂單頁申請取消；商品或訂單問題請寫信至 hello@gravito.dev。");
 
   // 鍵盤：焦點在「增加數量」按鈕上按 Enter 加一、在「減少數量」上按空白鍵減一，再 Tab 到加入購物車
   const quantity = information.getByLabel("數量", { exact: true });
