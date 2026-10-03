@@ -158,8 +158,10 @@ interface Props {
       await Promise.race([warm(next), new Promise((resolve) => window.setTimeout(resolve, 1500))]);
       if (ticket !== navigation) return;
       // 程式觸發的捲動途中，scroll 事件的暫停（settle）不能依目前位置覆寫張數：慢裝置上捲動會停頓超過 settle 時間
-      pendingTarget = next;
       scrollIssued = true;
+      // 已經在目標位置就不會有 scroll／scrollend，不設 pendingTarget 才不會卡住
+      if (Math.abs(track.scrollLeft - next * track.clientWidth) < 1) return;
+      pendingTarget = next;
       window.clearTimeout(pendingTimer);
       // 有 scrollend 的瀏覽器由它收尾；沒有的才用逾時保底（逾時以真實時間，不是捲動是否完成）
       if (!supportsScrollEnd) pendingTimer = window.setTimeout(() => { pendingTarget = undefined; }, 2000);
