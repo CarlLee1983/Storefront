@@ -30,6 +30,8 @@ const adminCalls = (jwt: string) => ({
   relistProduct: () => app.relistProduct(jwt, { id: 1 }),
   listProductsForAdmin: () => app.listProductsForAdmin(jwt),
   listOrdersForAdmin: () => app.listOrdersForAdmin(jwt, {}),
+  exportOrdersForAdmin: () => app.exportOrdersForAdmin(jwt, {}),
+  addOrderNote: () => app.addOrderNote(jwt, { orderId: 1, note: "電話確認過" }),
   getOrderForAdmin: () => app.getOrderForAdmin(jwt, { orderId: 1 }),
   shipOrder: () => app.shipOrder(jwt, { orderId: 1 }),
   confirmShipmentLoss: () => app.confirmShipmentLoss(jwt, { shipmentId: 1, lossKey: "k", items: [{ orderLineId: 1, quantity: 1 }] }),

@@ -1,7 +1,8 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { parseStatusFilter } from "../../../admin/order-form";
+import { describeFailure } from "../../../admin/failure";
+import { readCursor, readOrderSearch, searchQuery, searchToInput } from "../../../admin/order-search";
 import OrderStatus from "../../../orders/OrderStatus.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
@@ -11,45 +12,75 @@ export const prerender = false;
 
 // 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
-const status = parseStatusFilter(Astro.url.searchParams.get("status"));
-const orders = await env.APP.listOrdersForAdmin(jwt, status === undefined ? {} : { status });
-if (!orders.ok) Astro.response.status = 403;
+const search = readOrderSearch(Astro.url.searchParams);
+const cursor = readCursor(Astro.url.searchParams);
+const orders = await env.APP.listOrdersForAdmin(jwt, searchToInput(search, cursor));
+if (!orders.ok) Astro.response.status = orders.reason === "unauthorized" ? 403 : 400;
+const searched = Object.values(search).some((value) => value !== "") || cursor !== undefined;
+const fieldErrors = (name: string) => (!orders.ok && orders.reason === "invalid_input" ? orders.fields[name] ?? [] : []);
+const exportHref = `/admin/orders/export${searchQuery(search) && `?${searchQuery(search)}`}`;
+const nextHref = orders.ok && orders.data.nextBeforeId !== null ? `/admin/orders?${searchQuery(search, orders.data.nextBeforeId)}` : undefined;
+const firstHref = `/admin/orders${searchQuery(search) && `?${searchQuery(search)}`}`;
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
 <AdminLayout title="訂單管理">
   {
-    !orders.ok ? (
+    !orders.ok && orders.reason === "unauthorized" ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : (
       <>
         <form method="get" class="admin-filter">
           <label class="filter-field">
+            訂單編號
+            <input type="number" name="orderId" inputmode="numeric" min="1" step="1" value={search.orderId} />
+            {fieldErrors("orderId").map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label class="filter-field">
+            顧客 email
+            <input type="search" name="email" value={search.email} maxlength="254" placeholder="可只填一部分" />
+            {fieldErrors("email").map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label class="filter-field">
             訂單狀態
             <select name="status">
-              <option value="" selected={status === undefined}>全部訂單狀態</option>
+              <option value="" selected={search.status === ""}>全部訂單狀態</option>
               {ORDER_STATUS_CODES.map((code) => (
-                <option value={code} selected={status === code}>{orderStatusLabel(code)}</option>
+                <option value={code} selected={search.status === code}>{orderStatusLabel(code)}</option>
               ))}
             </select>
           </label>
+          <label class="filter-field">
+            成立日期（起）
+            <input type="date" name="from" value={search.from} />
+            {fieldErrors("from").map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label class="filter-field">
+            成立日期（迄）
+            <input type="date" name="to" value={search.to} />
+            {fieldErrors("to").map((m) => <span class="error">{m}</span>)}
+          </label>
           <div class="filter-actions">
-            <button type="submit" class="btn-filter-submit">篩選</button>
-            {status !== undefined && (
-              <a href="/admin/orders" class="btn-filter-reset">清除條件</a>
-            )}
+            <button type="submit" class="btn-filter-submit">查找</button>
+            {searched && <a href="/admin/orders" class="btn-filter-reset">清除條件</a>}
           </div>
         </form>
-        <p>只顯示最新 200 筆訂單。</p>
-        {orders.data.length === 0 && <p>沒有符合的訂單。</p>}
+        {!orders.ok && <p class="error" role="alert">{describeFailure(orders, "查找失敗，請稍後再試").message}</p>}
+        {orders.ok && (
+          <p class="admin-orders-bar">
+            <span>每頁 20 筆，新的在前；匯出範圍與目前條件相同（全部符合的訂單，不限本頁）。</span>
+            <a href={exportHref} class="button-create" download>匯出 CSV</a>
+          </p>
+        )}
+        {orders.ok && orders.data.items.length === 0 && <p>沒有符合的訂單。</p>}
         {
-          orders.data.length > 0 && (
+          orders.ok && orders.data.items.length > 0 && (
             <div class="table-scroll admin-orders" tabindex="0" role="region" aria-label="管理資料表"><table>
               <thead>
                 <tr><th>訂單</th><th>商品</th><th>顧客</th><th>成立時間</th><th>訂單狀態</th><th>總金額</th><th>付款</th></tr>
               </thead>
               <tbody>
-                {orders.data.map((order) => (
+                {orders.data.items.map((order) => (
                   <tr>
                     <td data-label="訂單"><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
                     <td data-label="商品"><ul class="order-products">{order.lines.map(line => <li><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`} × {line.quantity}</span></li>)}</ul></td>
@@ -64,6 +95,15 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             </table></div>
           )
         }
+        {orders.ok && (cursor !== undefined || nextHref) && (
+          <nav class="admin-pagination" aria-label="訂單列表分頁">
+            <span class="pagination-info">本頁 {orders.data.items.length} 筆{nextHref ? "，還有更舊的訂單" : "，已到最舊的訂單"}</span>
+            <div class="pagination-controls">
+              {cursor !== undefined && <a href={firstHref} class="pagination-btn">← 回第一頁</a>}
+              {nextHref && <a href={nextHref} class="pagination-btn" rel="next">下一頁 →</a>}
+            </div>
+          </nav>
+        )}
       </>
     )
   }

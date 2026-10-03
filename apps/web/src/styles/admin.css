@@ -299,6 +299,14 @@
   color: var(--color-text);
   box-sizing: border-box;
 }
+.admin-shell .admin-orders-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
 .admin-shell .admin-filter .filter-actions {
   display: flex;
   align-items: center;

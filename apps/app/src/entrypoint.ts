@@ -343,6 +343,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().listOrdersForAdmin(jwt, input);
   }
 
+  exportOrdersForAdmin(jwt: string, input: unknown) {
+    return this.#admin().exportOrdersForAdmin(jwt, input);
+  }
+
+  addOrderNote(jwt: string, input: unknown) {
+    return this.#admin().addOrderNote(jwt, input);
+  }
+
   getOrderForAdmin(jwt: string, input: unknown) {
     return this.#admin().getOrderForAdmin(jwt, input);
   }

@@ -28,7 +28,7 @@ async function adminRefunds(orderId: number) {
 async function listedNeedsAttention(orderId: number): Promise<boolean | undefined> {
   const listed = await app.listOrdersForAdmin(await mintAccessJwt(), {});
   if (!listed.ok) throw new Error("讀取清單失敗");
-  return listed.data.find((order) => order.id === orderId)?.needsAttention;
+  return listed.data.items.find((order) => order.id === orderId)?.needsAttention;
 }
 
 describe("付款成功但未處理：需要處理的旗標（由查詢推導）", () => {

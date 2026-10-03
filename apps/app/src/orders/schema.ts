@@ -64,6 +64,9 @@ export const orders = sqliteTable(
   (table) => [
     uniqueIndex("orders_customer_idempotency_uidx").on(table.customerId, table.idempotencyKey),
     index("orders_customer_idx").on(table.customerId),
+    // 後台查找舊單：依狀態、成立時間篩選並以編號游標翻頁（見 `admin-queries.ts`）
+    index("orders_status_idx").on(table.status, table.id),
+    index("orders_created_idx").on(table.createdAt, table.id),
     check("orders_status_check", sql`${table.status} IN ('pending_payment', 'paid', 'partially_shipped', 'shipped', 'expired', 'cancelled')`),
   ],
 );

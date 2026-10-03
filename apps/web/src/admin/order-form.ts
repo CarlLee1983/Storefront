@@ -74,3 +74,17 @@ export function describeShipmentEventFailure(result: { reason: string; fields?: 
   };
   return { message: messages[result.reason] ?? "記錄物流回報失敗，請稍後再試", fields: result.fields ?? {} };
 }
+
+/** 客服備註表單 → RPC 輸入；內容原文送出（trim 與長度由 App 驗證）。 */
+export function noteFormToInput(form: FormData, orderId: number) {
+  return { orderId, note: toText(form.get("note")) };
+}
+
+/** 新增備註失敗結果 → 頁面上顯示的訊息；`unauthorized` 由頁面另外處理（403）。 */
+export function describeNoteFailure(result: { reason: string; fields?: Record<string, string[]> }) {
+  const messages: Record<string, string> = {
+    invalid_input: "備註內容有誤，請修正後再送出",
+    order_not_found: "找不到這張訂單",
+  };
+  return { message: messages[result.reason] ?? "新增備註失敗，請稍後再試", fields: result.fields ?? {} };
+}

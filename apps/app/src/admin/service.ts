@@ -17,7 +17,8 @@ import { reorderProductImages, deleteProductImage } from "../images/manage";
 import { uploadProductImage, type ProductImageBucket } from "../images/upload";
 import { selectStockMovements } from "../stock/ledger";
 import { selectShippingRates, updateShippingRate } from "../shipping/queries";
-import { selectOrdersForAdmin } from "../orders/admin-queries";
+import { selectOrderExportBatch, selectOrdersForAdmin } from "../orders/admin-queries";
+import { addOrderNote, selectOrderNotes } from "../order-notes/notes";
 import { orderIdInput } from "../orders/input";
 import { selectOrderForAdmin } from "../orders/queries";
 import { dispatchShipment } from "../shipments/dispatch";
@@ -52,7 +53,7 @@ import { recordReturnReceipt } from "../returns/receive";
 import { scrapUnavailable } from "../stock/scrap";
 import { selectApprovedWithoutRefund, selectCancellationsToReview, selectOrderCancellations } from "../cancellations/queries";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, scrapUnavailableInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
+import { addOrderNoteInput, adjustStockInput, scrapUnavailableInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
 /** 補查一筆付款（見 `createPaymentService().reconcilePayment`）；由 entrypoint 接上，管理服務自己不碰金流閘道。 */
 export type ReconcilePayment = ReturnType<typeof createPaymentService>["reconcilePayment"];
@@ -321,9 +322,25 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       return authorized(jwt, listStockMovementsInput, input, async (_actor, query) => ok(await selectStockMovements(db, query)));
     },
 
-    /** 所有訂單，可依訂單狀態篩選；新的在前，最多 200 筆。 */
+    /**
+     * 查找訂單：可依編號、顧客 email 片段、狀態、成立日期區間（台北時間）篩選；新的在前，一頁 20 筆，
+     * 以 `nextBeforeId` 游標往舊的翻頁（沒有下一頁為 null），舊單翻得到。
+     */
     listOrdersForAdmin(jwt: unknown, input: unknown) {
-      return authorized(jwt, listOrdersInput, input, async (_actor, { status }) => ok(await selectOrdersForAdmin(db, status)));
+      return authorized(jwt, listOrdersInput, input, async (_actor, filter) => ok(await selectOrdersForAdmin(db, filter)));
+    },
+
+    /**
+     * 匯出一批：條件與 `listOrdersForAdmin` 相同（同一份條件、同一個排序），每批至多 500 筆，每列含付款與各流程進度彙總；
+     * 呼叫端帶回 `nextBeforeId` 取下一批，直到為 null。
+     */
+    exportOrdersForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, listOrdersInput, input, async (_actor, filter) => ok(await selectOrderExportBatch(db, filter)));
+    },
+
+    /** 新增客服備註（只增不改不刪），留下操作者與時間；訂單不存在回 `order_not_found`。顧客端讀不到。 */
+    addOrderNote(jwt: unknown, input: unknown) {
+      return authorized(jwt, addOrderNoteInput, input, (actor, { orderId, note }) => addOrderNote(d1, { orderId, note, actor: actor.email }, clock.now()));
     },
 
     /**
@@ -594,6 +611,7 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
           returns: await selectOrderReturns(db, orderId),
           losses: await selectOrderLosses(db, orderId),
           shipmentReturns: await selectOrderShipmentReturns(db, orderId),
+          notes: await selectOrderNotes(db, orderId),
         });
       });
     },

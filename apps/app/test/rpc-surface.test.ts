@@ -6,6 +6,7 @@ import { AppEntrypoint } from "../src/entrypoint";
 // 或任何測試用的登入方法（production 沒有測試登入路徑；Holdfast ADR 0013）。
 const RPC_METHODS = [
   "addAddress",
+  "addOrderNote",
   "addProductImage",
   "adjustStock",
   "applyPaymentResult",
@@ -22,6 +23,7 @@ const RPC_METHODS = [
   "deleteAddress",
   "deleteCategory",
   "deleteProductImage",
+  "exportOrdersForAdmin",
   "fetch",
   "getCategory",
   "getCategoryForAdmin",

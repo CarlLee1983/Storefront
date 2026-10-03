@@ -274,6 +274,17 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0031_allowances.down.sql`（只要有任何已折讓的義務、任何折讓嘗試紀錄——含結果不明，發票服務那邊可能已折讓——或原票已開立而冪等鍵不是 `alw_legacy_` 開頭的待折讓義務，守門檢查就讓回復失敗；其餘由成功退款推得，義務本身保留。殘餘風險：閘道已折讓成功、本地尚未記下任何嘗試的義務守門看不出來，回復後重新套用可能重複折讓，須先到閘道主控頁核對，與 #121 的 `inv_legacy_` 同理）。回復順序是 0031 → 0030 → …。
 - 測試：`apps/app/test/allowances.test.ts`（自動折讓一次、退款先於原票、原票補辦後補折讓、重送與並行不重複、失敗與不明與查證與補辦、已折讓不被蓋回、通知重送、權限）、`allowances-migration.test.ts`（遷移補冪等鍵、約束與回復）、`apps/gateway/test/allowance.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
 
+### 查找舊單、匯出與客服備註（#123）
+
+依設計文件 Q23（Migration `0032_order_search_notes.sql`；`apps/app/src/orders/admin-queries.ts`、`apps/app/src/order-notes/`；Web 的 `/admin/orders` 與 `/admin/orders/export`）。後台訂單列表不再只有最新 200 筆：可依訂單編號、顧客 email 片段（不分大小寫）、狀態、成立日期區間（台北時間，含起訖兩天）查找，一頁 20 筆，以訂單編號游標往舊的翻頁（`listOrdersForAdmin` 的 `beforeId` 與回傳的 `nextBeforeId`），期間新增的訂單不造成重複或遺漏。
+
+- 索引與參數：新增 `orders_status_idx (status, id)`、`orders_created_idx (created_at, id)`；email 先在顧客表找出符合的顧客，再以既有的 `orders_customer_idx` 對回訂單。條件全部參數化（email 用 `instr`，`%`、`_` 不當萬用字元），綁定參數數量固定，不隨筆數成長（D1 單句上限 100 個）。
+- 匯出：`exportOrdersForAdmin` 與列表共用同一份條件與排序，每批至多 500 筆，Web 的 `/admin/orders/export`（GET，沿用列表網址參數）逐批取回、邊取邊串流，記憶體不隨訂單數成長；檔案為 UTF-8（含 BOM，Excel 直接開）、CRLF，每張訂單一列：成立時間、顧客、狀態、總金額、付款需要處理、已收款、已退款、各進度數量（訂購、已交運、已取消、已退貨、已遺失、物流退回）、已開立發票號碼、待折讓筆數。以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面補單引號（CSV injection）。第一批先取回再回應，未授權回 403、條件無效回 400；中途某批失敗讓串流出錯，下載中斷而不是留下缺資料的檔案。後續流程票新增的進度不由本票預先投影。
+- 客服備註：`addOrderNote`（內容 trim 後 1–1000 字）寫入 `order_notes`（訂單、操作者 email、內容、時間），**只增不改不刪**由資料庫 trigger 保證（比照庫存流水）；更正請再加一則。備註只出現在管理 RPC `getOrderForAdmin` 的 `notes` 與後台訂單明細頁，顧客端 RPC 與畫面一律讀不到。其他重要管理操作的操作者、時間與原因沿用各自的紀錄（庫存流水、退款與發票嘗試、取消與退貨審核等），本票不另建稽核表。
+- 權限：`listOrdersForAdmin`、`exportOrdersForAdmin`、`addOrderNote` 皆走 Access JWT，已加入 `rpc-surface` 白名單與 `admin-auth` 的拒絕測試。
+- 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0032_order_search_notes.down.sql`；已有任何客服備註時守門檢查讓回復失敗（備註是營運紀錄，須先匯出並確認可以捨棄）。回復順序是 0032 → 0031 → …。
+- 測試見 `apps/app/test/admin-orders.test.ts`（查找、翻頁、匯出分批、備註與顧客隔離）、`order-notes-migration.test.ts`；Web 的解析與 CSV 在 `apps/web/src/admin/order-search.test.ts`、`orders-csv.test.ts`、`orders-export.test.ts`；手機與桌機的操作由 `e2e/tests/order-search.spec.ts` 驗證（375／1280 寬，含無障礙掃描）。
+
 ## 模擬金流閘道
 
 `apps/gateway`（`@storefront/gateway`）是獨立的 Worker，自己的 D1，模擬「外部」金流閘道；本站只透過 HTTP API 與簽章 webhook 和它互動。本機以 `bun run dev:gateway` 啟動（`bun run db:migrate` 會一併套用它的 migration），設定見 `apps/gateway/.dev.vars.example`。

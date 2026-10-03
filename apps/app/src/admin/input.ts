@@ -187,7 +187,44 @@ export const recordShipmentEventInput = z.object({
   occurredAt: wholeNumber("回報發生時間").positive("回報發生時間無效"),
 });
 
-export const listOrdersInput = z.object({ status: z.enum(ORDER_STATUSES, { error: "訂單狀態無效" }).optional() });
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_EMAIL_QUERY_LENGTH = 254;
+const MAX_NOTE_LENGTH = 1000;
+
+/** 台北時間的日期（`YYYY-MM-DD`）→ 當天 00:00（UTC epoch 毫秒）；不是真實存在的日期就無效。 */
+const taipeiDay = (label: string) => z
+  .string({ error: `${label}必須是日期` })
+  .regex(/^\d{4}-\d{2}-\d{2}$/, `${label}格式必須是 YYYY-MM-DD`)
+  .transform((value, ctx) => {
+    const start = Date.parse(`${value}T00:00:00+08:00`);
+    if (Number.isNaN(start) || new Date(start + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) !== value) {
+      ctx.addIssue({ code: "custom", message: `${label}不是有效的日期` });
+      return z.NEVER;
+    }
+    return start;
+  });
+
+/**
+ * 查找訂單的條件，列表與匯出共用同一份，才保證兩邊範圍一致：編號、顧客 email 片段（不分大小寫）、狀態、成立日期區間（台北時間，含起訖兩天）。
+ * 轉成 `from`（含）與 `to`（不含，起訖日當天結束後的零點）兩個 UTC epoch 毫秒。
+ */
+export const orderFilterFields = {
+  orderId: wholeNumber("訂單編號").positive("訂單編號無效").optional(),
+  email: z.string({ error: "顧客 email 必須是文字" }).trim().max(MAX_EMAIL_QUERY_LENGTH, `顧客 email 不可超過 ${MAX_EMAIL_QUERY_LENGTH} 個字`).optional(),
+  status: z.enum(ORDER_STATUSES, { error: "訂單狀態無效" }).optional(),
+  from: taipeiDay("起始日期").optional(),
+  to: taipeiDay("結束日期").optional().transform(end => end === undefined ? undefined : end + DAY_MS),
+};
+
+/** 列表與匯出：條件加上游標（上一批最後一筆的訂單編號，沒給為第一批）。 */
+export const listOrdersInput = z.object({ ...orderFilterFields, beforeId: wholeNumber("游標").positive("游標無效").optional() })
+  .refine(({ from, to }) => from === undefined || to === undefined || from < to, { message: "起始日期不可晚於結束日期", path: ["from"] });
+
+/** 客服備註：訂單編號與內容（去頭尾空白後不可為空）。 */
+export const addOrderNoteInput = z.object({
+  orderId: wholeNumber("訂單編號").positive("訂單編號無效"),
+  note: z.string({ error: "備註必須是文字" }).trim().min(1, "備註不可為空").max(MAX_NOTE_LENGTH, `備註不可超過 ${MAX_NOTE_LENGTH} 個字`),
+});
 
 /**
  * 設定商品的選項維度名稱。維度個數不變時只改名稱；要增減個數（含從沒有選項開始）時商品只能有一個變體（預設變體），

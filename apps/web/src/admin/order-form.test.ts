@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeShipFailure, describeShipmentEventFailure, parseStatusFilter, shipFormToInput, shipmentEventFormToInput } from "./order-form";
+import { describeNoteFailure, describeShipFailure, describeShipmentEventFailure, noteFormToInput, parseStatusFilter, shipFormToInput, shipmentEventFormToInput } from "./order-form";
 
 describe("parseStatusFilter", () => {
   it.each(["pending_payment", "paid", "partially_shipped", "shipped", "expired", "cancelled"])("%s 是有效的篩選", (status) => {
@@ -124,5 +124,23 @@ describe("describeShipmentEventFailure", () => {
     expect(describeShipmentEventFailure({ reason: "event_time_invalid" }).message).toContain("交運");
     expect(describeShipmentEventFailure({ reason: "event_key_conflict" }).message).toContain("重新整理");
     expect(describeShipmentEventFailure({ reason: "boom" })).toEqual({ message: "記錄物流回報失敗，請稍後再試", fields: {} });
+  });
+});
+
+describe("noteFormToInput", () => {
+  it("帶入訂單編號與備註原文；欄位不存在送出空字串，由 App 回報不可為空", () => {
+    const form = new FormData();
+    form.set("note", "  電話確認過  ");
+
+    expect(noteFormToInput(form, 7)).toEqual({ orderId: 7, note: "  電話確認過  " });
+    expect(noteFormToInput(new FormData(), 7)).toEqual({ orderId: 7, note: "" });
+  });
+});
+
+describe("describeNoteFailure", () => {
+  it("已知原因有專屬訊息並帶出欄位錯誤；未知原因用通用訊息", () => {
+    expect(describeNoteFailure({ reason: "invalid_input", fields: { note: ["備註不可為空"] } })).toEqual({ message: "備註內容有誤，請修正後再送出", fields: { note: ["備註不可為空"] } });
+    expect(describeNoteFailure({ reason: "order_not_found" }).message).toBe("找不到這張訂單");
+    expect(describeNoteFailure({ reason: "boom" })).toEqual({ message: "新增備註失敗，請稍後再試", fields: {} });
   });
 });

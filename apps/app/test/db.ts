@@ -1,15 +1,22 @@
 import { env } from "cloudflare:workers";
 import migration0020 from "../migrations/0020_stock_ledger.sql?raw";
+import migration0032 from "../migrations/0032_order_search_notes.sql?raw";
 
-/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、待折讓義務、發票嘗試與發票（先於退款與付款）、退款嘗試與退款、物流退回明細與物流退回、確認遺失明細與確認遺失、出貨批次的物流回報事件、明細與批次、投遞紀錄、信件、驗證請求、退款嘗試與退款、退貨申請的批次對應與明細與退貨申請、取消申請明細與取消申請、付款補查待辦與付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
+/** 每個測試開始前清空訂單、商品與登入資料（外鍵順序：庫存流水、客服備註、待折讓義務、發票嘗試與發票（先於退款與付款）、退款嘗試與退款、物流退回明細與物流退回、確認遺失明細與確認遺失、出貨批次的物流回報事件、明細與批次、投遞紀錄、信件、驗證請求、退款嘗試與退款、退貨申請的批次對應與明細與退貨申請、取消申請明細與取消申請、付款補查待辦與付款、訂單明細、訂單先於商品變體與顧客，變體先於商品，商品先於分類，分類圖片先於分類；session、account 隨 user 級聯刪除）；只做測試隔離，斷言一律走 RPC 或 HTTP。 */
 export async function resetDb(): Promise<void> {
   // 庫存流水有禁止刪改的 trigger（0020）：測試清理時暫時拿掉，清完用遷移裡同一份定義還原
   const triggers = migration0020.split("--> statement-breakpoint").filter((statement) => statement.includes("CREATE TRIGGER"));
+  // 客服備註同理（0032）
+  const noteTriggers = migration0032.split("--> statement-breakpoint").filter((statement) => statement.includes("CREATE TRIGGER"));
   await env.DB.batch([
     env.DB.prepare("DROP TRIGGER IF EXISTS stock_movements_no_delete"),
     env.DB.prepare("DROP TRIGGER IF EXISTS stock_movements_no_update"),
     env.DB.prepare("DELETE FROM stock_movements"),
     ...triggers.map((statement) => env.DB.prepare(statement.replace(/^[\s\S]*?(CREATE TRIGGER)/, "$1").trim())),
+    env.DB.prepare("DROP TRIGGER IF EXISTS order_notes_no_delete"),
+    env.DB.prepare("DROP TRIGGER IF EXISTS order_notes_no_update"),
+    env.DB.prepare("DELETE FROM order_notes"),
+    ...noteTriggers.map((statement) => env.DB.prepare(statement.replace(/^[\s\S]*?(CREATE TRIGGER)/, "$1").trim())),
     env.DB.prepare("DELETE FROM allowance_attempts"),
     env.DB.prepare("DELETE FROM allowance_obligations"),
     env.DB.prepare("DELETE FROM invoice_attempts"),
@@ -62,6 +69,11 @@ export async function resetDb(): Promise<void> {
  */
 export async function forceOrderStatus(orderId: number, status: string): Promise<void> {
   await env.DB.prepare("UPDATE orders SET status = ? WHERE id = ?").bind(status, orderId).run();
+}
+
+/** 直接改訂單的成立時間（UTC epoch 毫秒；測試日期區間用）。 */
+export async function forceOrderCreatedAt(orderId: number, createdAt: number): Promise<void> {
+  await env.DB.prepare("UPDATE orders SET created_at = ? WHERE id = ?").bind(createdAt, orderId).run();
 }
 
 /** 直接寫入一筆付款（測試安排前置狀態用），回傳它的閘道付款 ID。 */

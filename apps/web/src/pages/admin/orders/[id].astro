@@ -1,7 +1,7 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { describeShipFailure, describeShipmentEventFailure, shipFormToInput, shipmentEventFormToInput } from "../../../admin/order-form";
+import { describeNoteFailure, describeShipFailure, describeShipmentEventFailure, noteFormToInput, shipFormToInput, shipmentEventFormToInput } from "../../../admin/order-form";
 import { DELIVERY_TYPE_LABELS } from "@storefront/app/shipping-types";
 import OrderFees from "../../../orders/OrderFees.astro";
 import OrderStatus from "../../../orders/OrderStatus.astro";
@@ -36,8 +36,10 @@ let shipmentReturnFailure: (ReturnType<typeof describeShipmentReturnFailure> & {
 let submittedReturn: { shipmentId: number; returnKey: string } | undefined;
 let unauthorized = false;
 let invoiceFailure: string | undefined;
+let noteFailure: ReturnType<typeof describeNoteFailure> | undefined;
+let submittedNote = "";
 
-// POST 有十五種：補辦發票與重寄憑證（intent=retry-invoice、resend-invoice）、補辦折讓與重寄折讓通知（intent=retry-allowance、resend-allowance）、登記物流退回、記錄物流退回的收回與檢查（intent=declare-return、record-shipment-return-receipt、record-shipment-return-inspection，檢查的同內容重送會重新登記退款）、確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
+// POST 有十六種：新增客服備註（intent=add-note）、補辦發票與重寄憑證（intent=retry-invoice、resend-invoice）、補辦折讓與重寄折讓通知（intent=retry-allowance、resend-allowance）、登記物流退回、記錄物流退回的收回與檢查（intent=declare-return、record-shipment-return-receipt、record-shipment-return-inspection，檢查的同內容重送會重新登記退款）、確認物流遺失（intent=confirm-loss，含重新登記退款的同一確認重送）、審核取消申請（intent=decide-cancellation）、退貨的審核、收回、檢查（intent=decide-return、record-return-receipt、record-return-inspection）、記錄物流回報（intent=shipment-event，含補齊通知的同事件重送），或交運一批。成功後 303 回到本頁
 if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   if (form.get("intent") === "retry-invoice") {
@@ -60,6 +62,15 @@ if (orderId !== null && Astro.request.method === "POST") {
     if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?resend-allowance=${result.data.delivered ? "delivered" : "failed"}#invoices`, 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else invoiceFailure = describeAllowanceFailure(result);
+  } else if (form.get("intent") === "add-note") {
+    const input = noteFormToInput(form, orderId);
+    const result = await env.APP.addOrderNote(jwt, input);
+    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=note#notes`, 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else {
+      noteFailure = describeNoteFailure(result);
+      submittedNote = input.note;
+    }
   } else if (form.get("intent") === "decide-cancellation") {
     const result = await env.APP.decideCancellation(jwt, decideFormToInput(form));
     if (result.ok) {
@@ -142,6 +153,7 @@ const order = found?.ok ? found.data : undefined;
 const view: "forbidden" | "not_found" | "ok" = Astro.response.status === 403 ? "forbidden" : order ? "ok" : "not_found";
 if (view === "not_found") Astro.response.status = 404;
 const shipped = Astro.url.searchParams.get("saved") === "shipped";
+const noteSaved = Astro.url.searchParams.get("saved") === "note";
 const eventSaved = Astro.url.searchParams.get("saved") === "event";
 const decideSaved = describeDecideOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
 const returnSaved = describeReturnOutcome(Astro.url.searchParams.get("saved"), Astro.url.searchParams.get("refund") === "none" ? null : Astro.url.searchParams.get("refund"));
@@ -617,6 +629,33 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
             </table></div>
           )
         }
+        <div class="admin-card-section" id="notes">
+          <h2>客服備註</h2>
+          <p><small>只有管理員看得到，顧客端不會顯示；備註只能新增，不能修改或刪除，更正請再加一則。</small></p>
+          {noteSaved && <p role="status">已新增備註。</p>}
+          {noteFailure && <p class="error" role="alert">{noteFailure.message}{Object.values(noteFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+          {order.notes.length === 0 && <p>還沒有備註。</p>}
+          {
+            order.notes.length > 0 && (
+              <ul class="admin-notes" aria-label="客服備註">
+                {order.notes.map((note) => (
+                  <li>
+                    <p class="admin-note-text">{note.note}</p>
+                    <small>{note.actor}・{formatDateTime(note.createdAt)}</small>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+          <form method="post">
+            <input type="hidden" name="intent" value="add-note" />
+            <label>
+              新增備註
+              <textarea name="note" rows="3" maxlength="1000" required>{submittedNote}</textarea>
+            </label>
+            <button type="submit" class="button-primary">新增備註</button>
+          </form>
+        </div>
         <div class="admin-card-section">
           <h2>收件資訊</h2>
           <div class="admin-form-grid">
@@ -636,6 +675,9 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
 </AdminLayout>
 
 <style>
+  .admin-notes { list-style: none; padding: 0; display: grid; gap: var(--space-3); }
+  .admin-notes > li { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-2); }
+  .admin-note-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 var(--space-1); }
   .admin-losses { list-style: none; padding: 0; display: grid; gap: var(--space-3); }
   .admin-returns { list-style: none; padding: 0; display: grid; gap: var(--space-4); }
   .admin-returns > li { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
