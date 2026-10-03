@@ -10,6 +10,8 @@ import QuantityStepper from "../../components/QuantityStepper.astro";
 import Layout from "../../layouts/Layout.astro";
 import { notFoundDescription, previewText } from "../../metadata";
 import { saleDisplay } from "../../sale/price";
+import { productJsonLd, serializeJsonLd } from "../../seo/product-jsonld";
+import { siteOrigin } from "../../seo/site-origin";
 
 export const prerender = false;
 const id = /^\d+$/.test(Astro.params.id ?? "") ? Number(Astro.params.id) : NaN;
@@ -24,9 +26,11 @@ const selection = selected?.optionValues ?? [];
 const sale = selected ? saleDisplay(selected.priceTwd, selected.compareAtPriceTwd) : null;
 const specs = product ? [["尺寸", product.dimensions], ["材質", product.material], ["保養", product.care]].filter(([, text]) => text !== "") : [];
 const variantsData = product ? JSON.stringify({ productId: product.id, name: product.name, images: product.images, variants }).replace(/</g, "\\u003c") : "";
+const jsonLd = product ? serializeJsonLd(productJsonLd(product, new URL(Astro.url.pathname, siteOrigin(env.SITE_ORIGIN, Astro.url)).href, siteOrigin(env.SITE_ORIGIN, Astro.url))) : "";
 ---
 <Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={product?.images[0]?.variants.at(-1)?.key ? `/images/${product.images[0]!.variants.at(-1)!.key}` : undefined} noindex={!product} hideTitle={!!product}>
   {product ? <>
+    <script is:inline type="application/ld+json" set:html={jsonLd} />
     <nav class="breadcrumb" aria-label="麵包屑">
       <ol>
         <li><a href="/products">全部商品</a></li>

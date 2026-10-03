@@ -151,6 +151,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#catalog().getStorefrontNav();
   }
 
+  listSitemapProductIds() {
+    return this.#catalog().listSitemapProductIds();
+  }
+
   getFeaturedProducts() {
     return this.#catalog().getFeaturedProducts();
   }

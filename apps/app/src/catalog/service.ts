@@ -6,7 +6,7 @@ import { shippingQuoteInput } from "../shipping/input";
 import { selectShippingRates, selectVariantDeliveryTypes } from "../shipping/queries";
 import { fail, ok } from "../shared/result";
 import { listProductsInput } from "./input";
-import { existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts } from "./queries";
+import { existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts, selectSitemapProductIds } from "./queries";
 
 /** 前台讀取，不需登入。 */
 export function createCatalogService(d1: D1Database) {
@@ -30,6 +30,10 @@ export function createCatalogService(d1: D1Database) {
     async getStorefrontNav() {
       const [categories, hasSale] = await Promise.all([selectListedCategories(db), existsProductOnSale(db)]);
       return ok({ categories, hasSale });
+    },
+    /** sitemap 用：可收錄的商品編號（上架且至少一個販售中變體）；不需登入，只含公開資訊。 */
+    async listSitemapProductIds() {
+      return ok(await selectSitemapProductIds(db));
     },
     /** 首頁精選商品（最多 4 件，不足時以最新上架補滿）；沒有任何上架商品時為空陣列。 */
     async getFeaturedProducts() {

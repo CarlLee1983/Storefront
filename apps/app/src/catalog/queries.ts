@@ -321,3 +321,11 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
     related: categoryId === null ? [] : await selectRelatedProducts(db, categoryId, id),
   };
 }
+
+/** sitemap 收錄的商品編號：上架中且至少有一個販售中（未停賣）變體；全部停賣的商品不列入。依編號遞增，分檔才穩定。 */
+export async function selectSitemapProductIds(db: DrizzleD1Database): Promise<number[]> {
+  const rows = await db.select({ id: products.id }).from(products)
+    .where(and(eq(products.listed, true), sql`exists (select 1 from product_variants sv where ${activeVariantOfProduct})`))
+    .orderBy(asc(products.id));
+  return rows.map((row) => row.id);
+}

@@ -113,3 +113,20 @@ describe("前台列表的變體彙總", () => {
     expect(await app.listProducts({ sort: "price-desc" })).toMatchObject({ ok: true, data: { items: [{ id: sofa.productId }, { id: cheapOptions.productId }, { id: mug.productId }] } });
   });
 });
+
+describe("sitemap 商品編號", () => {
+  beforeEach(resetDb);
+
+  it("只含上架且至少一個販售中變體的商品；下架與全部停賣的不列入，變體被停賣一部分仍列入", async () => {
+    const jwt = await mintAccessJwt();
+    const table = await createTable();
+    const plain = await createStockedListing("馬克杯", 320, 4);
+    const unlisted = await createStockedListing("下架品", 100, 1);
+    const allStopped = await createStockedListing("停賣品", 100, 1);
+    await app.unlistProduct(jwt, { id: unlisted.productId });
+    await app.setVariantDiscontinued(jwt, { variantId: allStopped.variantId, discontinued: true });
+    await app.setVariantDiscontinued(jwt, { variantId: table.variantIds[0], discontinued: true });
+
+    expect(await app.listSitemapProductIds()).toEqual({ ok: true, data: [table.productId, plain.productId].sort((a, b) => a - b) });
+  });
+});

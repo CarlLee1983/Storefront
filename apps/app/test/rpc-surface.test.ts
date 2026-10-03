@@ -53,6 +53,7 @@ const RPC_METHODS = [
   "listProductsForAdmin",
   "listRefundsToHandle",
   "listReturnsToHandle",
+  "listSitemapProductIds",
   "listStockMovements",
   "reconcilePayment",
   "recordReturnInspection",
