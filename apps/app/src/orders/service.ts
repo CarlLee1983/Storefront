@@ -5,6 +5,9 @@ import { fail, ok, type Unauthorized } from "../shared/result";
 import { requestCancellationInput } from "../cancellations/input";
 import { selectMyCancellations } from "../cancellations/queries";
 import { requestCancellation } from "../cancellations/request";
+import { requestReturnInput } from "../returns/input";
+import { selectMyReturns } from "../returns/queries";
+import { requestReturn } from "../returns/request";
 import { deliverNoticeSafely } from "../contact/notify";
 import { selectVerifiedEmail } from "../contact/queries";
 import { selectPaymentSummaries } from "../payments/queries";
@@ -107,7 +110,25 @@ export function createOrderService(d1: D1Database, clock: Clock, authenticate: A
       const payments = await selectPaymentSummaries(db, customerId, clock.now(), order.id);
       const refunds = await selectRefundSummaries(db, customerId, order.id);
       const cancellations = await selectMyCancellations(db, customerId, order.id);
-      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations });
+      const returns = await selectMyReturns(db, customerId, order.id);
+      return ok({ ...order, payments: payments.get(order.id) ?? [], refunds: refunds.get(order.id) ?? [], cancellations, returns });
+    },
+
+    /**
+     * 申請退貨自己已交運的指定數量（人工受理入口，不依自助退貨期限擋下）。別人的或不存在的訂單一律 `order_not_found`；
+     * 訂單還沒有任何已交運數量回 `order_not_returnable`，明細不屬於這張訂單回 `return_line_invalid`，
+     * 數量超過「已交運且未被其他退貨占用」的數量回 `return_quantity_exceeded`（含同一明細重複申請、已退過），同鍵不同內容回 `request_key_conflict`。
+     * 審核、收回、檢查與退款由管理員接手（見管理 RPC `decideReturn`、`recordReturnReceipt`、`recordReturnInspection`）。
+     */
+    async requestReturn(cookie: unknown, input: unknown) {
+      const customerId = await customerOf(cookie);
+      if (!customerId) return unauthorized;
+      const parsed = parseInput(requestReturnInput, input);
+      if (!parsed.ok) return parsed;
+
+      const result = await requestReturn(d1, db, customerId, parsed.data, clock.now());
+      if (result.ok) console.log(JSON.stringify({ event: "return_requested", orderId: parsed.data.orderId, requestId: result.data.requestId, replayed: result.data.replayed }));
+      return result;
     },
 
     /**

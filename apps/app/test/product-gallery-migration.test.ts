@@ -30,8 +30,8 @@ it("0007→0008 preserves full galleries, image keys and upload identities while
     ok: true,
     data: {
       id, name: row!.name, description: row!.description, defaultVariantId: expect.any(Number), priceTwd: row!.price_twd, compareAtPriceTwd: null,
-      onHand: row!.on_hand, reserved: 0, available: row!.on_hand,
-      optionNames: [], variants: [{ id: expect.any(Number), isDefault: true, optionValues: [], priceTwd: row!.price_twd, compareAtPriceTwd: null, onHand: row!.on_hand, reserved: 0, available: row!.on_hand, discontinued: false, imageId: null, deliveryType: "standard" }],
+      onHand: row!.on_hand, unavailable: 0, reserved: 0, available: row!.on_hand,
+      optionNames: [], variants: [{ id: expect.any(Number), isDefault: true, optionValues: [], priceTwd: row!.price_twd, compareAtPriceTwd: null, onHand: row!.on_hand, unavailable: 0, reserved: 0, available: row!.on_hand, discontinued: false, imageId: null, deliveryType: "standard" }],
       cover: images[0], images, listed: true, featured: false, category: null,
     },
   };

@@ -2,6 +2,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import rollbackSql from "../rollback/0014_variant_options.down.sql?raw";
+import rollback0026Sql from "../rollback/0026_returns.down.sql?raw";
 import rollback0021Sql from "../rollback/0021_shipments.down.sql?raw";
 import rollback0020Sql from "../rollback/0020_stock_ledger.down.sql?raw";
 import rollback0019Sql from "../rollback/0019_shipping_fees.down.sql?raw";
@@ -55,8 +56,8 @@ it("沒有使用任何新功能時，回復程序移除新欄位並可重新套�
   await seedThrough0013();
   await applyD1Migrations(db, env.TEST_MIGRATIONS);
 
-  // 回復順序由新到舊：0020 先把已付款訂單的數量扣回（回到付款扣庫語意），0019 的欄位在 product_variants 上，須先移除
-  await db.batch([...rollback0021Sql.split("--> statement-breakpoint"), ...rollback0020Sql.split("--> statement-breakpoint"), ...rollback0019Sql.split("--> statement-breakpoint"), ...rollbackSql.split("--> statement-breakpoint")].map((statement) => db.prepare(statement)));
+  // 回復順序由新到舊：0026 先移除不可售欄位與退貨資料表（流水與變體回到 0025 結構），0020 先把已付款訂單的數量扣回（回到付款扣庫語意），0019 的欄位在 product_variants 上，須先移除
+  await db.batch([...rollback0026Sql.split("--> statement-breakpoint"), ...rollback0021Sql.split("--> statement-breakpoint"), ...rollback0020Sql.split("--> statement-breakpoint"), ...rollback0019Sql.split("--> statement-breakpoint"), ...rollbackSql.split("--> statement-breakpoint")].map((statement) => db.prepare(statement)));
 
   const columns = async (table: string) => (await db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all<{ name: string }>()).results.map(({ name }) => name);
   expect(await columns("product_variants")).toEqual(["id", "product_id", "is_default", "price_twd", "compare_at_price_twd", "on_hand"]);

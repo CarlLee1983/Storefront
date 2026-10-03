@@ -44,6 +44,11 @@ export const productVariants = sqliteTable("product_variants", {
   compareAtPriceTwd: integer("compare_at_price_twd"),
   /** 在庫數（On Hand）；只能以增減量調整，不會小於 0。 */
   onHand: integer("on_hand").notNull().default(0),
+  /**
+   * 不可售數量（Unavailable，ADR 0006）：在庫數中待檢或損壞而不可販售的退貨，另列、不是另一份庫存。
+   * 可售 = 在庫 − 不可售 − 保留；不會小於 0、也不會大於在庫數（寫入端條件保證，見 `returns/`、`stock/scrap.ts`）。
+   */
+  unavailable: integer("unavailable").notNull().default(0),
   /** 對應商品選項維度的選項值，例如「胡桃色」；空字串表示沒有該維度（讓唯一索引能比對「同一組合」）。 */
   option1Value: text("option1_value").notNull().default(""),
   option2Value: text("option2_value").notNull().default(""),

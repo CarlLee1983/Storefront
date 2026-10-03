@@ -6,6 +6,7 @@ import type { ProductImage } from "../product-images";
 import { user } from "../auth/schema";
 import { productVariants, products } from "../catalog/schema";
 import { approvedCancelledQuantity, pendingCancellationQuantity } from "../cancellations/queries";
+import { completedReturnedQuantity, openReturnQuantity } from "../returns/queries";
 import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/stock";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import type { VariantState } from "./diagnosis";
@@ -112,12 +113,13 @@ export async function selectVariantStates(db: DrizzleD1Database, variantIds: num
       listed: products.listed,
       discontinued: sql<boolean>`${productVariants.discontinuedAt} is not null`.mapWith(Boolean),
       onHand: productVariants.onHand,
+      unavailable: productVariants.unavailable,
       reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     })
     .from(productVariants)
     .innerJoin(products, eq(products.id, productVariants.productId))
     .where(inArray(productVariants.id, variantIds));
-  return rows.map(({ onHand, reserved, ...row }) => ({ ...row, available: availableQuantity(onHand, reserved) }));
+  return rows.map(({ onHand, unavailable, reserved, ...row }) => ({ ...row, available: availableQuantity(onHand, unavailable, reserved) }));
 }
 
 export interface OrderView {
@@ -153,6 +155,10 @@ export interface OrderLineView {
   cancelledQuantity: number;
   /** 取消申請待審中的數量（凍結交運、仍占保留）。可交運或可再申請取消的是 `quantity - shippedQuantity - cancelledQuantity - pendingCancellationQuantity`。 */
   pendingCancellationQuantity: number;
+  /** 已完成收回檢查的退貨數量（已退貨，不能再退）。 */
+  returnedQuantity: number;
+  /** 退貨進行中的數量（待審、已核准待收回、已收回待檢查），仍占用。可再申請退貨的是 `shippedQuantity - returnedQuantity - openReturnQuantity`。 */
+  openReturnQuantity: number;
   cover: ProductImage | null;
 }
 
@@ -203,6 +209,8 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, w
       shippedQuantity: dispatchedQuantity(sql`${orderLines.id}`),
       cancelledQuantity: approvedCancelledQuantity(sql`${orderLines.id}`),
       pendingCancellationQuantity: pendingCancellationQuantity(sql`${orderLines.id}`),
+      returnedQuantity: completedReturnedQuantity(sql`${orderLines.id}`),
+      openReturnQuantity: openReturnQuantity(sql`${orderLines.id}`),
       cover: currentCover(sql`${orderLines.productId}`),
     })
     .from(orders)
@@ -231,9 +239,9 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, w
       };
       views.set(order.id, view);
     }
-    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, cover } = line;
+    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, cover } = line;
     if (lineId !== null && productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null && deliveryType !== null) {
-      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, cover });
+      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, cover });
     }
   }
 

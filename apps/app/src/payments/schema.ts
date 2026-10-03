@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { cancellationRequests } from "../cancellations/schema";
 import { orders } from "../orders/schema";
+import { returnRequests } from "../returns/schema";
 import {
   PAYMENT_STATUSES,
   RECONCILE_ISSUE_REASONS,
@@ -121,6 +122,8 @@ export const refunds = sqliteTable(
     status: text("status").$type<RefundStatus>().notNull().default("pending"),
     /** 取消核准產生的退款所屬的取消申請（一案最多一筆，唯一索引保證核准重送不重複登記）；其他原因為 null。 */
     cancellationRequestId: integer("cancellation_request_id").references(() => cancellationRequests.id),
+    /** 退貨檢查完成產生的退款所屬的退貨申請（一案最多一筆，唯一索引保證重送不重複登記）；其他原因為 null。 */
+    returnRequestId: integer("return_request_id").references(() => returnRequests.id),
     /** 登記時間，UTC epoch 毫秒（高水位時鐘的有效時間）。 */
     createdAt: integer("created_at").notNull(),
     /** 最近一次進入 processing 的時間；程序中斷而卡在 processing 的退款以它判斷租約是否過期。 */
@@ -133,6 +136,7 @@ export const refunds = sqliteTable(
     index("refunds_payment_idx").on(table.paymentId),
     uniqueIndex("refunds_gateway_refund_uidx").on(table.gatewayRefundId),
     uniqueIndex("refunds_cancellation_uidx").on(table.cancellationRequestId),
+    uniqueIndex("refunds_return_uidx").on(table.returnRequestId),
     // 付款層級的原因（遲到、已取消、重複）每個原因一筆付款最多一筆：事件重送與補寫都不會登記第二筆
     uniqueIndex("refunds_payment_reason_uidx")
       .on(table.paymentId, table.reason)

@@ -111,8 +111,8 @@ export async function dispatchShipment(
       ) AND ${notYetDeducted}
     `,
     sql`
-      INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, order_id, shipment_id, actor, reason, created_at)
-      SELECT line.variant_id, 'dispatch', -item.quantity, variant.on_hand, ${orderId}, item.shipment_id, ${actor}, ${reason}, ${effectiveNow}
+      INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, unavailable_after, order_id, shipment_id, actor, reason, created_at)
+      SELECT line.variant_id, 'dispatch', -item.quantity, variant.on_hand, variant.unavailable, ${orderId}, item.shipment_id, ${actor}, ${reason}, ${effectiveNow}
       FROM shipment_items item
       JOIN order_lines line ON line.id = item.order_line_id
       JOIN product_variants variant ON variant.id = line.variant_id

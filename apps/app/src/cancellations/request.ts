@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { dispatchedQuantity } from "../shipments/queries";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
+import { hashCaseRequest } from "../shared/request-hash";
 import { fail, ok } from "../shared/result";
 import { orderLines, orders, PAID, PARTIALLY_SHIPPED, type OrderStatus } from "../orders/schema";
 import { heldByCancellationQuantity } from "./queries";
@@ -49,7 +50,7 @@ export async function requestCancellation(
   const lineIds = new Set((await db.select({ id: orderLines.id }).from(orderLines).where(eq(orderLines.orderId, orderId))).map((line) => line.id));
   if (items.some((item) => !lineIds.has(item.orderLineId))) return fail("cancellation_line_invalid");
 
-  const requestHash = await hashRequest(items, reason);
+  const requestHash = await hashCaseRequest(items, reason);
   const itemsJson = JSON.stringify(items);
   const requestId = sql`(SELECT id FROM cancellation_requests WHERE order_id = ${orderId} AND request_key = ${requestKey})`;
 
@@ -83,11 +84,4 @@ export async function requestCancellation(
 
   const [current] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId));
   return fail(current && CANCELLABLE_STATUSES.includes(current.status) ? "cancellation_quantity_exceeded" : "order_not_cancellable");
-}
-
-/** 申請內容的 SHA-256 hex（明細依訂單明細編號排序，同樣內容得到同樣指紋）。 */
-async function hashRequest(items: RequestCancellationInput["items"], reason: string): Promise<string> {
-  const normalized = JSON.stringify({ items: [...items].sort((a, b) => a.orderLineId - b.orderLineId), reason });
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

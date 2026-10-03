@@ -13,10 +13,10 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 /**
  * 退款的觸發原因（CONTEXT.md「退款」）：
- * 遲到的付款成功保留不到庫存、付款成功落在已取消的訂單上、同一張訂單出現第二筆成功付款（安全網），以及管理員核准的取消申請（#116，一案一筆）。
- * 前三者是付款層級的原因（一筆付款每個原因最多一筆）；取消退款綁定取消申請，不受該唯一索引限制。
+ * 遲到的付款成功保留不到庫存、付款成功落在已取消的訂單上、同一張訂單出現第二筆成功付款（安全網），管理員核准的取消申請（#116，一案一筆），以及完成收回檢查的退貨申請（#117，一案一筆）。
+ * 前三者是付款層級的原因（一筆付款每個原因最多一筆）；取消與退貨的退款綁定各自的申請，不受該唯一索引限制。
  */
-export const REFUND_REASONS = ["late_success_unreclaimable", "cancelled_order", "duplicate_success", "cancellation"] as const;
+export const REFUND_REASONS = ["late_success_unreclaimable", "cancelled_order", "duplicate_success", "cancellation", "return"] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
 
 /**

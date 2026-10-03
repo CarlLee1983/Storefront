@@ -2,12 +2,12 @@ import { sql, type SQL } from "drizzle-orm";
 import { insertCancellationApprovedNotice, insertCancellationRejectedNotice } from "../contact/notices";
 import { CANCELLED, SHIPPED } from "../orders/schema";
 import { canTransitionTo } from "../orders/transitions";
+import { CANCELLATION_CASE, shippingRefundSql } from "../payments/exit-refund";
 import { newGatewayRefundId, withinQuotaSql } from "../payments/refunds";
 import type { RefundStatus } from "../payments/shared";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { fail, ok } from "../shared/result";
 import { dispatchedQuantity } from "../shipments/queries";
-import type { DeliveryType } from "../shipping/types";
 import type { DecideCancellationInput } from "./input";
 import { approvedCancelledQuantity } from "./queries";
 import type { CancellationStatus } from "./schema";
@@ -29,35 +29,13 @@ export type DecideCancellationResult =
   | { ok: false; reason: DecideCancellationFailure };
 
 /**
- * 這一類配送的原運費要不要隨這案退（UPDATE 的 SET 運算式，`cancellation_requests` 是被更新的那一案，此時它仍是待審）：
- * 該類有明細，且該類每筆明細都「已核准取消 + 本案取消 = 全部數量」（同類全數取消，所以必然沒有交運），
- * 且訂單上沒有其他已核准的案件已經退過這一類運費（`column` 欄位 > 0）。部分取消不退運費；
- * 費率後來調整不影響，用的是訂單上的運費快照，舊單為零就退零。
- */
-function shippingRefundSql(type: DeliveryType, feeColumn: string, requestColumn: string): SQL {
-  const fee = sql.raw(feeColumn);
-  const refunded = sql.raw(requestColumn);
-  return sql`CASE
-    WHEN EXISTS (SELECT 1 FROM order_lines typed WHERE typed.order_id = cancellation_requests.order_id AND typed.delivery_type = ${type})
-      AND NOT EXISTS (
-        SELECT 1 FROM order_lines typed
-        WHERE typed.order_id = cancellation_requests.order_id AND typed.delivery_type = ${type}
-          AND typed.quantity <> ${approvedCancelledQuantity(sql`typed.id`)}
-            + COALESCE((SELECT this_item.quantity FROM cancellation_request_items this_item WHERE this_item.request_id = cancellation_requests.id AND this_item.order_line_id = typed.id), 0)
-      )
-      AND NOT EXISTS (SELECT 1 FROM cancellation_requests earlier WHERE earlier.order_id = cancellation_requests.order_id AND earlier.id <> cancellation_requests.id AND earlier.status = 'approved' AND earlier.${refunded} > 0)
-    THEN (SELECT ${fee} FROM orders WHERE orders.id = cancellation_requests.order_id)
-    ELSE 0 END`;
-}
-
-/**
  * 管理員審核一案取消申請（ADR 0007）；單一 batch，同成同敗，是否做成由條件寫入的結果判斷（不先讀再寫）。
  *
  * 拒絕：待審 → 拒絕，數量不再被占用，恢復可交運；寫拒絕通知。
  *
  * 核准：
  * 1. 待審 → 核准，同一句算定退款拆分：商品款 = 各明細取消數量 × 原實付單價（下單時的單價快照，已是特價後的實付價），
- *    運費依 `shippingRefundSql`。核准即釋放保留（保留量減去已核准取消，見 `catalog/stock.ts`）、停止該數量履約。
+ *    運費依 `shippingRefundSql`（同類全數退出，含完成退貨的數量；見 `payments/exit-refund.ts`）。核准即釋放保留（保留量減去已核准取消，見 `catalog/stock.ts`）、停止該數量履約。
  * 2. 訂單狀態：每筆明細都核准取消 → 已取消；否則若剩餘數量都已交運 → 已出貨。其餘維持（仍有未交運或待審的數量）。
  * 3. 登記這一案的退款（唯一索引保證一案一筆）：額度條件與其他退款共用 `withinQuotaSql`（成功加所有未結承諾不超過實收），
  *    綁定讓訂單成立的那筆付款；退款登記在核准的同一個 batch，所以不會有「核准了卻漏開退款」的空窗，
@@ -86,8 +64,8 @@ export async function decideCancellation(d1: D1Database, request: DecideCancella
               FROM cancellation_request_items item JOIN order_lines line ON line.id = item.order_line_id
               WHERE item.request_id = cancellation_requests.id
             ),
-            standard_shipping_twd = ${shippingRefundSql("standard", "standard_shipping_fee_twd", "standard_shipping_twd")},
-            large_shipping_twd = ${shippingRefundSql("large", "large_shipping_fee_twd", "large_shipping_twd")}
+            standard_shipping_twd = ${shippingRefundSql(CANCELLATION_CASE, "standard", "standard_shipping_fee_twd", "standard_shipping_twd")},
+            large_shipping_twd = ${shippingRefundSql(CANCELLATION_CASE, "large", "large_shipping_fee_twd", "large_shipping_twd")}
           WHERE id = ${requestId} AND status = 'pending'
         `,
         sql`

@@ -50,6 +50,8 @@ export interface AdminVariant {
   priceTwd: number;
   compareAtPriceTwd: number | null;
   onHand: number;
+  /** 不可售數量：在庫中待檢與損壞的退貨。 */
+  unavailable: number;
   reserved: number;
   available: number;
   discontinued: boolean;

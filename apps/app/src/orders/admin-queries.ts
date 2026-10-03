@@ -1,6 +1,7 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { approvedCancelledQuantity, pendingCancellationQuantity } from "../cancellations/queries";
+import { completedReturnedQuantity, openReturnQuantity } from "../returns/queries";
 import { currentCover } from "../images/cover-query";
 import { dispatchedQuantity } from "../shipments/queries";
 import type { OrderView } from "./queries";
@@ -50,6 +51,7 @@ export async function selectOrdersForAdmin(db: DrizzleD1Database, status?: Order
     orderId: orderLines.orderId, id: orderLines.id, productId: orderLines.productId, variantId: orderLines.variantId, productName: orderLines.productName, variantLabel: orderLines.variantLabel,
     quantity: orderLines.quantity, unitPriceTwd: orderLines.unitPriceTwd, deliveryType: orderLines.deliveryType, shippedQuantity: dispatchedQuantity(sql`${orderLines.id}`),
     cancelledQuantity: approvedCancelledQuantity(sql`${orderLines.id}`), pendingCancellationQuantity: pendingCancellationQuantity(sql`${orderLines.id}`),
+    returnedQuantity: completedReturnedQuantity(sql`${orderLines.id}`), openReturnQuantity: openReturnQuantity(sql`${orderLines.id}`),
     cover: currentCover(sql`${orderLines.productId}`),
   }).from(orderLines).where(sql`${orderLines.orderId} IN (SELECT value FROM json_each(${JSON.stringify(summaries.map(order => order.id))}))`).orderBy(asc(orderLines.id));
   const grouped = new Map<number, OrderView["lines"]>();

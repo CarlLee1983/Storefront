@@ -12,6 +12,12 @@ export interface StockMovementView {
   kind: StockMovementKind;
   delta: number;
   onHandAfter: number;
+  /** 不可售數量的增減量（退貨收回為正、檢查合格與報廢為負）；其他來源為 0。 */
+  unavailableDelta: number;
+  /** 這筆變動之後的不可售數量。 */
+  unavailableAfter: number;
+  /** 退貨收回與檢查對應的退貨申請；其他來源為 null。 */
+  returnRequestId: number | null;
   orderId: number | null;
   actor: string;
   reason: string;
@@ -41,6 +47,9 @@ export async function selectStockMovements(
       kind: stockMovements.kind,
       delta: stockMovements.delta,
       onHandAfter: stockMovements.onHandAfter,
+      unavailableDelta: stockMovements.unavailableDelta,
+      unavailableAfter: stockMovements.unavailableAfter,
+      returnRequestId: stockMovements.returnRequestId,
       orderId: stockMovements.orderId,
       actor: stockMovements.actor,
       reason: stockMovements.reason,

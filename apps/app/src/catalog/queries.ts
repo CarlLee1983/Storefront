@@ -37,9 +37,11 @@ export interface AdminProductSummary extends ProductBase {
   featured: boolean;
   /** 在庫數（On Hand）。 */
   onHand: number;
+  /** 不可售數量：在庫中待檢與損壞的退貨。 */
+  unavailable: number;
   /** 保留數：待付款訂單的訂單明細數量總和。 */
   reserved: number;
-  /** 可售數量（Available）= 在庫數 − 保留數。 */
+  /** 可售數量（Available）= 在庫數 − 不可售數量 − 保留數。 */
   available: number;
 }
 
@@ -64,6 +66,7 @@ const defaultVariantColumns = {
   priceTwd: productVariants.priceTwd,
   compareAtPriceTwd: productVariants.compareAtPriceTwd,
   onHand: productVariants.onHand,
+  unavailable: productVariants.unavailable,
   reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
 };
 
@@ -118,7 +121,7 @@ type AdminRow = Omit<AdminProductSummary, "available" | "category" | "optionName
 function toAdminSummary({ categoryId, categorySlug, categoryName, option1Name, option2Name, ...row }: AdminRow, variants: AdminVariant[]): AdminProductSummary {
   // left join 的分類欄位在 categoryId 非空時一定有值：category_id 是指向 categories 的外鍵，所以非空斷言成立
   const category = categoryId === null ? null : { id: categoryId, slug: categorySlug!, name: categoryName! };
-  return { ...row, optionNames: [option1Name, option2Name].filter((name) => name !== ""), variants, category, available: availableQuantity(row.onHand, row.reserved) };
+  return { ...row, optionNames: [option1Name, option2Name].filter((name) => name !== ""), variants, category, available: availableQuantity(row.onHand, row.unavailable, row.reserved) };
 }
 
 /** 後台的變體列；`productId` 省略時取全部商品的（後台清單用），預設變體排在各商品的最前面。 */
@@ -132,6 +135,7 @@ async function selectAdminVariants(db: DrizzleD1Database, productId?: number): P
     priceTwd: productVariants.priceTwd,
     compareAtPriceTwd: productVariants.compareAtPriceTwd,
     onHand: productVariants.onHand,
+    unavailable: productVariants.unavailable,
     reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     discontinuedAt: productVariants.discontinuedAt,
     imageId: productVariants.imageId,
@@ -143,7 +147,7 @@ async function selectAdminVariants(db: DrizzleD1Database, productId?: number): P
     const variant: AdminVariant = {
       ...row,
       optionValues: [option1Value, option2Value].filter((value) => value !== ""),
-      available: availableQuantity(row.onHand, row.reserved),
+      available: availableQuantity(row.onHand, row.unavailable, row.reserved),
       discontinued: discontinuedAt !== null,
     };
     byProduct.set(owner, [...(byProduct.get(owner) ?? []), variant]);
@@ -291,6 +295,7 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
       priceTwd: productVariants.priceTwd,
       compareAtPriceTwd: productVariants.compareAtPriceTwd,
       onHand: productVariants.onHand,
+      unavailable: productVariants.unavailable,
       reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
       imageId: productVariants.imageId,
       deliveryType: productVariants.deliveryType,
@@ -299,10 +304,10 @@ export async function selectListedProduct(db: DrizzleD1Database, id: number): Pr
   ]);
   if (!row) return null;
   const { option1Name, option2Name, categoryId, categorySlug, categoryName, ...product } = row;
-  const variants = variantRows.map(({ option1Value, option2Value, onHand, reserved, ...variant }): VariantDetail => ({
+  const variants = variantRows.map(({ option1Value, option2Value, onHand, unavailable, reserved, ...variant }): VariantDetail => ({
     ...variant,
     optionValues: [option1Value, option2Value].filter((value) => value !== ""),
-    available: Math.max(0, availableQuantity(onHand, reserved)),
+    available: Math.max(0, availableQuantity(onHand, unavailable, reserved)),
   }));
   return {
     ...product,

@@ -28,22 +28,22 @@ export function reservedQuantity(variantId: SQL): SQL<number> {
 }
 
 /**
- * 可售數量（Available）= 在庫數 − 有效保留的總和。
+ * 可售數量（Available）= 在庫數 − 不可售數量（待檢與損壞的退貨，ADR 0006）− 有效保留的總和。
  * 「有多少可售」只在這個模組計算：SQL 端用 `availableExpr`（條件寫入用），讀出來的列用這個函式。
  */
-export function availableQuantity(onHand: number, reserved: number): number {
-  return onHand - reserved;
+export function availableQuantity(onHand: number, unavailable: number, reserved: number): number {
+  return onHand - unavailable - reserved;
 }
 
-/** `availableQuantity` 的 SQL 版本，給條件寫入使用。 */
+/** `availableQuantity` 的 SQL 版本，給條件寫入使用；不可售數量由變體編號讀出。 */
 export function availableExpr(onHand: SQL, variantId: SQL): SQL<number> {
-  return sql<number>`(${onHand} - ${reservedQuantity(variantId)})`;
+  return sql<number>`(${onHand} - (SELECT unavailable_of.unavailable FROM product_variants unavailable_of WHERE unavailable_of.id = ${variantId}) - ${reservedQuantity(variantId)})`;
 }
 
 /**
  * 庫存調整的防負數條件（Holdfast ADR 0004：單句條件寫入，
  * https://github.com/CarlLee1983/Holdfast/blob/main/docs/adr/0004-oversell-guard-in-single-statement.md）：
- * 調整後的在庫數不可低於有效保留的總和，也就是可售數量不可變負。
+ * 調整後的在庫數不可低於不可售數量加有效保留的總和，也就是可售數量不可變負。
  */
 function adjustmentKeepsAvailableNonNegative(delta: number) {
   return sql`${availableExpr(sql`${productVariants.onHand} + ${delta}`, sql`${productVariants.id}`)} >= 0`;
@@ -70,16 +70,16 @@ export async function adjustOnHand(
   const keepsAvailable = adjustmentKeepsAvailableNonNegative(delta);
   const [, update, read] = await batchAtEffectiveNow(d1, now, [
     sql`
-      INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, order_id, actor, reason, created_at)
-      SELECT ${productVariants.id}, 'adjustment', ${delta}, ${productVariants.onHand} + ${delta}, NULL, ${actor}, ${reason}, ${effectiveNow}
+      INSERT INTO stock_movements (variant_id, kind, delta, on_hand_after, unavailable_after, order_id, actor, reason, created_at)
+      SELECT ${productVariants.id}, 'adjustment', ${delta}, ${productVariants.onHand} + ${delta}, ${productVariants.unavailable}, NULL, ${actor}, ${reason}, ${effectiveNow}
       FROM product_variants WHERE ${productVariants.id} = ${variantId} AND ${keepsAvailable}
     `,
     sql`UPDATE product_variants SET on_hand = on_hand + ${delta} WHERE id = ${variantId} AND ${keepsAvailable}`,
-    sql`SELECT on_hand AS onHand, ${reservedQuantity(sql`product_variants.id`)} AS reserved FROM product_variants WHERE id = ${variantId}`,
+    sql`SELECT on_hand AS onHand, unavailable, ${reservedQuantity(sql`product_variants.id`)} AS reserved FROM product_variants WHERE id = ${variantId}`,
   ]);
   if (update!.meta.changes > 0) {
-    const row = read!.results[0] as { onHand: number; reserved: number };
-    return ok({ onHand: row.onHand, available: availableQuantity(row.onHand, row.reserved) });
+    const row = read!.results[0] as { onHand: number; unavailable: number; reserved: number };
+    return ok({ onHand: row.onHand, available: availableQuantity(row.onHand, row.unavailable, row.reserved) });
   }
   return fail(read!.results.length > 0 ? "insufficient_stock" : "variant_not_found");
 }

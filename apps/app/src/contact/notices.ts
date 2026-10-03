@@ -172,3 +172,57 @@ export function insertCancellationRejectedNotice(requestId: number): SQL {
     ON CONFLICT (event_key) DO NOTHING
   `;
 }
+
+/** 退貨申請的商品與數量一段文字（以 `return_requests` 為外層列，別名 `rr`）；`quantityColumn` 是申請數量或實際收到數量的欄位。 */
+const returnItemsText = (quantityColumn: "quantity" | "received_quantity") => sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || item.${sql.raw(quantityColumn)}, '、')
+  FROM return_request_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.request_id = rr.id AND item.${sql.raw(quantityColumn)} > 0)`;
+
+/** 退貨核准通知：一案一封，事件鍵 `return:<申請編號>:approved`；只在該案已核准時寫，與核准同一個 batch。信件請顧客依客服指示寄回，收到並檢查後才退款。 */
+export function insertReturnApprovedNotice(requestId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'return_approved', '訂單 #' || orders.id || ' 的退貨申請已核准',
+      '訂單 #' || orders.id || ' 的退貨申請已核准：' || ${returnItemsText("quantity")} || '。' ||
+      '請依客服指示寄回商品（收回運費由商家負擔）；我們收到並檢查後，會依原實付單價退款並另行通知。' ||
+      CASE WHEN rr.decision_note <> '' THEN '說明：' || rr.decision_note || '。' ELSE '' END,
+      'return:' || rr.id || ':approved', ${effectiveNow}
+    FROM return_requests rr JOIN orders ON orders.id = rr.order_id
+    WHERE rr.id = ${requestId} AND rr.status = 'approved'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/** 退貨拒絕通知：一案一封，事件鍵 `return:<申請編號>:rejected`；只在該案已拒絕時寫，帶審核備註。 */
+export function insertReturnRejectedNotice(requestId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'return_rejected', '訂單 #' || orders.id || ' 的退貨申請未獲核准',
+      '訂單 #' || orders.id || ' 的退貨申請未獲核准：' || ${returnItemsText("quantity")} || '。' ||
+      CASE WHEN rr.decision_note <> '' THEN '說明：' || rr.decision_note || '。' ELSE '' END ||
+      '如有疑問請聯絡客服。',
+      'return:' || rr.id || ':rejected', ${effectiveNow}
+    FROM return_requests rr JOIN orders ON orders.id = rr.order_id
+    WHERE rr.id = ${requestId} AND rr.status = 'rejected'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}
+
+/**
+ * 退貨檢查完成通知：一案一封，事件鍵 `return:<申請編號>:completed`；只在該案已完成時寫，與檢查記錄同一個 batch。
+ * 信件說明實際收到的商品與應退金額（商品款加符合條件的原運費）；通知依退款是否已登記分文案，退款完成另有退款成功通知。
+ */
+export function insertReturnCompletedNotice(requestId: number): SQL {
+  return sql`
+    INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
+    SELECT orders.customer_id, 'return_completed', '訂單 #' || orders.id || ' 的退貨已收到並檢查完成',
+      '訂單 #' || orders.id || ' 的退貨已收到並檢查完成：' || ${returnItemsText("received_quantity")} || '。' ||
+      '應退款 NT$' || (rr.goods_twd + rr.standard_shipping_twd + rr.large_shipping_twd) || '（商品款 NT$' || rr.goods_twd || '、運費 NT$' || (rr.standard_shipping_twd + rr.large_shipping_twd) || '），' ||
+      CASE WHEN EXISTS (SELECT 1 FROM refunds WHERE refunds.return_request_id = rr.id)
+        THEN '退款完成會另行通知；各筆退款的進度請至訂單頁查看。'
+        ELSE '這筆退款目前還不能自動辦理，客服會與你聯繫處理。' END,
+      'return:' || rr.id || ':completed', ${effectiveNow}
+    FROM return_requests rr JOIN orders ON orders.id = rr.order_id
+    WHERE rr.id = ${requestId} AND rr.status = 'completed'
+    ON CONFLICT (event_key) DO NOTHING
+  `;
+}

@@ -111,6 +111,13 @@ const stockReason = z
 
 export const adjustStockInput = z.object({ variantId, delta: stockDelta, reason: stockReason });
 
+/** 報廢損壞退貨：數量為正整數，不能超過已檢查確認的損壞品數量（由寫入端條件保證）；原因必填，寫進庫存流水供稽核。 */
+export const scrapUnavailableInput = z.object({
+  variantId,
+  quantity: wholeNumber("報廢數量").min(1, "報廢數量必須是 1 以上的整數").max(MAX_STOCK_DELTA, `報廢數量不可超過 ${MAX_STOCK_DELTA}`),
+  reason: stockReason,
+});
+
 const MAX_MOVEMENTS_PAGE = 200;
 
 /** 庫存流水查詢：可依變體或訂單篩選，以游標（上一頁最後一筆的編號）分頁，一頁預設 50 筆。 */
