@@ -1,30 +1,31 @@
 ---
 import type { ProductImage } from "../../../app/src/product-images";
-interface Props { name: string; images: ProductImage[] }
+interface Props { name: string; images: ProductImage[]; /** 首屏顯示第幾張（0 起算）；超出範圍時為第一張。 */ initialIndex?: number }
 const { name, images } = Astro.props;
+const initialIndex = Number.isInteger(Astro.props.initialIndex) && Astro.props.initialIndex! >= 0 && Astro.props.initialIndex! < images.length ? Astro.props.initialIndex! : 0;
 ---
-<section class="gallery" aria-label={`${name}的商品圖片`}>
+<section class="gallery" aria-label={`${name}的商品圖片`} data-initial-index={initialIndex}>
   <p id="gallery-help" class="visually-hidden">可左右滑動，或使用方向鍵切換商品圖片。</p>
   <div class="gallery-track" tabindex="0" role="group" aria-label="商品圖片瀏覽" aria-describedby="gallery-help">
     {images.map((image, index) => (
-      <div class="gallery-slide" role="group" aria-label={`第 ${index + 1} 張，共 ${images.length} 張`}>
+      <div class="gallery-slide" data-initial={index === initialIndex ? "" : undefined} role="group" aria-label={`第 ${index + 1} 張，共 ${images.length} 張`}>
         <img src={`/images/${image.variants[0]!.key}`}
           srcset={image.variants.map(v => `/images/${v.key} ${v.width}w`).join(", ")}
           sizes="(min-width: 64rem) 38rem, (min-width: 40rem) calc(100vw - 4rem), calc(100vw - 2rem)"
           width={image.variants.at(-1)!.width} height={image.variants.at(-1)!.height}
-          alt={`${name}，第 ${index + 1} 張商品圖片`} loading={index === 0 ? "eager" : "lazy"} decoding="async" />
+          alt={`${name}，第 ${index + 1} 張商品圖片`} loading={index === initialIndex ? "eager" : "lazy"} decoding="async" />
       </div>
     ))}
   </div>
   {images.length > 1 && <>
     <div class="gallery-controls">
       <button type="button" class="button-secondary" data-gallery-step="-1" aria-label="上一張商品圖片">←</button>
-      <span class="gallery-position" aria-live="polite" aria-atomic="true">1 / {images.length}</span>
+      <span class="gallery-position" aria-live="polite" aria-atomic="true">{initialIndex + 1} / {images.length}</span>
       <button type="button" class="button-secondary" data-gallery-step="1" aria-label="下一張商品圖片">→</button>
     </div>
     <div class="gallery-thumbnails" role="group" aria-label="選擇商品圖片">
       {images.map((image, index) => (
-        <button type="button" data-gallery-index={index} aria-label={`查看${name}第 ${index + 1} 張商品圖片`} aria-current={index === 0 ? "true" : undefined}>
+        <button type="button" data-gallery-index={index} aria-label={`查看${name}第 ${index + 1} 張商品圖片`} aria-current={index === initialIndex ? "true" : undefined}>
           <img src={`/images/${image.variants[0]!.key}`} width={image.variants[0]!.width} height={image.variants[0]!.height} alt="" loading="lazy" />
         </button>
       ))}
@@ -39,6 +40,7 @@ const { name, images } = Astro.props;
     const thumbnails = [...gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-index]")];
     const position = gallery.querySelector<HTMLElement>(".gallery-position");
     let selected = 0;
+    const initialIndex = Number(gallery.dataset.initialIndex ?? 0);
     const select = (index: number) => {
       if (!Number.isInteger(index) || index < 0 || index >= slides.length) return;
       selected = index;
@@ -72,6 +74,8 @@ const { name, images } = Astro.props;
       const current = target === track ? selected : Number(target.closest<HTMLElement>("[data-gallery-index]")!.dataset.galleryIndex);
       navigate(key === "Home" ? 0 : key === "End" ? slides.length - 1 : current + (key === "ArrowRight" ? 1 : -1), target !== track);
     });
+    // 伺服器端已依網址預選的變體標好第幾張；從這張接手並捲到位
+    if (initialIndex > 0 && initialIndex < slides.length) navigate(initialIndex);
     let frame = 0;
     let measuredWidth = track.clientWidth;
     let restoreAfterLayout = false;
@@ -110,6 +114,7 @@ const { name, images } = Astro.props;
 <style>
   .gallery { min-width: 0; }
   .gallery-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; border-radius: var(--radius-lg); background: var(--color-panel); }
+  .gallery-slide[data-initial] { scroll-initial-target: nearest; }
   .gallery-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
   .gallery-slide img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
   .gallery-controls { display: flex; justify-content: center; align-items: center; gap: var(--space-4); margin-block: var(--space-3); }

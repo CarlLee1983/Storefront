@@ -38,7 +38,7 @@ describe("productJsonLd", () => {
     expect(data).not.toHaveProperty("offers");
     expect(data).not.toHaveProperty("description");
     expect(data.hasVariant).toEqual([
-      { "@type": "Product", sku: "variant-80", name: "餐桌 / 120", size: "120", offers: { "@type": "Offer", url: `${pageUrl}?variant=80`, price: 9000, priceCurrency: "TWD", itemCondition: condition, availability: "https://schema.org/InStock" } },
+      { "@type": "Product", sku: "variant-80", name: "餐桌 / 120", size: "120", image: `${origin}/images/a-1280`, offers: { "@type": "Offer", url: `${pageUrl}?variant=80`, price: 9000, priceCurrency: "TWD", itemCondition: condition, availability: "https://schema.org/InStock" } },
       { "@type": "Product", sku: "variant-81", name: "餐桌 / 150", size: "150", image: `${origin}/images/a-1280`, offers: { "@type": "Offer", url: `${pageUrl}?variant=81`, price: 12000, priceCurrency: "TWD", itemCondition: condition, availability: "https://schema.org/OutOfStock" } },
     ]);
   });
@@ -54,6 +54,20 @@ describe("productJsonLd", () => {
   it("全部都對應不到時沒有 variesBy", () => {
     const data = productJsonLd({ ...table, optionNames: ["款式"] }, pageUrl, origin);
     expect(data).not.toHaveProperty("variesBy");
+  });
+
+  it("變體沒指定圖片時退回商品第一張；商品沒有圖片就不帶", () => {
+    const first = productJsonLd(table, pageUrl, origin) as { hasVariant: Record<string, unknown>[] };
+    expect(first.hasVariant[0]).toMatchObject({ image: `${origin}/images/a-1280` });
+    const none = productJsonLd({ ...table, images: [] }, pageUrl, origin) as { hasVariant: Record<string, unknown>[] };
+    expect(none.hasVariant[0]).not.toHaveProperty("image");
+  });
+
+  it("兩個維度對應到同一個屬性時只取第一個", () => {
+    const pair: JsonLdProduct = { ...table, optionNames: ["花色", "圖案"], variants: [{ id: 95, optionValues: ["格紋", "條紋"], priceTwd: 100, available: 1, imageId: null }] };
+    const data = productJsonLd(pair, pageUrl, origin) as { hasVariant: Record<string, unknown>[] } & Record<string, unknown>;
+    expect(data.variesBy).toEqual(["https://schema.org/pattern"]);
+    expect(data.hasVariant[0]).toMatchObject({ pattern: "格紋" });
   });
 
   it("選項名稱對應表", () => {

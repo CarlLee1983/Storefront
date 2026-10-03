@@ -57,7 +57,8 @@ export function productJsonLd(product: JsonLdProduct, pageUrl: string, origin: s
   if (product.optionNames.length === 0) {
     return { ...base, "@type": "Product", sku: String(product.id), offers: offer(product.variants[0]!, pageUrl) };
   }
-  const dimensions = product.optionNames.map((name) => VARIES_BY_PROPERTIES[name]);
+  // 兩個維度對應到同一個屬性時只取第一個，避免後者覆蓋前者
+  const dimensions = product.optionNames.map((name) => VARIES_BY_PROPERTIES[name]).map((property, index, all) => (all.indexOf(property) === index ? property : undefined));
   const variesBy = [...new Set(dimensions.filter((property) => property !== undefined))].map((property) => `https://schema.org/${property}`);
   return {
     ...base,
@@ -66,7 +67,8 @@ export function productJsonLd(product: JsonLdProduct, pageUrl: string, origin: s
     ...(variesBy.length > 0 ? { variesBy } : {}),
     hasVariant: product.variants.map((variant) => {
       const variantImage = product.images.find((image) => image.id === variant.imageId);
-      const url = variantImage ? imageUrl(origin, variantImage) : null;
+      // 沒指定圖片的變體退回商品第一張；商品完全沒有圖片就不帶
+      const url = images.length > 0 ? (variantImage ? imageUrl(origin, variantImage) : null) ?? images[0]! : null;
       const properties = dimensions.flatMap((property, index) => (property === undefined ? [] : [[property, variant.optionValues[index]] as const]));
       return {
         "@type": "Product",

@@ -301,6 +301,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 商品頁支援 `?variant=<變體編號>`：伺服器端依參數預選該變體（價格、可售量、加入購物車），編號無效或已停賣時退回預設選取；canonical 維持不帶參數。各變體 Offer 的網址即此網址。
 - 尚未達到 Google merchant listing 資格的部分：沒有圖片的商品、0 元變體不符資格；運費與退貨政策尚未標記（`shippingDetails`、`hasMerchantReturnPolicy`）。
 - `/sitemap.xml` 收錄固定公開頁、有上架商品的分類頁與「上架且至少一個販售中變體」的商品頁；不含帳戶、訂單、購物車、結帳、搜尋與後台。超過 50,000 個網址時改為 sitemap index，指向 `/sitemap-<n>.xml`。商品沒有「最後修改」欄位，所以不輸出 `lastmod`。`/robots.txt` 擋掉非公開路徑並指向 sitemap。
+- sitemap 與分檔以網址為鍵寫入 Workers 邊緣快取 5 分鐘（`apps/web/src/seo/edge-cache.ts`），商品上下架最多延遲 5 分鐘反映；只快取 200。預選變體（`?variant=`）有指定圖片時，首屏圖、縮圖狀態與 og:image 都在伺服器端就是該張。
 - 網址的 origin 取自 Web Worker 的 `SITE_ORIGIN`（`wrangler.jsonc` 各環境設定；本機留空時用請求的 origin）。
 
 ## 模擬金流閘道

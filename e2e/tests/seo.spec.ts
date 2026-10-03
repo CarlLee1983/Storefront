@@ -39,6 +39,20 @@ test.beforeAll(async ({ browser }) => {
   tableVariantIds = [...html.matchAll(/id="variant-(\d+)"/g)].map((match) => Number(match[1]));
   expect(tableVariantIds).toHaveLength(3);
   await post(admin.request, `/admin/products/${tableId}`, { intent: "adjust-variant-stock", variantId: String(tableVariantIds[1]), delta: "+2", reason: "E2E 補貨" });
+  // 第二張商品圖：複製封面的三個尺寸重新上傳，並指定給 150 公分變體
+  const productHtml = await (await admin.request.get(`/products/${tableId}`)).text();
+  const sources = [...productHtml.matchAll(/\/images\/(\S+?) (\d+)w/g)].slice(0, 3).map(([, key, width]) => ({ key: key!, width: Number(width) }));
+  expect(sources).toHaveLength(3);
+  const multipart: Record<string, string | { name: string; mimeType: string; buffer: Buffer }> = { uploadId: crypto.randomUUID() };
+  for (const { key, width } of sources) {
+    multipart[`image-${width}`] = { name: `${width}.webp`, mimeType: "image/webp", buffer: Buffer.from(await (await admin.request.get(`/images/${key}`)).body()) };
+    multipart[`height-${width}`] = String(width * 3 / 4);
+  }
+  expect((await admin.request.post(`/admin/products/${tableId}/images`, { headers: { origin: BASE_URL }, multipart })).status()).toBe(201);
+  const editHtml = await (await admin.request.get(`/admin/products/${tableId}`)).text();
+  const secondImageId = /<option value="([^"]+)"[^>]*>商品圖片 2<\/option>/.exec(editHtml)?.[1];
+  expect(secondImageId).toBeTruthy();
+  await post(admin.request, `/admin/products/${tableId}`, { intent: "update-variant", variantId: String(tableVariantIds[1]), value1: "150 公分", priceTwd: "12000", imageId: secondImageId! });
   await post(admin.request, `/admin/products/${tableId}`, { intent: "discontinue-variant", variantId: String(tableVariantIds[2]) });
 });
 
@@ -95,5 +109,27 @@ for (const viewport of VIEWPORTS) {
       await page.goto(`/products/${tableId}?variant=${param}`);
       await expect(page.locator("#variant-price .price-now")).toHaveText("NT$ 9,000");
     }
+  });
+}
+
+for (const viewport of VIEWPORTS) {
+  test(`${viewport.name}：?variant= 的首屏 HTML（未執行 JS）就是變體指定的圖片`, async ({ browser }) => {
+    const context = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, viewport: { width: viewport.width, height: viewport.height } });
+    try {
+      const page = await context.newPage();
+      const second = tableVariantIds[1]!;
+      await page.goto(`/products/${tableId}?variant=${second}`);
+      const secondSlide = page.locator(".gallery-slide").nth(1);
+      const shareImage = await page.locator('meta[property="og:image"]').getAttribute("content");
+      expect(shareImage).toBe(`${BASE_URL}${(await secondSlide.locator("img").getAttribute("srcset"))!.split(", ").at(-1)!.split(" ")[0]}`);
+      await expect(secondSlide.locator("img")).toHaveAttribute("loading", "eager");
+      await expect(page.locator(".gallery-position")).toHaveText("2 / 2");
+      await expect(page.locator('[data-gallery-index="1"]')).toHaveAttribute("aria-current", "true");
+      await expect(page.locator('[data-gallery-index="0"]')).not.toHaveAttribute("aria-current", "true");
+
+      await page.goto(`/products/${tableId}`);
+      await expect(page.locator(".gallery-position")).toHaveText("1 / 2");
+      expect(await page.locator('meta[property="og:image"]').getAttribute("content")).not.toBe(shareImage);
+    } finally { await context.close(); }
   });
 }

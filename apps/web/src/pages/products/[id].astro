@@ -24,6 +24,9 @@ const variants = product?.variants ?? [];
 // `?variant=<id>` 讓每個變體有可直接開啟的網址；無效或已停賣時退回預設選取
 const selected = variantFromParam(variants, Astro.url.searchParams.get("variant")) ?? initialVariant(variants);
 const selection = selected?.optionValues ?? [];
+// 選定變體指定了圖片就以它為首屏圖（也是分享預覽圖）；沒指定維持第一張
+const selectedImageIndex = Math.max(0, product?.images.findIndex((image) => image.id === selected?.imageId) ?? 0);
+const shareImage = product?.images[selectedImageIndex]?.variants.at(-1)?.key;
 const sale = selected ? saleDisplay(selected.priceTwd, selected.compareAtPriceTwd) : null;
 const specs = product ? [["尺寸", product.dimensions], ["材質", product.material], ["保養", product.care]].filter(([, text]) => text !== "") : [];
 const variantsData = product ? JSON.stringify({ productId: product.id, name: product.name, images: product.images, variants }).replace(/</g, "\\u003c") : "";
@@ -31,7 +34,7 @@ const origin = siteOrigin(env.SITE_ORIGIN, Astro.url);
 const productData = product ? productJsonLd(product, new URL(Astro.url.pathname, origin).href, origin) : null;
 const jsonLd = productData ? serializeJsonLd(productData) : "";
 ---
-<Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={product?.images[0]?.variants.at(-1)?.key ? `/images/${product.images[0]!.variants.at(-1)!.key}` : undefined} noindex={!product} hideTitle={!!product}>
+<Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={shareImage ? `/images/${shareImage}` : undefined} noindex={!product} hideTitle={!!product}>
   {product ? <>
     {jsonLd && <script is:inline type="application/ld+json" set:html={jsonLd} />}
     <nav class="breadcrumb" aria-label="麵包屑">
@@ -42,7 +45,7 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
       </ol>
     </nav>
     <div class="product-detail">
-      <ProductGallery name={product.name} images={product.images} />
+      <ProductGallery name={product.name} images={product.images} initialIndex={selectedImageIndex} />
       <section class="product-information" aria-label="商品資訊">
         {product.category && <p class="eyebrow">{product.category.name}</p>}
         <h1>{product.name}</h1>
