@@ -93,7 +93,11 @@ export function createPaymentService(
     if (!refund) return fail("refund_not_found");
     const startedAt = clock.now();
     const action = actionFor(refund, startedAt);
-    if (action === "done") return ok({ status: "succeeded" as RefundStatus });
+    if (action === "done") {
+      // 已成功的退款重試：補上先前沒折讓成的（原票當時未開立、折讓失敗），已折讓的不會再送
+      await invoices.allowForRefund(refundId);
+      return ok({ status: "succeeded" as RefundStatus });
+    }
     if (action === "busy") return fail("refund_in_progress");
     if (!(await claimRefund(d1, refund, startedAt))) {
       return fail((await hasOtherUncertainRefund(db, refund)) ? "refund_blocked" : "refund_in_progress");

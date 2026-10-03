@@ -100,3 +100,16 @@ it("有任何折讓嘗試紀錄（例如結果不明、發票服務可能已折�
   expect(await rows("SELECT status FROM allowance_obligations WHERE id = 1")).toEqual([{ status: "unknown" }]);
   expect(await rows("SELECT count(*) AS n FROM allowance_attempts")).toEqual([{ n: 1 }]);
 });
+
+it("原票已開立、冪等鍵不是 alw_legacy_ 的待折讓義務（折讓可能已在閘道成立卻沒有本地紀錄）也讓回復的守門檢查失敗；舊義務不受影響", async () => {
+  await seed0030();
+  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await db.prepare("INSERT INTO invoices (order_id, payment_id, gateway_invoice_key, amount_twd, status, invoice_number, created_at, issued_at) VALUES (1, 1, 'inv_x', 1000, 'issued', 'SM-1', 1, 1)").run();
+  await expect(db.batch(rollbackStatements())).resolves.toBeDefined();
+  await applyD1Migrations(db, env.TEST_MIGRATIONS);
+  await db.prepare("UPDATE allowance_obligations SET gateway_allowance_key = 'alw_new' WHERE id = 1").run();
+
+  await expect(db.batch(rollbackStatements())).rejects.toThrow();
+
+  expect(await rows("SELECT gateway_allowance_key FROM allowance_obligations WHERE id = 1")).toEqual([{ gateway_allowance_key: "alw_new" }]);
+});

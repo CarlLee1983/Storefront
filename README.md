@@ -257,7 +257,7 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
   ```
 
 - 舊收款（遷移前或補登的）只能逐張補辦：它們停在「待開立」，系統只在付款事件進來時開立，沒有 Cron 也沒有批次補開，管理員要在 `/admin/invoices` 逐張按「補辦」。
-- 付款確認路徑的延遲：開立在套用付款結果的同一個請求裡、batch 之後同步呼叫發票服務（webhook、導回查詢與補查都是），所以發票服務慢時（逾時上限 5 秒）這些請求會變慢，但結果不受影響。沒有改成 `ctx.waitUntil`：測試與冪等補開依賴「套用結果回傳時開立已有結果」，且 App 的服務層沒有執行環境的 context。
+- 付款確認路徑的延遲：開立在套用付款結果的同一個請求裡、batch 之後同步呼叫發票服務（webhook、導回查詢與補查都是），所以發票服務慢時（逾時上限 5 秒）這些請求會變慢，但結果不受影響。折讓同樣在退款成功與原票開立之後同步呼叫發票服務，每次最多 5 秒。沒有改成 `ctx.waitUntil`：測試與冪等補開依賴「套用結果回傳時開立已有結果」，且 App 的服務層沒有執行環境的 context。
 - 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0030_invoices.down.sql`（已有已開立的發票，或任何開立嘗試紀錄——含結果不明，發票服務那邊可能已開立——時守門檢查讓回復失敗；其餘由收款與退款推得、重新套用會補回）。回復順序是 0030 → 0029 → …。
 - 測試：`apps/app/test/invoices.test.ts`（開立一次與重送不重複、失敗與不明與查證、補辦並行、重寄憑證、權限、待折讓義務與先後順序）、`invoices-migration.test.ts`（遷移補資料、約束與回復）、`apps/gateway/test/invoice.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
 
@@ -270,8 +270,8 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 開立同款的補辦模式（比照 #121）：交易外呼叫、沒有 processing 租約；以冪等鍵加本地條件更新（`status <> 'issued'`，已折讓不可被蓋回）保證同筆退款只折讓一次，並行與重送回同一張折讓；結果不明先 `GET /v1/allowances/:allowanceKey` 查證再用同一個鍵送出；回應的鍵、原票鍵、金額與本站不符、409 `allowance_conflict` 一律當作結果不明並 log；明確失敗（`allowance_failed`、422 `allowance_exceeds_invoice`、其他 4xx）留待補辦。折讓成功時折讓通知（`allowance_issued`，折讓號碼、金額與原票號碼，內容固定）與狀態同一個 batch 寫入，之後才投遞；首次投遞遺失由管理員重寄（RPC `resendAllowance`，同一封信的新投遞，寄到顧客目前已驗證的 email）。RPC：`retryAllowance`、`resendAllowance`（輸入 `{ refundId }`）。
 - 畫面：顧客訂單頁「發票」同時表達退款完成與憑證待補——還有未折讓的退款時標「憑證待補」且只顯示已折讓累計、**不給餘額**（不把未折讓的原額標成已結清）；全部折讓完成才顯示「折讓後餘額」（原額減累計折讓）。後台「發票待辦」的「憑證待補（待折讓）」清單列出所有未完成的折讓（結果不明在前）與嘗試紀錄，原票已開立的可補辦，否則標「等原票開立」；後台訂單頁「發票」表逐筆顯示折讓進度、號碼與補辦／重寄通知按鈕；手機與桌機皆可操作（e2e 驗證）。
 - 模擬服務（`apps/gateway`，migration `0004_allowances.sql`）：`POST /v1/invoices/:invoiceKey/allowances`（`{ allowanceKey, amountTwd }`）、`GET /v1/allowances/:allowanceKey`，見「模擬金流閘道」；主控頁可切換「下一次折讓失敗」與「下一次折讓已成立但回應遺失」。
-- 部署順序：先停止寫入，再套用 migration（App 的 `0031_allowances.sql` 與閘道的 `0004_allowances.sql`），然後部署閘道、App，最後 Web；0031 重建 `allowance_obligations`（要加 CHECK 與 NOT NULL 欄位），遷移前（0030）已存在的義務補成 `alw_legacy_<義務編號>`、狀態 `pending`，由原票已開立後的付款事件重送或管理員逐筆補辦折讓送出（沒有 Cron 與批次補送）。migration 套用到新 App 上線之間若有成功退款，補登 SQL 見上節「安全網」的第二段（可重跑、冪等）。閘道 0004 只新增資料表、沒有回復腳本。
-- 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0031_allowances.down.sql`（只要有任何已折讓的義務，或任何折讓嘗試紀錄——含結果不明，發票服務那邊可能已折讓——守門檢查就讓回復失敗；其餘由成功退款推得，義務本身保留）。回復順序是 0031 → 0030 → …。
+- 部署順序：先停止寫入，再套用 migration（App 的 `0031_allowances.sql` 與閘道的 `0004_allowances.sql`），然後部署閘道、App，最後 Web；0031 重建 `allowance_obligations`（要加 CHECK 與 NOT NULL 欄位），遷移前（0030）已存在的義務補成 `alw_legacy_<義務編號>`、狀態 `pending`，由原票已開立後的付款事件重送或管理員逐筆補辦折讓送出（沒有 Cron 與批次補送）。重點是先停止寫入：舊 App 在 migration 與新 App 上線之間讓退款轉成功時，那個 batch 會因 `gateway_allowance_key` NOT NULL 而整批失敗（退款狀態不寫回，維持處理中／不明），待新 App 上線後由管理員重試、先向閘道查證再補回，所以窗口期不會留下缺義務的成功退款；上節「安全網」的第二段補登 SQL 保留為保險，通常用不到。閘道 0004 只新增資料表、沒有回復腳本。
+- 回復：先停止寫入並先回復 Web 與 App，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0031_allowances.down.sql`（只要有任何已折讓的義務、任何折讓嘗試紀錄——含結果不明，發票服務那邊可能已折讓——或原票已開立而冪等鍵不是 `alw_legacy_` 開頭的待折讓義務，守門檢查就讓回復失敗；其餘由成功退款推得，義務本身保留。殘餘風險：閘道已折讓成功、本地尚未記下任何嘗試的義務守門看不出來，回復後重新套用可能重複折讓，須先到閘道主控頁核對，與 #121 的 `inv_legacy_` 同理）。回復順序是 0031 → 0030 → …。
 - 測試：`apps/app/test/allowances.test.ts`（自動折讓一次、退款先於原票、原票補辦後補折讓、重送與並行不重複、失敗與不明與查證與補辦、已折讓不被蓋回、通知重送、權限）、`allowances-migration.test.ts`（遷移補冪等鍵、約束與回復）、`apps/gateway/test/allowance.test.ts`、`apps/web/src/admin/invoice.test.ts`、`apps/web/src/orders/invoice.test.ts`、`e2e/tests/invoices.spec.ts`（手機與桌機）。
 
 ## 模擬金流閘道

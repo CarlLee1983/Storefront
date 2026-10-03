@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
+import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 import { recordAllowanceAttempt } from "../src/invoices/allowance-queries";
+import { insertAllowanceObligation } from "../src/invoices/queries";
 import type { InvoiceGateway } from "../src/invoices/gateway";
 import { createInvoiceService } from "../src/invoices/service";
 import { GatewayError } from "../src/payments/gateway";
@@ -96,6 +98,42 @@ describe("成功退款逐筆折讓", () => {
     await retryInvoice((await adminInvoice(orderId)).id);
     expect((await orderOf(cookie, orderId)).invoices).toMatchObject([{ allowedTwd: totalTwd, pendingAllowanceCount: 0 }]);
     expect(gateway.allowances.size).toBe(1);
+  });
+
+  it("折讓先失敗，付款事件重送時補折讓（原票已開立分支）：折讓完成、閘道只 1 張、通知 1 封", async () => {
+    const { cookie, orderId, totalTwd, gateway, succeed } = await lateOrderWithPayment();
+    gateway.failNextAllowanceExplicitly();
+    const event = succeed();
+    await app.applyPaymentResult(event);
+    expect((await orderOf(cookie, orderId)).invoices).toMatchObject([{ allowedCount: 0, pendingAllowanceCount: 1 }]);
+
+    await app.applyPaymentResult(event);
+
+    expect((await orderOf(cookie, orderId)).invoices).toMatchObject([{ allowedTwd: totalTwd, pendingAllowanceCount: 0 }]);
+    expect(gateway.allowances.size).toBe(1);
+    expect(await allowanceMail(cookie)).toHaveLength(1);
+  });
+
+  it("折讓先失敗，管理員重試已成功的退款（retryRefund）也會補折讓", async () => {
+    const { cookie, orderId, totalTwd, gateway, succeed } = await lateOrderWithPayment();
+    gateway.failNextAllowanceExplicitly();
+    await app.applyPaymentResult(succeed());
+
+    await app.retryRefund(await mintAccessJwt(), { refundId: await refundIdOf(cookie, orderId) });
+
+    expect((await orderOf(cookie, orderId)).invoices).toMatchObject([{ allowedTwd: totalTwd, pendingAllowanceCount: 0 }]);
+    expect(gateway.allowances.size).toBe(1);
+  });
+
+  it("同一筆退款再登記義務：冪等鍵與既有那列不變", async () => {
+    const { cookie, orderId, succeed } = await lateOrderWithPayment();
+    await app.applyPaymentResult(succeed());
+    const refundId = await refundIdOf(cookie, orderId);
+    const before = await env.DB.prepare("SELECT id, gateway_allowance_key FROM allowance_obligations").all();
+
+    await drizzle(env.DB).run(insertAllowanceObligation(refundId));
+
+    expect(await env.DB.prepare("SELECT id, gateway_allowance_key FROM allowance_obligations").all()).toMatchObject({ results: before.results });
   });
 
   it("同筆成功退款只折讓一次：付款事件重送、退款重試、並行補辦都回同一張折讓、同一個冪等鍵、一封通知", async () => {
@@ -214,6 +252,22 @@ describe("折讓失敗與延遲可查證、可補辦", () => {
     expect(await createInvoiceService(env.DB, { now: () => Date.now() }, conflicting).retryAllowance(refundId, ADMIN_EMAIL)).toEqual({ ok: true, data: { status: "unknown" } });
     expect((await adminInvoice(orderId)).allowances[0]!.attempts.at(-1)).toMatchObject({ outcome: "unknown", code: "allowance_conflict" });
     expect(await createInvoiceService(env.DB, { now: () => Date.now() }, lying).retryAllowance(refundId, ADMIN_EMAIL)).toEqual({ ok: true, data: { status: "unknown" } });
+    expect((await adminInvoice(orderId)).allowances[0]).toMatchObject({ status: "unknown", allowanceNumber: null });
+  });
+
+  it("服務回的折讓鍵與金額相同、但原票鍵不同：不信任，結果當作不明", async () => {
+    const { cookie, orderId, gateway, succeed } = await lateOrderWithPayment();
+    gateway.failNextAllowanceExplicitly();
+    await app.applyPaymentResult(succeed());
+    const refundId = await refundIdOf(cookie, orderId);
+    const wrongInvoice: InvoiceGateway = {
+      getInvoice: async () => null,
+      issueInvoice: async (): Promise<never> => { throw new Error("不該開立"); },
+      getAllowance: async () => null,
+      issueAllowance: async (input) => ({ ...input, invoiceKey: "inv_other", allowanceNumber: "SA-X", issuedAt: 1 }),
+    };
+
+    expect(await createInvoiceService(env.DB, { now: () => Date.now() }, wrongInvoice).retryAllowance(refundId, ADMIN_EMAIL)).toEqual({ ok: true, data: { status: "unknown" } });
     expect((await adminInvoice(orderId)).allowances[0]).toMatchObject({ status: "unknown", allowanceNumber: null });
   });
 
