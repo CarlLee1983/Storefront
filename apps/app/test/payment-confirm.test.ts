@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signInCustomer } from "./customers";
 import { resetDb } from "./db";
 import { installFakeGateway, type FakeGateway } from "./fake-gateway";
-import { orderOf, placeMugOrder, stockOf } from "./payment-helpers";
+import { noInvoices, orderOf, placeMugOrder, stockOf } from "./payment-helpers";
 import { createPaymentService } from "../src/payments/service";
 
 const app = exports.default;
@@ -18,9 +18,9 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
   beforeEach(resetDb);
   afterEach(() => vi.restoreAllMocks());
 
-  it("閘道說付款成功（webhook 還沒到）：套用結果，訂單轉為已付款、在庫數扣除", async () => {
+  it("閘道說付款成功（webhook 還沒到）：套用結果，訂單轉為已付款、保留轉為已付款保留、在庫數不動", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPayment(alice, orderId, gateway);
     gateway.settle(gatewayPaymentId, "succeeded");
@@ -29,7 +29,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
 
     expect(result).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "paid" } });
     expect((await orderOf(alice, orderId)).status).toBe("paid");
-    expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("閘道說付款失敗：付款記為失敗，訂單仍是待付款", async () => {
@@ -47,7 +47,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
 
   it("閘道說付款已失效（expired）：本地付款轉為 expired，不再停在 pending；訂單與在庫數不動", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPayment(alice, orderId, gateway);
     gateway.payments.get(gatewayPaymentId)!.status = "expired";
@@ -56,7 +56,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
 
     expect(result).toEqual({ ok: true, data: { paymentStatus: "expired", orderStatus: "pending_payment" } });
     expect((await orderOf(alice, orderId)).payments).toMatchObject([{ status: "expired" }]);
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it.each([
@@ -81,7 +81,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
     ["pending（顧客還沒付完）", "pending"],
   ] as const)("閘道仍是 %s：不套用，回目前狀態，訂單與在庫數不動", async (_label, status) => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPayment(alice, orderId, gateway);
     gateway.payments.get(gatewayPaymentId)!.status = status;
@@ -90,7 +90,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
       ok: true,
       data: { paymentStatus: "pending", orderStatus: "pending_payment" },
     });
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("閘道說成功卻沒有事件 ID：無法冪等，不套用", async () => {
@@ -106,9 +106,9 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
     });
   });
 
-  it("webhook 已先套用：導回查詢與它共用事件 ID，回同一結果，在庫數只扣一次", async () => {
+  it("webhook 已先套用：導回查詢與它共用事件 ID，回同一結果，已付款保留只有一份、可售只減一次", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPayment(alice, orderId, gateway);
     const webhook = await app.applyPaymentResult(gateway.settle(gatewayPaymentId, "succeeded"));
@@ -116,12 +116,12 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
     const confirmed = await app.confirmPayment(alice, { orderId, gatewayPaymentId });
 
     expect(confirmed).toEqual(webhook);
-    expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
-  it("webhook 與導回同時送達（Promise.all）：結果一致，在庫數只扣一次", async () => {
+  it("webhook 與導回同時送達（Promise.all）：結果一致，已付款保留只有一份、可售只減一次", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPayment(alice, orderId, gateway);
     const event = gateway.settle(gatewayPaymentId, "succeeded");
@@ -133,7 +133,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
 
     expect(webhook).toEqual({ ok: true, data: { paymentStatus: "succeeded", orderStatus: "paid" } });
     expect(confirmed).toEqual(webhook);
-    expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("付款不屬於這張訂單（是同一位顧客另一張訂單的付款）：payment_not_found，不套用", async () => {
@@ -203,7 +203,7 @@ describe("confirmPayment：導回時主動向閘道查詢", () => {
   });
 
   it("閘道尚未設定：payment_unavailable，fail closed", async () => {
-    const service = createPaymentService({} as D1Database, { now: () => Date.now() }, async () => "someone", null, "http://localhost:4321");
+    const service = createPaymentService({} as D1Database, { now: () => Date.now() }, async () => "someone", null, "http://localhost:4321", noInvoices);
 
     expect(await service.confirmPayment("cookie", { orderId: 1, gatewayPaymentId: "pay_1" })).toEqual({
       ok: false,

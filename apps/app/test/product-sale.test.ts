@@ -1,7 +1,7 @@
 import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
-import { checkoutInput, createStockedProduct } from "./checkout-helpers";
+import { checkoutInput, createStockedListing } from "./checkout-helpers";
 import { signInCustomer } from "./customers";
 import { resetDb } from "./db";
 
@@ -34,31 +34,31 @@ describe("原價", () => {
 
   it("新商品沒有原價", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     expect(await compareAtOf(jwt, id)).toBeNull();
   });
 
   it("設定原價後，前台列表、詳情與後台清單都帶出原價", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
 
     expect(await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }))).toEqual({ ok: true, data: { id } });
 
-    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, priceTwd: 320, compareAtPriceTwd: 450 }] } });
-    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { priceTwd: 320, compareAtPriceTwd: 450 } });
+    expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, priceTwd: 320, compareAtPriceTwd: 450, onSale: true }] } });
+    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ priceTwd: 320, compareAtPriceTwd: 450 })] } });
     expect(await app.listProductsForAdmin(jwt)).toMatchObject({ ok: true, data: [{ id, compareAtPriceTwd: 450 }] });
     expect(await compareAtOf(jwt, id)).toBe(450);
   });
 
   it("沒有原價的商品，前台項目的原價是 null", async () => {
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     expect(await app.listProducts()).toMatchObject({ ok: true, data: { items: [{ id, compareAtPriceTwd: null }] } });
-    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { compareAtPriceTwd: null } });
+    expect(await app.getProduct({ id })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ compareAtPriceTwd: null })] } });
   });
 
   it.each([[320], [300]])("原價 %i 不高於售價 320：回 invalid_compare_at_price，原價不變", async (compareAt) => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
 
     expect(await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: compareAt }))).toEqual({ ok: false, reason: "invalid_compare_at_price" });
     expect(await compareAtOf(jwt, id)).toBeNull();
@@ -66,7 +66,7 @@ describe("原價", () => {
 
   it("被拒絕的儲存不會改到其他欄位", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
 
     await app.updateProduct(jwt, edit(id, 100, { name: "新名字", compareAtPriceTwd: 100 }));
 
@@ -75,7 +75,7 @@ describe("原價", () => {
 
   it("不帶原價代表不變：已有原價時調整其他欄位，原價保留", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.updateProduct(jwt, edit(id, 330, { name: "大馬克杯" }))).toEqual({ ok: true, data: { id } });
@@ -85,16 +85,16 @@ describe("原價", () => {
 
   it("不帶原價時把售價調到不低於既有原價：回 invalid_compare_at_price", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.updateProduct(jwt, edit(id, 450))).toEqual({ ok: false, reason: "invalid_compare_at_price" });
-    expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { priceTwd: 320, compareAtPriceTwd: 450 } });
+    expect(await app.getProductForAdmin(jwt, { id })).toMatchObject({ ok: true, data: { variants: [expect.objectContaining({ priceTwd: 320, compareAtPriceTwd: 450 })] } });
   });
 
   it("帶 null 清空原價，結束特價", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: null }))).toEqual({ ok: true, data: { id } });
@@ -105,7 +105,7 @@ describe("原價", () => {
 
   it("同一次儲存把售價改回原價並清空原價是合法的", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.updateProduct(jwt, edit(id, 450, { compareAtPriceTwd: null }))).toEqual({ ok: true, data: { id } });
@@ -115,7 +115,7 @@ describe("原價", () => {
 
   it("同一次儲存調整售價與原價，以儲存後的結果檢查", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.updateProduct(jwt, edit(id, 600, { compareAtPriceTwd: 800 }))).toEqual({ ok: true, data: { id } });
@@ -124,7 +124,7 @@ describe("原價", () => {
 
   it.each([[0], [-1], [1.5], [Number.NaN], ["abc"]])("原價 %j 不是正整數：回 invalid_input", async (compareAt) => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
 
     const result = await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: compareAt }));
 
@@ -143,7 +143,7 @@ describe("原價", () => {
 
   it("未授權被拒，且沒有寫入", async () => {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
 
     expect(await app.updateProduct("", edit(id, 320, { compareAtPriceTwd: 450 }))).toEqual({ ok: false, reason: "unauthorized" });
 
@@ -156,14 +156,14 @@ describe("只看特價與特價入口", () => {
 
   async function onSale(name: string, priceTwd: number, compareAtPriceTwd: number, stock = 5) {
     const jwt = await mintAccessJwt();
-    const id = await createStockedProduct(name, priceTwd, stock);
+    const id = (await createStockedListing(name, priceTwd, stock)).productId;
     const updated = await app.updateProduct(jwt, { id, name, description: "說明", priceTwd, compareAtPriceTwd });
     if (!updated.ok) throw new Error(`設定原價失敗：${updated.reason}`);
     return id;
   }
 
   it("onSale 只列上架中且有原價的商品，總件數一致", async () => {
-    await createStockedProduct("平價杯", 100, 5);
+    (await createStockedListing("平價杯", 100, 5)).productId;
     await onSale("特價杯", 80, 100);
 
     expect(await listedNames({ onSale: true })).toEqual(["特價杯"]);
@@ -184,7 +184,7 @@ describe("只看特價與特價入口", () => {
     await onSale("特價貴", 900, 1000, 5);
     await onSale("特價便宜", 80, 100, 5);
     await onSale("特價售完", 50, 100, 0);
-    await createStockedProduct("原價品", 10, 5);
+    (await createStockedListing("原價品", 10, 5)).productId;
 
     expect(await listedNames({ onSale: true, inStock: true, sort: "price-asc" })).toEqual(["特價便宜", "特價貴"]);
     expect(await listedNames({ onSale: true, sort: "price-desc" })).toEqual(["特價貴", "特價便宜", "特價售完"]);
@@ -200,7 +200,7 @@ describe("只看特價與特價入口", () => {
     const jwt = await mintAccessJwt();
     expect(await hasSale()).toEqual({ ok: true, data: false });
 
-    await createStockedProduct("平價杯", 100, 5);
+    (await createStockedListing("平價杯", 100, 5)).productId;
     expect(await hasSale()).toEqual({ ok: true, data: false });
 
     const id = await onSale("特價杯", 80, 100);
@@ -218,7 +218,7 @@ describe("導覽資料", () => {
     const jwt = await mintAccessJwt();
     expect(await app.getStorefrontNav()).toEqual({ ok: true, data: { categories: [], hasSale: false } });
 
-    const id = await createStockedProduct("馬克杯", 320, 5);
+    const id = (await createStockedListing("馬克杯", 320, 5)).productId;
     await app.updateProduct(jwt, edit(id, 320, { compareAtPriceTwd: 450 }));
 
     expect(await app.getStorefrontNav()).toMatchObject({ ok: true, data: { categories: [{ slug: "default" }], hasSale: true } });
@@ -229,26 +229,26 @@ describe("結帳的價格比對不看原價", () => {
   beforeEach(resetDb);
 
   it("購物車單價高於目前售價（降價）：以 price_changed 擋下並告知新價格", async () => {
-    const id = await createStockedProduct("馬克杯", 320, 10);
+    const { productId: id, variantId } = await createStockedListing("馬克杯", 320, 10);
     const cookie = await signInCustomer("alice");
     await app.updateProduct(await mintAccessJwt(), edit(id, 250, { compareAtPriceTwd: 320 }));
 
-    expect(await app.checkout(cookie, checkoutInput([{ productId: id, quantity: 1, seenUnitPriceTwd: 320 }]))).toEqual({
+    expect(await app.checkout(cookie, checkoutInput([{ variantId, quantity: 1, seenUnitPriceTwd: 320 }]))).toEqual({
       ok: false,
       reason: "checkout_rejected",
-      issues: [{ productId: id, kind: "price_changed", currentUnitPriceTwd: 250 }],
+      issues: [{ variantId, kind: "price_changed", currentUnitPriceTwd: 250 }],
     });
   });
 
   it("以售價結帳成功，訂單只記成交單價", async () => {
-    const id = await createStockedProduct("馬克杯", 320, 10);
+    const { productId: id, variantId } = await createStockedListing("馬克杯", 320, 10);
     const cookie = await signInCustomer("alice");
     await app.updateProduct(await mintAccessJwt(), edit(id, 250, { compareAtPriceTwd: 320 }));
 
-    const placed = await app.checkout(cookie, checkoutInput([{ productId: id, quantity: 1, seenUnitPriceTwd: 250 }]));
+    const placed = await app.checkout(cookie, checkoutInput([{ variantId, quantity: 1, seenUnitPriceTwd: 250 }]));
     if (!placed.ok) throw new Error(`結帳失敗：${placed.reason}`);
     const order = await app.getMyOrder(cookie, { orderId: placed.data.orderId });
-    expect(order).toMatchObject({ ok: true, data: { lines: [{ productId: id, unitPriceTwd: 250 }] } });
+    expect(order).toMatchObject({ ok: true, data: { lines: [{ productId: id, variantId, unitPriceTwd: 250 }] } });
     expect(JSON.stringify(order)).not.toContain("ompareAt");
   });
 });

@@ -92,6 +92,153 @@
       "when": 1790861274181,
       "tag": "0012_featured_products",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790948048412,
+      "tag": "0013_product_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1790952576246,
+      "tag": "0014_variant_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1790956818597,
+      "tag": "0015_product_info",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1790958534436,
+      "tag": "0016_contact_mailbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1790960907424,
+      "tag": "0017_address_book",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1790962939873,
+      "tag": "0018_transaction_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1790965253849,
+      "tag": "0019_shipping_fees",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790968188499,
+      "tag": "0020_stock_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1790970997448,
+      "tag": "0021_shipments",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1790973922145,
+      "tag": "0022_shipment_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790977233314,
+      "tag": "0023_payment_reconcile",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1790978617360,
+      "tag": "0024_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1790981784234,
+      "tag": "0025_cancellations",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1790983936487,
+      "tag": "0026_returns",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1790986857944,
+      "tag": "0027_return_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1790990276249,
+      "tag": "0028_shipment_losses",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1790993723010,
+      "tag": "0029_shipment_returns",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1791000391075,
+      "tag": "0030_invoices",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1791009102681,
+      "tag": "0031_allowances",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1791011709587,
+      "tag": "0032_order_search_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1791013357116,
+      "tag": "0033_low_stock_threshold",
+      "breakpoints": true
     }
   ]
 }

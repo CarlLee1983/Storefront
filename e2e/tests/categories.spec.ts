@@ -1,8 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const LIVING = { slug: "e2e-living", name: "E2E客廳", description: "分類頁測試用的一行說明" };
 
@@ -13,7 +14,7 @@ async function createProduct(admin: Page, name: string) {
   await admin.getByLabel("單價（新台幣整數元）").fill("880");
   await admin.getByRole("button", { name: "新增商品", exact: true }).click();
   await expect(admin.getByRole("status").filter({ hasText: "已新增商品。" })).toHaveText("已新增商品。");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
 }
 
 async function uploadCover(admin: Page, name: string) {
@@ -59,7 +60,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
     await createProduct(admin, name);
     await assignCategory(admin, name, LIVING.name);
     await uploadCover(admin, name);
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     const productRow = admin.getByRole("row", { name: new RegExp(name) });
     await expect(productRow).toContainText(LIVING.name);
     await productRow.getByRole("button", { name: "重新上架" }).click();
@@ -85,7 +86,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
   await expect(nav.getByRole("link", { name: LIVING.name })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "全部商品" })).not.toHaveAttribute("aria-current", "page");
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await testInfo.attach("category-desktop", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 
   // 手機：抽屜也列出分類，分類頁沒有橫向捲動且 axe 零違規
@@ -96,7 +97,7 @@ test("管理員建立分類、商品選分類並上架，顧客從導覽列進�
   await expect(page).toHaveURL(/\/categories\/e2e-living$/);
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await testInfo.attach("category-mobile", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 });
 
@@ -107,7 +108,7 @@ test("沒有分類不能上架並顯示原因；沒有上架商品的分類不�
   await withAdmin(browser, async (admin) => {
     await createProduct(admin, name);
     await uploadCover(admin, name);
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     const productRow = admin.getByRole("row", { name: new RegExp(name) });
     await expect(productRow.getByRole("cell", { name: "未分類", exact: true })).toBeVisible();
     await productRow.getByRole("button", { name: "重新上架" }).click();
@@ -133,6 +134,6 @@ test("沒有分類不能上架並顯示原因；沒有上架商品的分類不�
     const response = await page.goto(path);
     expect(response?.status(), path).toBe(404);
     await expect(page.getByRole("heading", { level: 1, name: "找不到這個頁面" })).toBeVisible();
-    expect((await new AxeBuilder({ page }).analyze()).violations, path).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations, path).toEqual([]);
   }
 });

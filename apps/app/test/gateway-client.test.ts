@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHttpGateway, GatewayError } from "../src/payments/gateway";
+import { createHttpGateway, GATEWAY_TIMEOUT_MS, GatewayError } from "../src/payments/gateway";
 
 const BASE_URL = "https://gateway.example";
 const API_KEY = "key-for-test";
@@ -85,12 +85,28 @@ describe("HTTP 閘道：getPayment", () => {
   });
 });
 
-describe("HTTP 閘道：refund 與 cancel", () => {
-  it("refund：POST /v1/payments/:id/refund，回傳 refunded", async () => {
-    const { gateway, requests } = gatewayReplying(() => envelope({ paymentId: "pay_1", status: "refunded" }));
+describe("HTTP 閘道：refund、getRefund 與 cancel", () => {
+  const refunded = { refundId: "rf_7", paymentId: "pay_1", status: "succeeded", amountTwd: 300 };
 
-    expect(await gateway.refund("pay_1")).toEqual({ paymentId: "pay_1", status: "refunded" });
-    expect(requests[0]).toMatchObject({ url: `${BASE_URL}/v1/payments/pay_1/refund`, method: "POST", authorization: `Bearer ${API_KEY}` });
+  it("refund：POST /v1/payments/:id/refunds，帶退款 ID（冪等鍵）與金額，回傳這筆退款", async () => {
+    const { gateway, requests } = gatewayReplying(() => envelope(refunded));
+
+    expect(await gateway.refund({ gatewayPaymentId: "pay_1", refundId: "rf_7", amountTwd: 300 })).toEqual(refunded);
+    expect(requests[0]).toMatchObject({ url: `${BASE_URL}/v1/payments/pay_1/refunds`, method: "POST", authorization: `Bearer ${API_KEY}` });
+    expect(requests[0]?.body).toEqual({ refundId: "rf_7", amountTwd: 300 });
+  });
+
+  it("getRefund：GET /v1/payments/:id/refunds/:refundId；閘道從未收過回 null，其他錯誤照丟", async () => {
+    const { gateway, requests } = gatewayReplying(() => envelope(refunded));
+    expect(await gateway.getRefund("pay_1", "rf_7")).toEqual(refunded);
+    expect(requests[0]).toMatchObject({ url: `${BASE_URL}/v1/payments/pay_1/refunds/rf_7`, method: "GET" });
+
+    const missing = gatewayReplying(() => errorEnvelope(404, "refund_not_found"));
+    expect(await missing.gateway.getRefund("pay_1", "rf_7")).toBeNull();
+    const noPayment = gatewayReplying(() => errorEnvelope(404, "payment_not_found"));
+    await expect(noPayment.gateway.getRefund("pay_1", "rf_7")).rejects.toMatchObject({ code: "payment_not_found", status: 404 });
+    const down = gatewayReplying(() => errorEnvelope(503, "gateway_error"));
+    await expect(down.gateway.getRefund("pay_1", "rf_7")).rejects.toMatchObject({ status: 503 });
   });
 
   it("cancel：POST /v1/payments/:id/cancel，取消後狀態是 expired", async () => {
@@ -105,7 +121,7 @@ describe("HTTP 閘道：失敗", () => {
   it("閘道回錯誤：丟出 GatewayError，帶 HTTP 狀態與閘道的錯誤碼", async () => {
     const { gateway } = gatewayReplying(() => errorEnvelope(409, "payment_not_refundable"));
 
-    await expect(gateway.refund("pay_1")).rejects.toMatchObject({ name: "GatewayError", status: 409, code: "payment_not_refundable" });
+    await expect(gateway.refund({ gatewayPaymentId: "pay_1", refundId: "rf_7", amountTwd: 300 })).rejects.toMatchObject({ name: "GatewayError", status: 409, code: "payment_not_refundable" });
   });
 
   it("回應不是預期的格式：GatewayError（code invalid_response），不當成成功", async () => {
@@ -127,4 +143,17 @@ describe("HTTP 閘道：失敗", () => {
     expect(error).toBeInstanceOf(GatewayError);
     expect(error).toMatchObject({ code: "unreachable", status: null, cause });
   });
+});
+
+describe("HTTP 閘道：逾時", () => {
+  it("閘道永不回應（連 signal 都不理會）：逾時後以 unreachable 失敗，不無限等待", async () => {
+    const { gateway } = gatewayReplying(() => new Promise<Response>(() => undefined));
+
+    const started = Date.now();
+    const error = await gateway.getPayment("pay_1").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GatewayError);
+    expect(error).toMatchObject({ code: "unreachable", status: null });
+    expect(Date.now() - started).toBeLessThan(GATEWAY_TIMEOUT_MS + 2_000);
+  }, GATEWAY_TIMEOUT_MS + 5_000);
 });

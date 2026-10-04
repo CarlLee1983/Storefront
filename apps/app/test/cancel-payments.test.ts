@@ -11,7 +11,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
 
   it("有進行中的付款：先向閘道取消付款（本地轉已失效），再取消訂單，保留釋放", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPaymentFor(alice, orderId, gateway);
 
@@ -22,7 +22,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("cancelled");
     expect(order.payments).toMatchObject([{ status: "expired" }]);
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 10 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 10 });
   });
 
   it("沒有進行中的付款：不呼叫閘道（閘道連不上也不影響取消）", async () => {
@@ -37,7 +37,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
 
   it("閘道取消回 409、查詢發現付款其實已成功：訂單轉為已付款，取消回 order_not_cancellable", async () => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPaymentFor(alice, orderId, gateway);
     gateway.settle(gatewayPaymentId, "succeeded"); // webhook 還沒送到，本地仍是 pending
@@ -48,7 +48,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("paid");
     expect(order.payments).toMatchObject([{ status: "succeeded" }]);
-    expect(await stockOf(productId)).toEqual({ onHand: 8, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
     expect(gateway.refunded).toEqual([]);
   });
 
@@ -84,7 +84,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
     ["回 409 後查詢時閘道連不上", "get"],
   ] as const)("%s：payment_gateway_unavailable，訂單維持待付款、保留不釋放", async (_label, operation) => {
     const alice = await signInCustomer("alice");
-    const { orderId, productId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
+    const { orderId, variantId } = await placeMugOrder(alice, { onHand: 10, quantity: 2 });
     const gateway = installFakeGateway();
     const gatewayPaymentId = await startPaymentFor(alice, orderId, gateway);
     if (operation === "get") gateway.uncancellable.add(gatewayPaymentId);
@@ -95,7 +95,7 @@ describe("取消訂單時進行中的付款一起失效", () => {
     const order = await orderOf(alice, orderId);
     expect(order.status).toBe("pending_payment");
     expect(order.payments).toMatchObject([{ status: "pending" }]);
-    expect(await stockOf(productId)).toEqual({ onHand: 10, available: 8 });
+    expect(await stockOf(variantId)).toEqual({ onHand: 10, available: 8 });
   });
 
   it("別人的訂單：order_not_found，不會動到它的付款", async () => {

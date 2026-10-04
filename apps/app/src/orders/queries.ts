@@ -1,15 +1,22 @@
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { insertOrderPlacedNotice } from "../contact/notices";
 import { currentCover } from "../images/cover-query";
 import type { ProductImage } from "../product-images";
 import { user } from "../auth/schema";
-import { products } from "../catalog/schema";
+import { productVariants, products } from "../catalog/schema";
+import { approvedCancelledQuantity, pendingCancellationQuantity } from "../cancellations/queries";
+import { completedReturnedQuantity, openReturnQuantity } from "../returns/queries";
 import { availableExpr, availableQuantity, reservedQuantity } from "../catalog/stock";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
-import type { ProductState } from "./diagnosis";
+import type { VariantState } from "./diagnosis";
 import type { CheckoutInput } from "./input";
+import { heldByShipmentReturnQuantity } from "../shipment-returns/quantities";
+import { dispatchedQuantity, lostQuantity, selectShipmentsByOrder, type ShipmentView } from "../shipments/queries";
+import { shippingFeeSql } from "../shipping/queries";
 import { PAYMENT_WINDOW_MS } from "./payment-deadline";
-import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, SHIPPED, type OrderStatus } from "./schema";
+import { CANCELLED, EXPIRED, orderLines, orders, PENDING_PAYMENT, type OrderStatus } from "./schema";
+import type { DeliveryType } from "../shipping/types";
 import { canTransitionTo } from "./transitions";
 
 export interface CheckoutRequest extends CheckoutInput {
@@ -39,36 +46,50 @@ export interface CheckoutRequest extends CheckoutInput {
  * 冪等鍵重送但內容不同：第 1 句 DO NOTHING、第 2 句因「已有明細」不寫，整批不動既有訂單；
  * 指紋 `request_hash` 在第 1 句隨訂單一起寫入、之後不變，呼叫端讀回訂單時比對，不是先查再寫。
  *
+ * 運費在第 1 句由當下的費率與變體配送類型算出、連同訂單總額一起寫入；第 2 句的 WHERE 另外要求同一份運費等於顧客確認過的
+ * `seenShippingTwd`，費率或類型在顧客確認之後被改動就整批不成立（與價格變動同樣由診斷回報）。
+ *
+ * 第 4 句把下單通知的信件寫進模擬信箱（`contact/notices.ts`），與訂單同成同敗；投遞在 batch 之外，失敗不影響訂單。
+ *
  * 成敗看第 2 句的 `meta.changes`（> 0 = 這次呼叫成立了訂單）；= 0 時可能是冪等重送，也可能是被拒，
  * 由呼叫端再讀一次區分。時間用高水位的有效時間（Holdfast ADR 0011，
  * https://github.com/CarlLee1983/Holdfast/blob/main/docs/adr/0011-expiry-clock-source.md），`now` 只用來推進高水位。
  */
 export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutRequest, now: number): Promise<{ created: boolean }> {
-  const { customerId, lines, shippingInfo, idempotencyKey, requestHash } = request;
-  const totalTwd = lines.reduce((sum, line) => sum + line.seenUnitPriceTwd * line.quantity, 0);
+  const { customerId, lines, shippingInfo, seenShippingTwd, idempotencyKey, requestHash } = request;
+  const itemsTwd = lines.reduce((sum, line) => sum + line.seenUnitPriceTwd * line.quantity, 0);
   const linesJson = JSON.stringify(lines);
+  // 運費由 batch 內當下的費率與變體配送類型算出（兩類各至多收一次），與寫入訂單明細的類型快照讀同一份資料
+  const standardFee = shippingFeeSql(linesJson, "standard");
+  const largeFee = shippingFeeSql(linesJson, "large");
   const ownOrder = sql`${orders.customerId} = ${customerId} AND ${orders.idempotencyKey} = ${idempotencyKey}`;
 
   const [, insertedLines] = await batchAtEffectiveNow(d1, now, [
     sql`
-      INSERT INTO orders (customer_id, status, total_twd, shipping_name, shipping_phone, shipping_address, payment_deadline, created_at, idempotency_key, request_hash)
-      VALUES (${customerId}, ${PENDING_PAYMENT}, ${totalTwd}, ${shippingInfo.name}, ${shippingInfo.phone}, ${shippingInfo.address},
+      INSERT INTO orders (customer_id, status, total_twd, standard_shipping_fee_twd, large_shipping_fee_twd, shipping_name, shipping_phone, shipping_address, payment_deadline, created_at, idempotency_key, request_hash)
+      VALUES (${customerId}, ${PENDING_PAYMENT}, ${itemsTwd} + ${standardFee} + ${largeFee}, ${standardFee}, ${largeFee}, ${shippingInfo.name}, ${shippingInfo.phone}, ${shippingInfo.address},
         ${effectiveNow} + ${PAYMENT_WINDOW_MS}, ${effectiveNow}, ${idempotencyKey}, ${requestHash})
       ON CONFLICT (customer_id, idempotency_key) DO NOTHING
     `,
     sql`
-      INSERT INTO order_lines (order_id, product_id, product_name, quantity, unit_price_twd)
-      SELECT orders.id, products.id, products.name, json_extract(j.value, '$.quantity'), products.price_twd
+      INSERT INTO order_lines (order_id, product_id, variant_id, product_name, variant_label, quantity, unit_price_twd, delivery_type)
+      SELECT orders.id, products.id, variant.id, products.name,
+        variant.option1_value || CASE WHEN variant.option2_value <> '' THEN ' / ' || variant.option2_value ELSE '' END,
+        json_extract(j.value, '$.quantity'), variant.price_twd, variant.delivery_type
       FROM orders
       JOIN json_each(${linesJson}) j
-      JOIN products ON products.id = json_extract(j.value, '$.productId')
+      JOIN product_variants variant ON variant.id = json_extract(j.value, '$.variantId')
+      JOIN products ON products.id = variant.product_id
       WHERE ${ownOrder}
         AND NOT EXISTS (SELECT 1 FROM order_lines existing WHERE existing.order_id = orders.id)
+        AND ${standardFee} + ${largeFee} = ${seenShippingTwd}
         AND NOT EXISTS (
           SELECT 1 FROM json_each(${linesJson}) wanted
-          LEFT JOIN products current ON current.id = json_extract(wanted.value, '$.productId')
+          LEFT JOIN product_variants current ON current.id = json_extract(wanted.value, '$.variantId')
+          LEFT JOIN products current_product ON current_product.id = current.product_id
           WHERE current.id IS NULL
-            OR current.listed = 0
+            OR current_product.listed = 0
+            OR current.discontinued_at IS NOT NULL
             OR current.price_twd <> json_extract(wanted.value, '$.seenUnitPriceTwd')
             OR ${availableExpr(sql`current.on_hand`, sql`current.id`)} < json_extract(wanted.value, '$.quantity')
         )
@@ -78,39 +99,72 @@ export async function placeOrderIfAvailable(d1: D1Database, request: CheckoutReq
       WHERE ${ownOrder}
         AND NOT EXISTS (SELECT 1 FROM order_lines existing WHERE existing.order_id = orders.id)
     `,
+    // 4. 下單通知的信件本體與訂單同一個 batch（outbox）：訂單成立信就存在；重送時事件鍵已有信就不動
+    insertOrderPlacedNotice(ownOrder),
   ]);
   return { created: insertedLines!.meta.changes > 0 };
 }
 
-/** 結帳被拒之後的唯讀診斷：這些商品現在的價格、上架狀態與可售數量；不存在的商品不會出現在結果裡。 */
-export async function selectProductStates(db: DrizzleD1Database, productIds: number[]): Promise<ProductState[]> {
+/** 結帳被拒之後的唯讀診斷：這些變體現在的價格、所屬商品的上架狀態與可售數量；不存在的變體不會出現在結果裡。 */
+export async function selectVariantStates(db: DrizzleD1Database, variantIds: number[]): Promise<VariantState[]> {
   const rows = await db
     .select({
-      id: products.id,
-      priceTwd: products.priceTwd,
+      id: productVariants.id,
+      priceTwd: productVariants.priceTwd,
       listed: products.listed,
-      onHand: products.onHand,
-      reserved: reservedQuantity(sql`${products.id}`).as("reserved"),
+      discontinued: sql<boolean>`${productVariants.discontinuedAt} is not null`.mapWith(Boolean),
+      onHand: productVariants.onHand,
+      unavailable: productVariants.unavailable,
+      reserved: reservedQuantity(sql`${productVariants.id}`).as("reserved"),
     })
-    .from(products)
-    .where(inArray(products.id, productIds));
-  return rows.map(({ onHand, reserved, ...row }) => ({ ...row, available: availableQuantity(onHand, reserved) }));
+    .from(productVariants)
+    .innerJoin(products, eq(products.id, productVariants.productId))
+    .where(inArray(productVariants.id, variantIds));
+  return rows.map(({ onHand, unavailable, reserved, ...row }) => ({ ...row, available: availableQuantity(onHand, unavailable, reserved) }));
 }
 
 export interface OrderView {
   id: number;
   status: OrderStatus;
+  /** 應付總額，含下面兩類運費。 */
   totalTwd: number;
+  /** 成立當下各配送類型實收的運費快照；舊單為 0。 */
+  shippingFees: { standard: number; large: number };
   shippingInfo: { name: string; phone: string; address: string };
   /** 付款期限，UTC epoch 毫秒。 */
   paymentDeadline: number;
   /** 成立時間，UTC epoch 毫秒。 */
   createdAt: number;
-  lines: { productId: number; productName: string; quantity: number; unitPriceTwd: number; cover: ProductImage | null }[];
-  /** 出貨時附的物流單號；未出貨或出貨時沒附為 null。 */
-  trackingNumber: string | null;
-  /** 出貨時間，UTC epoch 毫秒；未出貨為 null。 */
-  shippedAt: number | null;
+  lines: OrderLineView[];
+  /** 出貨批次（舊的在前）：各批的明細數量、物流單號、大型配送議定時段與交運時間；沒交運過為空陣列。舊的已出貨訂單由遷移補一批整單批次。 */
+  shipments: ShipmentView[];
+}
+
+export interface OrderLineView {
+  /** 訂單明細編號；交運以它指名明細。 */
+  id: number;
+  productId: number;
+  variantId: number;
+  productName: string;
+  variantLabel: string;
+  quantity: number;
+  unitPriceTwd: number;
+  deliveryType: DeliveryType;
+  /** 已交運的數量（各批次加總）。 */
+  shippedQuantity: number;
+  /** 已核准取消的數量（停止履約、已釋放保留）。 */
+  cancelledQuantity: number;
+  /** 取消申請待審中的數量（凍結交運、仍占保留）。可交運或可再申請取消的是 `quantity - shippedQuantity - cancelledQuantity - pendingCancellationQuantity`。 */
+  pendingCancellationQuantity: number;
+  /** 已完成收回檢查的退貨數量（已退貨，不能再退）。 */
+  returnedQuantity: number;
+  /** 退貨進行中的數量（待審、已核准待收回、已收回待檢查），仍占用。可再申請退貨的是 `shippedQuantity - returnedQuantity - openReturnQuantity - lostQuantity - shipmentReturnedQuantity`。 */
+  openReturnQuantity: number;
+  /** 確認遺失的數量（已退款、不回補庫存、不補寄，不能再申請退貨）。 */
+  lostQuantity: number;
+  /** 物流退回的數量（登記退回中、已收回、已完成檢查；不含尋回的遺失品）：不能再申請退貨，也不從同單補寄。 */
+  shipmentReturnedQuantity: number;
+  cover: ProductImage | null;
 }
 
 export type OrderScope = { orderId: number } | { idempotencyKey: string };
@@ -131,27 +185,39 @@ export async function selectRequestHash(db: DrizzleD1Database, customerId: strin
 
 /** 顧客自己的訂單（含訂單明細，名稱與單價都是下單當時的快照），新的在前；`scope` 再收窄到某一張。永遠限定顧客，看不到別人的。 */
 export async function selectOrders(db: DrizzleD1Database, customerId: string, scope?: OrderScope): Promise<OrderView[]> {
-  const views = await selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)));
+  const views = await selectOrderViews(db, and(eq(orders.customerId, customerId), scopeFilter(scope)), false);
   // 顧客不需要（也不回傳）自己的 email
   return views.map(({ customerEmail: _customerEmail, ...view }) => view);
 }
 
 /** 管理員讀單張訂單（不限顧客），連同顧客 email；不存在回 undefined。 */
 export async function selectOrderForAdmin(db: DrizzleD1Database, orderId: number): Promise<(OrderView & { customerEmail: string }) | undefined> {
-  const [view] = await selectOrderViews(db, eq(orders.id, orderId));
+  const [view] = await selectOrderViews(db, eq(orders.id, orderId), true);
   return view;
 }
 
 /** 訂單視圖的共同查詢：範圍（誰的、哪一張）由呼叫端的 `where` 決定。 */
-async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): Promise<(OrderView & { customerEmail: string })[]> {
+/** `withEvents`：附上各批的物流回報（管理端對帳用）；顧客路徑不查，各批 `events` 為空陣列。 */
+async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined, withEvents: boolean): Promise<(OrderView & { customerEmail: string })[]> {
   const rows = await db
     .select({
       order: orders,
       customerEmail: user.email,
+      lineId: orderLines.id,
       productId: orderLines.productId,
+      variantId: orderLines.variantId,
       productName: orderLines.productName,
+      variantLabel: orderLines.variantLabel,
       quantity: orderLines.quantity,
       unitPriceTwd: orderLines.unitPriceTwd,
+      deliveryType: orderLines.deliveryType,
+      shippedQuantity: dispatchedQuantity(sql`${orderLines.id}`),
+      cancelledQuantity: approvedCancelledQuantity(sql`${orderLines.id}`),
+      pendingCancellationQuantity: pendingCancellationQuantity(sql`${orderLines.id}`),
+      returnedQuantity: completedReturnedQuantity(sql`${orderLines.id}`),
+      openReturnQuantity: openReturnQuantity(sql`${orderLines.id}`),
+      lostQuantity: lostQuantity(sql`${orderLines.id}`),
+      shipmentReturnedQuantity: heldByShipmentReturnQuantity(sql`${orderLines.id}`),
       cover: currentCover(sql`${orderLines.productId}`),
     })
     .from(orders)
@@ -171,22 +237,23 @@ async function selectOrderViews(db: DrizzleD1Database, where: SQL | undefined): 
         customerEmail,
         status: order.status,
         totalTwd: order.totalTwd,
+        shippingFees: { standard: order.standardShippingFeeTwd, large: order.largeShippingFeeTwd },
         shippingInfo: { name: order.shippingName, phone: order.shippingPhone, address: order.shippingAddress },
         paymentDeadline: order.paymentDeadline,
         createdAt: order.createdAt,
         lines: [],
-        trackingNumber: order.trackingNumber,
-        shippedAt: order.shippedAt,
+        shipments: [],
       };
       views.set(order.id, view);
     }
-    const { productId, productName, quantity, unitPriceTwd, cover } = line;
-    if (productId !== null && productName !== null && quantity !== null && unitPriceTwd !== null) {
-      view.lines.push({ productId, productName, quantity, unitPriceTwd, cover });
+    const { lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, lostQuantity: lost, shipmentReturnedQuantity: sentBack, cover } = line;
+    if (lineId !== null && productId !== null && variantId !== null && productName !== null && variantLabel !== null && quantity !== null && unitPriceTwd !== null && deliveryType !== null) {
+      view.lines.push({ id: lineId, productId, variantId, productName, variantLabel, quantity, unitPriceTwd, deliveryType, shippedQuantity, cancelledQuantity, pendingCancellationQuantity: pendingQuantity, returnedQuantity, openReturnQuantity: openQuantity, lostQuantity: lost, shipmentReturnedQuantity: sentBack, cover });
     }
   }
 
-  return [...views.values()];
+  const shipmentsByOrder = await selectShipmentsByOrder(db, [...views.keys()], { withEvents });
+  return [...views.values()].map((view) => ({ ...view, shipments: shipmentsByOrder.get(view.id) ?? [] }));
 }
 
 /**
@@ -200,30 +267,9 @@ export async function cancelPendingOrder(db: DrizzleD1Database, customerId: stri
   const rows = await db
     .update(orders)
     .set({ status: CANCELLED })
-    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), canTransitionTo(CANCELLED)))
+    .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId), eq(orders.status, PENDING_PAYMENT), canTransitionTo(CANCELLED)))
     .returning({ id: orders.id });
   return rows.length > 0;
-}
-
-/**
- * 管理員出貨：單一條件式 UPDATE，是否成功由受影響列數判斷（不先讀再寫）；來源狀態由轉換表決定（只有已付款）。
- * 並行的兩次出貨，先落地的一方贏，另一方影響 0 列，物流單號不會被蓋掉。出貨時間用高水位的有效時間
- * （Holdfast ADR 0011），`now` 只用來推進高水位。回傳 false 時不知道原因（不存在、或不是已付款），由呼叫端再讀一次區分。
- */
-export async function markOrderShipped(d1: D1Database, orderId: number, trackingNumber: string | null, now: number): Promise<boolean> {
-  const [result] = await batchAtEffectiveNow(d1, now, [
-    sql`
-      UPDATE orders SET status = ${SHIPPED}, tracking_number = ${trackingNumber}, shipped_at = ${effectiveNow}
-      WHERE id = ${orderId} AND ${canTransitionTo(SHIPPED)}
-    `,
-  ]);
-  return result!.meta.changes > 0;
-}
-
-/** 某張訂單的存在與否（不限顧客，管理員用）。 */
-export async function orderExists(db: DrizzleD1Database, orderId: number): Promise<boolean> {
-  const [row] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, orderId));
-  return row !== undefined;
 }
 
 /** 顧客自己的某張訂單的 `{ id, status }`（不讀明細）；別人的或不存在回 undefined。 */

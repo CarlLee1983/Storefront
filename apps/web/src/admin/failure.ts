@@ -21,6 +21,7 @@ export function describeFailure(
   const messages: Record<string, string> = {
     invalid_input: "輸入有誤，請修正後再送出",
     product_not_found: "找不到這個商品",
+    variant_not_found: "找不到這個商品變體",
     no_images: "請先上傳商品圖片，再上架商品",
     image_limit: "每件商品最多 8 張商品圖片",
     image_set_changed: "商品圖片清單已變更，請重新載入後再排序",
@@ -34,6 +35,10 @@ export function describeFailure(
     category_not_empty: "這個分類底下還有商品（不分上架與否），請先把商品移到其他分類再刪除",
     invalid_slug: `代稱只能使用小寫英文、數字與連字號（不可以連字號開頭或結尾），且不可超過 ${MAX_SLUG_LENGTH} 個字元`,
     slug_taken: "這個代稱已被使用，請換一個",
+    option_count_mismatch: "選項值的個數必須與商品的選項維度個數相同；沒有選項的商品只有預設變體",
+    options_locked: "商品有多個變體時不能增減選項維度的個數，只能修改名稱",
+    duplicate_variant: "這個商品已有相同選項組合的變體",
+    image_not_found: "指定的圖片不屬於這個商品",
     insufficient_stock: "庫存不足：調整後的可售數量不可為負",
   };
   return { message: messages[result.reason] ?? fallback, fields: result.fields ?? {} };

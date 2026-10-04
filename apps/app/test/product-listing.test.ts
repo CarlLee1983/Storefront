@@ -22,14 +22,20 @@ async function seedProduct(jwt: string, categoryId: number, { name, priceTwd = 5
   if (!created.ok) throw new Error("新增商品失敗");
   const { id } = created.data;
   await seedImageAndList(id);
-  await env.DB.prepare("UPDATE products SET category_id = ?, listed_at = ?, on_hand = ? WHERE id = ?").bind(categoryId, listedAt, stock, id).run();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE products SET category_id = ?, listed_at = ? WHERE id = ?").bind(categoryId, listedAt, id),
+    env.DB.prepare("UPDATE product_variants SET on_hand = ? WHERE product_id = ?").bind(stock, id),
+  ]);
   return id;
 }
 
 /** 一次寫入大量上架商品（沒有封面；只用來測分頁），編號與上架時間都隨序號遞增。 */
 async function seedBulk(categoryId: number, count: number): Promise<void> {
-  const insert = env.DB.prepare("INSERT INTO products (name, description, price_twd, listed, on_hand, category_id, listed_at) VALUES (?, '', 500, 1, 0, ?, ?)");
-  await env.DB.batch(Array.from({ length: count }, (_, index) => insert.bind(`商品${String(index + 1).padStart(2, "0")}`, categoryId, index + 1)));
+  const insert = env.DB.prepare("INSERT INTO products (name, description, listed, category_id, listed_at) VALUES (?, '', 1, ?, ?)");
+  await env.DB.batch([
+    ...Array.from({ length: count }, (_, index) => insert.bind(`商品${String(index + 1).padStart(2, "0")}`, categoryId, index + 1)),
+    env.DB.prepare("INSERT INTO product_variants (product_id, is_default, price_twd, on_hand) SELECT id, 1, 500, 0 FROM products WHERE id NOT IN (SELECT product_id FROM product_variants)"),
+  ]);
 }
 
 async function names(input?: unknown): Promise<string[]> {
@@ -51,7 +57,7 @@ describe("前台商品列表查詢", () => {
     expect(await app.listProducts()).toEqual({
       ok: true,
       data: {
-        items: [{ id, name: "沙發", description: "沙發的說明", priceTwd: 500, compareAtPriceTwd: null, purchasable: true, cover: expect.objectContaining({ id: expect.any(String) }) }],
+        items: [{ id, name: "沙發", description: "沙發的說明", defaultVariantId: expect.any(Number), hasOptions: false, priceTwd: 500, maxPriceTwd: 500, compareAtPriceTwd: null, onSale: false, purchasable: true, cover: expect.objectContaining({ id: expect.any(String) }) }],
         total: 1,
         hasMore: false,
       },

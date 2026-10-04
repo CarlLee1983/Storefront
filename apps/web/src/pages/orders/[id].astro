@@ -3,9 +3,16 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/customer";
 import { checkoutEntry } from "../../checkout/entry";
 import OrderStatus from "../../orders/OrderStatus.astro";
+import OrderTimeline from "../../orders/OrderTimeline.astro";
+import OrderFees from "../../orders/OrderFees.astro";
 import OrderLines from "../../orders/OrderLines.astro";
+import ShipmentList from "../../orders/ShipmentList.astro";
 import Layout from "../../layouts/Layout.astro";
-import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary, formatDateTime, parseOrderId } from "../../orders/labels";
+import { cancellableQuantity, cancellationFormToInput, cancellationStatusLabel, customerCancellationNote, describeCancellationFailure } from "../../orders/cancellation";
+import { customerLossNote, customerReturnNote, customerShipmentReturnNote, describeReturnRequestFailure, returnBatchNote, returnFormToInput, returnStatusLabel, returnableQuantity, shipmentReturnStatusLabel } from "../../orders/return";
+import { formToRecord } from "../../shared/form-values";
+import { customerAllowanceNote, customerAllowanceSummary, customerInvoiceStatusLabel, customerInvoiceStatusNote } from "../../orders/invoice";
+import { customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerRefundStatusLabel, customerRefundStatusNote, formatDateTime, parseOrderId } from "../../orders/labels";
 import { cancelErrorMessage, cancelOrderLocation, paymentErrorMessage } from "../../payments/redirects";
 
 export const prerender = false;
@@ -19,13 +26,33 @@ if (entry.kind === "redirect") {
 const orderId = parseOrderId(Astro.params.id);
 const cookie = Astro.request.headers.get("cookie") ?? "";
 
-// 取消訂單（POST）：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
+// POST 有四種：申請取消已付款未交運的數量（intent=request-cancellation）、申請退貨已交運的數量（人工受理 intent=request-return，
+// 逐批自助 intent=request-self-service-return），或取消待付款訂單。
+// 取消訂單：成功後 303 回到本頁重新顯示；訂單已不是待付款（例如剛好逾期、或進行中的付款其實已成功）也回本頁，
 // 讓顧客看到最新狀態；進行中的付款處理不了（閘道連不上等）回本頁並帶上原因，訂單維持待付款。找不到訂單則落到下面顯示 404
+let cancellationFailure: ReturnType<typeof describeCancellationFailure> | undefined;
+let returnFailure: ReturnType<typeof describeReturnRequestFailure> | undefined;
+let submitted: Record<string, string> = {};
 if (orderId !== null && Astro.request.method === "POST") {
-  const cancelled = await env.APP.cancelOrder(cookie, { orderId });
-  if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
-  if (cancelled.ok || !["order_not_found", "invalid_input"].includes(cancelled.reason)) {
-    return Astro.redirect(cancelOrderLocation(orderId, cancelled), 303);
+  const form = await Astro.request.formData();
+  if (form.get("intent") === "request-cancellation") {
+    submitted = formToRecord(form);
+    const result = await env.APP.requestCancellation(cookie, cancellationFormToInput(form, orderId));
+    if (result.ok) return Astro.redirect(`/orders/${orderId}?cancellation=requested`, 303);
+    if (result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+    if (result.reason !== "order_not_found") cancellationFailure = describeCancellationFailure(result);
+  } else if (form.get("intent") === "request-return" || form.get("intent") === "request-self-service-return") {
+    submitted = formToRecord(form);
+    const result = await env.APP.requestReturn(cookie, returnFormToInput(form, orderId));
+    if (result.ok) return Astro.redirect(`/orders/${orderId}?return=requested`, 303);
+    if (result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+    if (result.reason !== "order_not_found") returnFailure = describeReturnRequestFailure(result);
+  } else {
+    const cancelled = await env.APP.cancelOrder(cookie, { orderId });
+    if (!cancelled.ok && cancelled.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+    if (cancelled.ok || !["order_not_found", "invalid_input"].includes(cancelled.reason)) {
+      return Astro.redirect(cancelOrderLocation(orderId, cancelled), 303);
+    }
   }
 }
 
@@ -41,7 +68,26 @@ const statusNote = order ? customerOrderStatusNote(order.status, order.paymentDe
 const paymentError = paymentErrorMessage(Astro.url.searchParams.get("payment_error"));
 const cancelError = cancelErrorMessage(Astro.url.searchParams.get("cancel_error"));
 const paymentUnconfirmed = Astro.url.searchParams.get("payment") === "unconfirmed";
+const cancellationRequested = Astro.url.searchParams.get("cancellation") === "requested";
+// 一次提交的冪等鍵：驗證失敗重填時沿用同一個，雙擊送出或重送只會建立一案
+// 兩個申請表單各自只回填自己送出的內容與冪等鍵
+const cancelSubmitted = submitted.intent === "request-cancellation" ? submitted : {};
+const returnSubmitted = submitted.intent === "request-return" ? submitted : {};
+const selfServiceSubmitted = submitted.intent === "request-self-service-return" ? submitted : {};
+const requestKey = cancelSubmitted.requestKey || crypto.randomUUID();
+const returnKey = returnSubmitted.requestKey || crypto.randomUUID();
+const selfServiceKey = selfServiceSubmitted.requestKey || crypto.randomUUID();
+const canRequestCancellation = (order?.status === "paid" || order?.status === "partially_shipped") && order.lines.some((line) => cancellableQuantity(line) > 0);
+const returnRequested = Astro.url.searchParams.get("return") === "requested";
+const canRequestReturn = (order?.status === "partially_shipped" || order?.status === "shipped") && order.lines.some((line) => returnableQuantity(line) > 0);
+const returnFieldErrors = returnFailure?.fields.items ?? [];
+const returnBatches = order?.returnBatches ?? [];
+const hasSelfServiceQuantity = returnBatches.some((batch) => batch.items.some((item) => item.selfServiceQuantity > 0));
+const cancellationFieldErrors = cancellationFailure?.fields.items ?? [];
 const priceFormat = new Intl.NumberFormat("zh-TW");
+// 已有成功退款、折讓尚未完成的發票：提醒原額不代表退款後的實際金額（逐筆折讓完成於 #122）
+const allowanceSummaries = new Map((order?.invoices ?? []).map((invoice) => [invoice.id, customerAllowanceSummary(invoice, (amount) => priceFormat.format(amount))]));
+const allowanceNotes = new Map((order?.invoices ?? []).map((invoice) => [invoice.id, customerAllowanceNote(invoice.pendingAllowanceTwd, invoice.pendingAllowanceCount, (amount) => priceFormat.format(amount))]));
 ---
 
 <Layout title={order ? `訂單 #${order.id}` : "找不到頁面"} description={order ? `查看訂單 #${order.id} 的付款、出貨狀態與收件資訊。` : undefined} noindex>
@@ -53,6 +99,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
         {placed && <p role="status">訂單已成立，商品已為你保留，請於付款期限內完成付款。</p>}
         {paymentError && <p class="error" role="alert">{paymentError}</p>}
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
+        {cancellationRequested && <p role="status">已送出取消申請：審核期間這些商品暫停出貨，審核結果會通知你。</p>}
+        {returnRequested && <p role="status">已送出退貨申請：審核結果會通知你，核准後請依客服指示寄回商品。</p>}
         {paymentUnconfirmed && <p role="status">目前無法確認付款結果，請稍後重新整理訂單頁。</p>}
         {order.status === "paid" && <p role="status">已收到付款，訂單目前為已付款。</p>}
         <div class="order-overview">
@@ -60,7 +108,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <h2 id="order-progress-title">訂單進度</h2>
             <p>訂單狀態：<OrderStatus status={order.status} customer /></p>
             {statusNote && <p>{statusNote}</p>}
-            {order.status === "shipped" && <p>{customerShipmentSummary(order.shippedAt, order.trackingNumber)}</p>}
+            <ShipmentList shipments={order.shipments} customer />
             {order.status === "pending_payment" && <div class="payment-callout" role="region" aria-label="完成付款">
               <div class="callout-header">
                 <span class="callout-badge">待付款</span>
@@ -79,11 +127,170 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
             <dl class="shipping-details"><dt>收件人姓名</dt><dd>{order.shippingInfo.name}</dd><dt>收件人電話</dt><dd>{order.shippingInfo.phone}</dd><dt>收件地址</dt><dd>{order.shippingInfo.address}</dd></dl>
           </section>
         </div>
+        <OrderTimeline timeline={order.timeline} customer />
         <section class="order-detail-section" aria-labelledby="order-lines-title">
           <h2 id="order-lines-title">訂單明細</h2>
           <OrderLines lines={order.lines} />
-          <p class="order-total">總金額：<strong>NT$ {priceFormat.format(order.totalTwd)}</strong>（新台幣、含稅、免運）</p>
+          <OrderFees totalTwd={order.totalTwd} shippingFees={order.shippingFees} lines={order.lines} />
         </section>
+        {
+          (canRequestCancellation || order.cancellations.length > 0) && (
+            <section class="order-detail-section" aria-labelledby="cancellation-title">
+              <h2 id="cancellation-title">取消申請</h2>
+              {cancellationFailure && <p class="error" role="alert">{cancellationFailure.message}{Object.values(cancellationFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+              {canRequestCancellation && (
+                <form method="post" class="cancellation-form" onsubmit="return confirm('確定要申請取消嗎？審核期間這些商品會暫停出貨；已出貨的商品請改走退貨。')">
+                  <input type="hidden" name="intent" value="request-cancellation" />
+                  <input type="hidden" name="requestKey" value={requestKey} />
+                  <fieldset>
+                    <legend>選擇要取消的數量（只能取消尚未出貨的數量；0 或留空表示不取消）</legend>
+                    {order.lines.filter((line) => cancellableQuantity(line) > 0).map((line) => (
+                      <label>
+                        <span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`}・可取消 {cancellableQuantity(line)}</span>
+                        <input type="number" inputmode="numeric" name={`cancel-${line.id}`} min="0" max={cancellableQuantity(line)} step="1" value={cancelSubmitted[`cancel-${line.id}`] ?? ""} />
+                      </label>
+                    ))}
+                    {cancellationFieldErrors.map((m) => <span class="error">{m}</span>)}
+                  </fieldset>
+                  <label>
+                    申請原因（選填）
+                    <input name="reason" maxlength="200" value={cancelSubmitted.reason ?? ""} />
+                  </label>
+                  <p class="cancellation-hint">核准後依原實付單價退回商品款；同一類配送商品全部取消時，一併退回該類原運費。</p>
+                  <button type="submit" class="button-secondary">申請取消</button>
+                </form>
+              )}
+              {order.cancellations.length > 0 && (
+                <ul class="cancellation-list" aria-label="取消申請紀錄">
+                  {order.cancellations.map((request) => (
+                    <li>
+                      <p><strong>申請 #{request.id}・{cancellationStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）</p>
+                      <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}</li>)}</ul>
+                      {request.reason && <p>申請原因：{request.reason}</p>}
+                      {request.decisionNote && <p>審核說明：{request.decisionNote}</p>}
+                      <p class="cancellation-note">{customerCancellationNote(request.status)}</p>
+                      {request.refund && <p>退款 NT$ {priceFormat.format(request.refund.amountTwd)}：{customerRefundStatusLabel(request.refund.status)}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        }
+        {
+          (canRequestReturn || order.returns.length > 0) && (
+            <section class="order-detail-section" aria-labelledby="return-title">
+              <h2 id="return-title">退貨申請</h2>
+              {returnFailure && <p class="error" role="alert">{returnFailure.message}{Object.values(returnFailure.fields).flat().map((m) => ` ${m}`)}</p>}
+              {canRequestReturn && returnBatches.length > 0 && (
+                <div class="return-batches">
+                  <h3>依各批送達日自助申請</h3>
+                  <p class="cancellation-hint">每一批從實際送達的隔天起算 7 天內可以自助申請；不同批的期限各自計算。逾期、送達日不明或商品有瑕疵時，請用下方的人工受理，客服會審核，不會因為逾期就直接拒絕。</p>
+                  {hasSelfServiceQuantity ? (
+                    <form method="post" class="cancellation-form return-form" onsubmit="return confirm('確定要申請退貨嗎？核准後請依客服指示寄回商品，我們收到並檢查後才會退款。')">
+                      <input type="hidden" name="intent" value="request-self-service-return" />
+                      <input type="hidden" name="requestKey" value={selfServiceKey} />
+                      {returnBatches.map((batch, index) => (
+                        <fieldset>
+                          <legend>第 {index + 1} 批{batch.deliveredAt !== null && `（${formatDateTime(batch.deliveredAt)} 送達）`}</legend>
+                          <p class="cancellation-hint">{returnBatchNote(batch)}</p>
+                          {batch.items.filter((item) => item.selfServiceQuantity > 0).map((item) => (
+                            <label>
+                              <span>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}・本批可自助退貨 {item.selfServiceQuantity}</span>
+                              <input type="number" inputmode="numeric" name={`return-${item.orderLineId}-${batch.shipmentId}`} min="0" max={item.selfServiceQuantity} step="1" value={selfServiceSubmitted[`return-${item.orderLineId}-${batch.shipmentId}`] ?? ""} />
+                            </label>
+                          ))}
+                        </fieldset>
+                      ))}
+                      <label>
+                        退貨原因（選填）
+                        <input name="reason" maxlength="200" value={selfServiceSubmitted.reason ?? ""} />
+                      </label>
+                      <button type="submit" class="button-secondary">送出自助退貨</button>
+                    </form>
+                  ) : (
+                    <ul class="cancellation-list" aria-label="各批自助退貨期限">
+                      {returnBatches.map((batch, index) => <li>第 {index + 1} 批：{returnBatchNote(batch)}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {canRequestReturn && (
+                <form method="post" class="cancellation-form return-form" onsubmit="return confirm('確定要申請退貨嗎？核准後請依客服指示寄回商品，我們收到並檢查後才會退款。')">
+                  <h3>人工受理（逾期、送達日不明或商品有瑕疵）</h3>
+                  <input type="hidden" name="intent" value="request-return" />
+                  <input type="hidden" name="requestKey" value={returnKey} />
+                  <fieldset>
+                    <legend>選擇要退貨的數量（只能退已出貨的數量；0 或留空表示不退）</legend>
+                    {order.lines.filter((line) => returnableQuantity(line) > 0).map((line) => (
+                      <label>
+                        <span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`}・可退貨 {returnableQuantity(line)}</span>
+                        <input type="number" inputmode="numeric" name={`return-${line.id}`} min="0" max={returnableQuantity(line)} step="1" value={returnSubmitted[`return-${line.id}`] ?? ""} />
+                      </label>
+                    ))}
+                    {returnFieldErrors.map((m) => <span class="error">{m}</span>)}
+                  </fieldset>
+                  <label>
+                    退貨原因（選填，瑕疵請說明狀況）
+                    <input name="reason" maxlength="200" value={returnSubmitted.reason ?? ""} />
+                  </label>
+                  <p class="cancellation-hint">收回運費由商家負擔；收到並檢查後依原實付單價退款，同一類配送商品全部退出（含取消）時，一併退回該類原運費。換貨請先退貨退款，再重新下單。</p>
+                  <button type="submit" class="button-secondary">申請退貨</button>
+                </form>
+              )}
+              {order.returns.length > 0 && (
+                <ul class="cancellation-list" aria-label="退貨申請紀錄">
+                  {order.returns.map((request) => (
+                    <li>
+                      <p><strong>申請 #{request.id}・{returnStatusLabel(request.status)}</strong>（{formatDateTime(request.requestedAt)}）</p>
+                      <ul>{request.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}{item.receivedQuantity !== null && `，實際收到 ${item.receivedQuantity}`}</li>)}</ul>
+                      {request.reason && <p>申請原因：{request.reason}</p>}
+                      {request.decisionNote && <p>審核說明：{request.decisionNote}</p>}
+                      <p class="cancellation-note">{customerReturnNote(request.status, request.refund !== null)}</p>
+                      {request.refund && <p>退款 NT$ {priceFormat.format(request.refund.amountTwd)}：{customerRefundStatusLabel(request.refund.status)}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        }
+        {
+          order.losses.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="loss-info-title">
+              <h2 id="loss-info-title">運送中遺失的商品</h2>
+              <ul class="cancellation-list" aria-label="遺失紀錄">
+                {order.losses.map((loss) => (
+                  <li>
+                    <p><strong>物流確認遺失</strong>（{formatDateTime(loss.confirmedAt)}）</p>
+                    <ul>{loss.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}</li>)}</ul>
+                    <p class="cancellation-note">{customerLossNote(loss.refund !== null, loss.goodsTwd + loss.shippingTwd > 0)}</p>
+                    {loss.goodsTwd + loss.shippingTwd > 0 && <p>應退款 NT$ {priceFormat.format(loss.goodsTwd + loss.shippingTwd)}（商品款 NT$ {priceFormat.format(loss.goodsTwd)}、運費 NT$ {priceFormat.format(loss.shippingTwd)}）</p>}
+                    {loss.refund && <p>退款 NT$ {priceFormat.format(loss.refund.amountTwd)}：{customerRefundStatusLabel(loss.refund.status)}</p>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+        {
+          order.shipmentReturns.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="shipment-return-info-title">
+              <h2 id="shipment-return-info-title">被物流退回倉庫的商品</h2>
+              <ul class="cancellation-list" aria-label="物流退回紀錄">
+                {order.shipmentReturns.map((entry) => (
+                  <li>
+                    <p><strong>{shipmentReturnStatusLabel(entry.status)}</strong>（{formatDateTime(entry.declaredAt)} 起）</p>
+                    <ul>{entry.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity + item.foundLostQuantity}</li>)}</ul>
+                    <p class="cancellation-note">{customerShipmentReturnNote(entry.status, entry.refund !== null, (entry.goodsTwd ?? 0) + (entry.shippingTwd ?? 0) > 0)}</p>
+                    {entry.status === "completed" && (entry.goodsTwd ?? 0) + (entry.shippingTwd ?? 0) > 0 && <p>應退款 NT$ {priceFormat.format((entry.goodsTwd ?? 0) + (entry.shippingTwd ?? 0))}（商品款 NT$ {priceFormat.format(entry.goodsTwd ?? 0)}、運費 NT$ {priceFormat.format(entry.shippingTwd ?? 0)}）</p>}
+                    {entry.refund && <p>退款 NT$ {priceFormat.format(entry.refund.amountTwd)}：{customerRefundStatusLabel(entry.refund.status)}</p>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
         {
           order.payments.length > 0 && (
             <section class="order-detail-section" aria-labelledby="payment-info-title">
@@ -100,7 +307,60 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
                       <td data-label="付款狀態"><span class="payment-state">
                         {customerPaymentStatusLabel(payment.status)}
                         <small>（{customerPaymentStatusNote(payment.status)}）</small>
-                        {customerRefundReasonLabel(payment.refundReason) && <small>（{customerRefundReasonLabel(payment.refundReason)}）</small>}
+                      </span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )
+        }
+        {
+          order.refunds.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="refund-info-title">
+              <h2 id="refund-info-title">退款進度</h2>
+              <table class="payment-history">
+                <thead>
+                  <tr><th>登記時間</th><th>金額</th><th>原因</th><th>進度</th></tr>
+                </thead>
+                <tbody>
+                  {order.refunds.map((refund) => (
+                    <tr>
+                      <td data-label="登記時間">{formatDateTime(refund.createdAt)}</td>
+                      <td data-label="金額">NT$ {priceFormat.format(refund.amountTwd)}</td>
+                      <td data-label="原因">{customerRefundReasonLabel(refund.reason)}</td>
+                      <td data-label="進度"><span class="payment-state">
+                        {customerRefundStatusLabel(refund.status)}
+                        <small>（{customerRefundStatusNote(refund.status)}）</small>
+                        {refund.settledAt !== null && <small>退回時間：{formatDateTime(refund.settledAt)}</small>}
+                      </span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )
+        }
+        {
+          order.invoices.length > 0 && (
+            <section class="order-detail-section" aria-labelledby="invoice-info-title" id="invoices">
+              <h2 id="invoice-info-title">發票</h2>
+              <table class="payment-history">
+                <thead>
+                  <tr><th>開立時間</th><th>發票號碼</th><th>原額</th><th>進度</th></tr>
+                </thead>
+                <tbody>
+                  {order.invoices.map((invoice) => (
+                    <tr>
+                      <td data-label="開立時間">{invoice.issuedAt === null ? "尚未開立" : formatDateTime(invoice.issuedAt)}</td>
+                      <td data-label="發票號碼">{invoice.invoiceNumber ?? "—"}</td>
+                      <td data-label="原額">NT$ {priceFormat.format(invoice.amountTwd)}</td>
+                      <td data-label="進度"><span class="payment-state">
+                        {customerInvoiceStatusLabel(invoice.status)}
+                        <small>（{customerInvoiceStatusNote(invoice.status)}）</small>
+                        {allowanceSummaries.get(invoice.id)?.allowed && <strong class="invoice-allowance-done">{allowanceSummaries.get(invoice.id)!.allowed}</strong>}
+                        {allowanceSummaries.get(invoice.id)?.balance && <strong class="invoice-allowance-done">{allowanceSummaries.get(invoice.id)!.balance}</strong>}
+                        {allowanceNotes.get(invoice.id) && <strong class="invoice-allowance-pending">憑證待補：{allowanceNotes.get(invoice.id)}</strong>}
                       </span></td>
                     </tr>
                   ))}
@@ -203,6 +463,8 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
   .payment-history { table-layout: auto; min-width: 0; }
   .payment-history td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .payment-state small { display: block; }
+  .invoice-allowance-done { display: block; font-weight: 600; font-size: var(--text-sm); }
+  .invoice-allowance-pending { display: block; color: var(--color-error); font-weight: 600; font-size: var(--text-sm); }
   .cancel-container {
     margin-top: var(--space-8);
     padding: var(--space-4) var(--space-6);
@@ -227,6 +489,13 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
     color: var(--color-error);
     border-color: var(--color-error);
   }
+  .cancellation-form { display: grid; gap: var(--space-3); max-width: 32rem; }
+  .cancellation-form fieldset { display: grid; gap: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-4); }
+  .cancellation-form label { display: grid; gap: var(--space-1); }
+  .cancellation-hint, .cancellation-note { margin: 0; font-size: var(--text-sm); color: var(--color-muted); }
+  .cancellation-list { list-style: none; padding: 0; margin: var(--space-4) 0 0; display: grid; gap: var(--space-3); }
+  .cancellation-list > li { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
+  .cancellation-list p { margin: var(--space-1) 0; }
   .back-link-wrap { margin-top: var(--space-8); }
   .button-ghost {
     display: inline-flex;

@@ -28,5 +28,11 @@ export type Unauthorized = { ok: false; reason: "unauthorized" };
 /** 管理 RPC 指名的商品不存在。 */
 export type ProductNotFound = { ok: false; reason: "product_not_found" };
 
+/** 管理 RPC 指名的商品變體不存在。 */
+export type VariantNotFound = { ok: false; reason: "variant_not_found" };
+
 /** 庫存調整會讓可售數量變成負數而被拒絕。 */
 export type InsufficientStock = { ok: false; reason: "insufficient_stock" };
+
+/** 報廢數量超過已檢查確認的損壞品（不可售扣掉待檢）而被拒絕。 */
+export type InsufficientUnavailable = { ok: false; reason: "insufficient_unavailable" };

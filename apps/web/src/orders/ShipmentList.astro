@@ -1,0 +1,128 @@
+---
+import { DELIVERY_TYPE_LABELS, type DeliveryType } from "@storefront/app/shipping-types";
+import { appointmentSummary, customerShipmentSummary, formatDateTime, shipmentEventKindLabel, shipmentProgressLabel, shipmentSummary } from "./labels";
+interface Props {
+  shipments: Array<{
+    id: number;
+    trackingNumber: string | null;
+    shippedAt: number | null;
+    appointment: { start: number; end: number } | null;
+    deliveryStatus: string;
+    deliveredAt: number | null;
+    events: Array<{ id: number; eventKey: string; kind: string; occurredAt: number; noticeExpected: boolean; noticeMessageId: number | null }>;
+    items: Array<{ orderLineId?: number; lostQuantity?: number; returnedQuantity?: number; productName: string; variantLabel: string; quantity: number; deliveryType: DeliveryType }>;
+  }>;
+  /** 顧客頁用較口語的物流單號說明；後台顯示「（未附）」。 */
+  customer?: boolean;
+  /** 後台：列出物流回報與通知是否存在，並提供記錄回報（含補寄通知）的表單；表單 POST 回目前頁面。 */
+  admin?: boolean;
+  /** 記錄回報驗證失敗後重填：該批的新回報表單沿用提交過的識別碼，雙擊或重送不會建立第二筆。 */
+  submittedEvent?: { shipmentId: number; eventKey: string };
+  /** 確認遺失驗證失敗後重填：該批的表單沿用提交過的識別碼，雙擊或重送不會建立第二案。 */
+  submittedLoss?: { shipmentId: number; lossKey: string };
+  /** 登記物流退回驗證失敗後重填：該批的表單沿用提交過的識別碼，雙擊或重送不會建立第二案。 */
+  submittedReturn?: { shipmentId: number; returnKey: string };
+}
+const { shipments, customer = false, admin = false, submittedEvent, submittedLoss, submittedReturn } = Astro.props;
+---
+{shipments.length > 0 && <ol class="shipment-list" aria-label="出貨批次">
+  {shipments.map((shipment, index) => <li>
+    <p class="shipment-title"><strong>第 {index + 1} 批</strong></p>
+    <ul class="shipment-items">
+      {shipment.items.map((item) => <li>{item.productName}{item.variantLabel && `（${item.variantLabel}）`} × {item.quantity}（{DELIVERY_TYPE_LABELS[item.deliveryType]}）{(item.lostQuantity ?? 0) > 0 && `・已遺失 ${item.lostQuantity}`}{(item.returnedQuantity ?? 0) > 0 && `・物流退回 ${item.returnedQuantity}`}</li>)}
+    </ul>
+    <p>{customer ? customerShipmentSummary(shipment.shippedAt, shipment.trackingNumber) : shipmentSummary(shipment.shippedAt, shipment.trackingNumber)}</p>
+    {shipment.appointment && <p>{appointmentSummary(shipment.appointment)}</p>}
+    <p class="shipment-progress"><strong>配送進度：</strong>{shipmentProgressLabel(shipment.deliveryStatus, shipment.deliveredAt, shipment.items.some((item) => item.quantity > (item.lostQuantity ?? 0) + (item.returnedQuantity ?? 0)))}</p>
+    {admin && <details class="shipment-events" open={shipment.deliveryStatus === "delivery_failed"}>
+      <summary>物流回報（{shipment.events.length}）</summary>
+      {shipment.events.length > 0 && <ul>
+        {shipment.events.map((event) => <li>
+          <span>{shipmentEventKindLabel(event.kind)}・發生於 {formatDateTime(event.occurredAt)}・識別碼 {event.eventKey}</span>
+          {!event.noticeExpected && event.noticeMessageId === null
+            ? <span>・不寄信（{event.kind === "redelivery" ? "再次配送不通知" : "已被後續回報取代、已送達、已確認遺失或已物流退回"}）</span>
+            : event.noticeMessageId === null
+              ? <strong class="error"> 通知缺漏
+                <form method="post" class="shipment-replay">
+                  <input type="hidden" name="intent" value="shipment-event" />
+                  <input type="hidden" name="shipmentId" value={shipment.id} />
+                  <input type="hidden" name="eventKey" value={event.eventKey} />
+                  <input type="hidden" name="kind" value={event.kind} />
+                  <input type="hidden" name="occurredAtMs" value={event.occurredAt} />
+                  <button type="submit">補齊通知</button>
+                </form></strong>
+              : <span> 通知已建立（<a href="/admin/mail">信件管理</a>可查投遞與重送）</span>}
+        </li>)}
+      </ul>}
+      <form method="post" class="shipment-event-form">
+        <input type="hidden" name="intent" value="shipment-event" />
+        <input type="hidden" name="shipmentId" value={shipment.id} />
+        <input type="hidden" name="eventKey" value={submittedEvent?.shipmentId === shipment.id ? submittedEvent.eventKey : crypto.randomUUID()} />
+        <label>回報種類
+          <select name="kind" required>
+            <option value="delivered">送達</option>
+            <option value="delivery_failed">配送失敗</option>
+            <option value="redelivery">再次配送</option>
+          </select>
+        </label>
+        <label>回報發生時間（台北時間）<input type="datetime-local" name="occurredAt" step="1" required /></label>
+        <button type="submit" class="button-primary">記錄物流回報</button>
+      </form>
+    </details>}
+    {admin && shipment.deliveredAt === null && shipment.deliveryStatus !== "delivered" && <details class="shipment-loss">
+      <summary>確認遺失</summary>
+      <form method="post" class="shipment-loss-form" onsubmit="return confirm('確定確認這批商品遺失嗎？會依原實付單價退款並通知顧客，不會回補庫存、也不會補寄，無法撤回。')">
+        <input type="hidden" name="intent" value="confirm-loss" />
+        <input type="hidden" name="shipmentId" value={shipment.id} />
+        <input type="hidden" name="lossKey" value={submittedLoss?.shipmentId === shipment.id ? submittedLoss.lossKey : crypto.randomUUID()} />
+        <p class="shipment-loss-hint">暫時配送失敗不是遺失；只有物流確認無法交付時才確認遺失。填入遺失的數量（不填或 0 表示沒遺失）。</p>
+        {shipment.items.filter((item) => item.orderLineId !== undefined).map((item) => <label>
+          <span>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}・本批 {item.quantity}</span>
+          <input type="number" inputmode="numeric" name={`lost-${item.orderLineId}`} min="0" max={item.quantity} step="1" />
+        </label>)}
+        <label>備註（選填）<input name="note" maxlength="200" /></label>
+        <button type="submit" class="button-secondary">確認遺失並退款</button>
+      </form>
+    </details>}
+    {admin && shipment.deliveredAt === null && shipment.deliveryStatus !== "delivered" && <details class="shipment-return">
+      <summary>登記物流退回</summary>
+      <form method="post" class="shipment-return-form" onsubmit="return confirm('確定登記這批商品被物流退回倉庫嗎？數量會被占用、通知顧客，商品實際到倉後再記錄收回與檢查；不會補寄，無法撤回。')">
+        <input type="hidden" name="intent" value="declare-return" />
+        <input type="hidden" name="shipmentId" value={shipment.id} />
+        <input type="hidden" name="returnKey" value={submittedReturn?.shipmentId === shipment.id ? submittedReturn.returnKey : crypto.randomUUID()} />
+        <p class="shipment-return-hint">商品尚未送達、由物流送回倉庫時登記；登記不動庫存與款項，到倉並檢查後才退款。填入退回的數量（不填或 0 表示沒退回）；先前已確認遺失並退款的商品若被尋回並退回，填在「尋回的遺失品」（入庫但不再退款）。</p>
+        {shipment.items.filter((item) => item.orderLineId !== undefined).map((item) => <fieldset>
+          <legend>{item.productName}{item.variantLabel && `（${item.variantLabel}）`}・本批 {item.quantity}</legend>
+          <label>
+            <span>退回數量</span>
+            <input type="number" inputmode="numeric" name={`returned-${item.orderLineId}`} min="0" max={Math.max(0, item.quantity - (item.lostQuantity ?? 0) - (item.returnedQuantity ?? 0))} step="1" />
+          </label>
+          {(item.lostQuantity ?? 0) > 0 && <label>
+            <span>尋回的遺失品（已遺失 {item.lostQuantity}）</span>
+            <input type="number" inputmode="numeric" name={`found-${item.orderLineId}`} min="0" max={item.lostQuantity} step="1" />
+          </label>}
+        </fieldset>)}
+        <label>備註（選填）<input name="note" maxlength="200" /></label>
+        <button type="submit" class="button-secondary">登記物流退回</button>
+      </form>
+    </details>}
+  </li>)}
+</ol>}
+<style>
+  .shipment-list { list-style: none; padding: 0; margin-block: var(--space-4); display: grid; gap: var(--space-3); }
+  .shipment-list > li { padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-xs); overflow-wrap: anywhere; }
+  .shipment-list p { margin: var(--space-1) 0; }
+  .shipment-events { margin-top: var(--space-2); }
+  .shipment-events ul { padding-left: var(--space-5); margin: var(--space-2) 0; }
+  .shipment-events li { overflow-wrap: anywhere; }
+  .shipment-event-form { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+  .shipment-replay { display: inline; }
+  .shipment-loss { margin-top: var(--space-2); }
+  .shipment-loss-form { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+  .shipment-loss-form label { display: grid; gap: var(--space-1); }
+  .shipment-return { margin-top: var(--space-2); }
+  .shipment-return-form { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+  .shipment-return-form label { display: grid; gap: var(--space-1); }
+  .shipment-return-form fieldset { display: grid; gap: var(--space-2); border: 1px solid var(--color-border); padding: var(--space-2); }
+  .shipment-items { padding-left: var(--space-5); margin: var(--space-1) 0; }
+</style>

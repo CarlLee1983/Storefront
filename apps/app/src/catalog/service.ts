@@ -2,9 +2,11 @@ import { drizzle } from "drizzle-orm/d1";
 import { categorySlugInput } from "../categories/input";
 import { selectListedCategories, selectListedCategoryBySlug } from "../categories/queries";
 import { parseInput } from "../shared/input";
+import { shippingQuoteInput } from "../shipping/input";
+import { selectShippingRates, selectVariantDeliveryTypes } from "../shipping/queries";
 import { fail, ok } from "../shared/result";
 import { listProductsInput } from "./input";
-import { existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts } from "./queries";
+import { existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts, selectSitemapProductIds } from "./queries";
 
 /** 前台讀取，不需登入。 */
 export function createCatalogService(d1: D1Database) {
@@ -29,9 +31,23 @@ export function createCatalogService(d1: D1Database) {
       const [categories, hasSale] = await Promise.all([selectListedCategories(db), existsProductOnSale(db)]);
       return ok({ categories, hasSale });
     },
+    /** sitemap 用：可收錄的商品編號（上架且至少一個販售中變體）；不需登入，只含公開資訊。 */
+    async listSitemapProductIds() {
+      return ok(await selectSitemapProductIds(db));
+    },
     /** 首頁精選商品（最多 4 件，不足時以最新上架補滿）；沒有任何上架商品時為空陣列。 */
     async getFeaturedProducts() {
       return ok(await selectFeaturedProducts(db));
+    },
+    /**
+     * 結帳畫面試算運費用：現行兩類費率，以及這些變體各自的配送類型（不存在的變體不出現）。
+     * 費用由呼叫端按「含該類型就收一次」計算（`computeShippingFees`）；真正收取的金額仍由下單時重算並比對。不需登入。
+     */
+    async getShippingQuote(input: unknown) {
+      const parsed = parseInput(shippingQuoteInput, input);
+      if (!parsed.ok) return parsed;
+      const [rates, variants] = await Promise.all([selectShippingRates(db), selectVariantDeliveryTypes(db, parsed.data.variantIds)]);
+      return ok({ rates, variants });
     },
     /** 至少有一件上架商品的分類，依建立順序。 */
     async listCategories() {

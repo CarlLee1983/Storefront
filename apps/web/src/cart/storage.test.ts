@@ -20,7 +20,7 @@ const throwing: CartStorage = {
   },
 };
 
-const cart = addToCart(emptyCart, { productId: 1, name: "馬克杯", unitPriceTwd: 320 }, 2);
+const cart = addToCart(emptyCart, { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320 }, 2);
 
 describe("loadCart / saveCart", () => {
   it("存進去再讀出來得到相同購物車，寫在固定的 key", () => {

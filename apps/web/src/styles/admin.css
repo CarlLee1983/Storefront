@@ -47,6 +47,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  /* 全域 .site-header nav 會換行；後台導覽連結多，要維持單排並橫向捲動 */
+  flex-wrap: nowrap;
   overflow-x: auto;
 }
 .admin-shell .admin-nav-link {
@@ -95,6 +97,19 @@
   color: var(--color-text);
   background: var(--color-surface);
   border-color: var(--color-control-border);
+}
+@media (max-width: 35.999rem) {
+  .admin-shell .admin-header { gap: var(--space-2); padding-inline: var(--space-4); }
+  /* 窄螢幕只留圖示（連結名稱仍由隱藏文字提供），把橫向空間讓給導覽 */
+  .admin-shell .admin-storefront-link { padding: 0; justify-content: center; }
+  .admin-shell .admin-storefront-link span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .admin-shell .admin-page-header {
   display: flex;
@@ -147,6 +162,31 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
 }
+.admin-shell .admin-ship-panel fieldset {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+.admin-shell .admin-ship-panel legend {
+  padding-inline: var(--space-1);
+  font-size: var(--text-sm);
+}
+.admin-shell .admin-ship-lines label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.admin-shell .admin-ship-lines input[type="number"] {
+  width: 5rem;
+}
+.admin-shell .admin-ship-appointment input {
+  max-width: 100%;
+}
 .admin-shell .admin-ship-panel h3 {
   margin: 0 0 var(--space-3);
   font-size: var(--text-sm);
@@ -156,8 +196,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  height: 40px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-6);
   background: var(--color-primary);
   color: var(--color-on-inverse);
@@ -200,8 +240,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 40px;
-  height: 40px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-4);
   background: var(--color-primary);
   color: var(--color-on-inverse);
@@ -222,8 +262,8 @@
 .admin-shell .admin-actions form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .admin-shell .admin-actions a,
 .admin-shell .admin-actions button {
-  min-height: 36px;
-  height: 36px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-3);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -253,7 +293,7 @@
 }
 .admin-shell .admin-filter .filter-field {
   margin: 0;
-  flex: 0 1 14rem;
+  flex: 0 1 12rem;
   min-width: 9rem;
   font-size: 0.8125rem;
   font-weight: 500;
@@ -263,8 +303,8 @@
 .admin-shell .admin-filter .filter-field select {
   display: block;
   width: 100%;
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   margin-top: 4px;
   padding: 0 var(--space-3);
   font-size: var(--text-sm);
@@ -273,6 +313,14 @@
   background: var(--color-surface);
   color: var(--color-text);
   box-sizing: border-box;
+}
+.admin-shell .admin-orders-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
 }
 .admin-shell .admin-filter .filter-actions {
   display: flex;
@@ -284,8 +332,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
-  height: 36px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-4);
   background: var(--color-primary);
   color: var(--color-on-inverse);
@@ -305,8 +353,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
-  height: 36px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-3);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -386,7 +434,7 @@
 }
 .admin-shell .thumb-empty {
   font-size: 0.6875rem;
-  color: var(--color-subtle);
+  color: var(--color-muted);
   letter-spacing: 0.05em;
 }
 .admin-shell .product-name-cell {
@@ -430,7 +478,7 @@
   color: var(--color-text);
 }
 .admin-shell .cell-was-price {
-  color: var(--color-subtle);
+  color: var(--color-muted);
   font-size: 0.8125rem;
 }
 .admin-shell .stock-pill {
@@ -468,15 +516,16 @@
   color: var(--color-muted);
   border: 1px solid var(--color-border);
 }
+/* 以底色區分已下架：用 opacity 調淡會把文字對比壓到 AA 以下 */
 .admin-shell tr.is-unlisted td {
-  opacity: 0.65;
+  background: var(--color-panel);
 }
 .admin-shell .btn-toggle-featured {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
-  height: 28px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 0.5rem;
   font-size: 0.75rem;
   border-radius: var(--radius-xs);
@@ -507,8 +556,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  height: 30px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-3);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -530,25 +579,44 @@
   align-items: center;
   gap: 4px;
 }
+.admin-shell .inline-stock-adjust input[name="reason"] {
+  width: 6rem;
+  flex: 0 1 6rem;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  font-size: 0.8125rem;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--color-border);
+}
 .admin-shell .inline-stock-adjust input[name="delta"] {
   width: 4.5rem;
   flex: 0 0 4.5rem;
-  height: 30px;
-  min-height: 30px;
+  height: 44px;
+  min-height: 44px;
   padding: 0 var(--space-2);
   font-size: 0.8125rem;
   text-align: center;
   border-radius: var(--radius-xs);
   border: 1px solid var(--color-border);
 }
+/* 12 欄的商品表：欄寬依內容分配，名稱與操作可換行，桌機不需橫向捲動 */
+.admin-shell .admin-products table { table-layout: auto; min-width: 0; }
 .admin-shell .admin-products td {
   white-space: nowrap;
 }
-.admin-shell .admin-products .product-title-link {
-  white-space: nowrap;
+.admin-shell .admin-products td.col-name, .admin-shell .admin-products .product-title-link {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
+@media (min-width: 48rem) {
+  .admin-shell .admin-products td.col-name { width: 16rem; min-width: 10rem; }
+}
+.admin-shell .admin-products td.col-actions { width: auto; min-width: 18rem; white-space: normal; }
+/* 編輯與上下架在上排，庫存調整獨佔下排 */
+.admin-shell .admin-products .admin-actions .inline-stock-adjust { flex: 1 0 100%; justify-content: flex-end; }
 .admin-shell .admin-products .admin-actions, .admin-shell .admin-products .admin-actions form {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   white-space: nowrap;
 }
 
@@ -579,8 +647,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
-  height: 32px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 var(--space-3);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -611,8 +679,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   font-size: 0.8125rem;
   font-weight: 500;
   border-radius: var(--radius-xs);
@@ -632,7 +700,7 @@
   border-color: var(--color-primary);
 }
 @media (min-width: 48rem) {
-  .admin-shell .admin-products th, .admin-shell .admin-products td { padding-inline: var(--space-3); }
+  .admin-shell .admin-products th, .admin-shell .admin-products td { padding-inline: var(--space-2); }
 }
 
 .admin-shell .admin-categories table { table-layout: auto; min-width: 0; }
@@ -704,6 +772,12 @@
 .admin-shell .admin-orders td:nth-child(6), .admin-shell .admin-order-lines td:nth-child(n+2):nth-child(-n+4), .admin-shell .admin-order-payments td:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .admin-shell .admin-order-payments td:nth-child(3) strong { display: block; white-space: normal; }
 
+/* 庫存流水：桌機是表格，手機每筆疊成一張卡片（與訂單表同一套 data-label 做法） */
+.admin-shell .admin-stock-ledger table { table-layout: auto; min-width: 0; }
+.admin-shell .admin-stock-ledger th, .admin-shell .admin-stock-ledger td { vertical-align: middle; }
+.admin-shell .admin-stock-ledger td:nth-child(4), .admin-shell .admin-stock-ledger td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-shell .admin-stock-ledger td:nth-child(7), .admin-shell .admin-stock-ledger td:nth-child(8) { overflow-wrap: anywhere; }
+
 @media (max-width: 47.999rem) {
   .admin-shell .admin-orders, .admin-shell .admin-order-lines, .admin-shell .admin-order-payments { overflow-x: visible; }
   .admin-shell .admin-orders table, .admin-shell .admin-order-lines table, .admin-shell .admin-order-payments table { display: block; width: 100%; }
@@ -719,4 +793,20 @@
   .admin-shell .admin-orders td:nth-child(3) span { min-width: 0; }
   .admin-shell .admin-order-payments td:nth-child(3) { display: block; }
   .admin-shell .admin-order-payments td:nth-child(3)::before { display: block; }
+  /* 退款與發票的儲存格內容多行（嘗試紀錄、折讓清單），標籤放在內容上方 */
+  .admin-shell .admin-order-refunds, .admin-shell .admin-order-invoices { overflow-x: visible; }
+  .admin-shell .admin-order-refunds table, .admin-shell .admin-order-invoices table { display: block; width: 100%; min-width: 0; }
+  .admin-shell .admin-order-refunds thead, .admin-shell .admin-order-invoices thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .admin-shell .admin-order-refunds tbody, .admin-shell .admin-order-invoices tbody { display: grid; gap: var(--space-4); }
+  .admin-shell .admin-order-refunds tbody tr, .admin-shell .admin-order-invoices tbody tr { display: grid; min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .admin-shell .admin-order-refunds td, .admin-shell .admin-order-invoices td { display: block; min-width: 0; width: auto; border: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .admin-shell .admin-order-refunds td::before, .admin-shell .admin-order-invoices td::before { content: attr(data-label); display: block; margin-bottom: var(--space-1); font-weight: 700; }
+  .admin-shell .admin-stock-ledger { overflow-x: visible; }
+  .admin-shell .admin-stock-ledger table { display: block; width: 100%; }
+  .admin-shell .admin-stock-ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .admin-shell .admin-stock-ledger tbody { display: grid; gap: var(--space-4); }
+  .admin-shell .admin-stock-ledger tbody tr { display: grid; min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .admin-shell .admin-stock-ledger td { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); min-width: 0; width: auto; border: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .admin-shell .admin-stock-ledger td::before { content: attr(data-label); flex: 0 0 auto; font-weight: 700; }
+  .admin-shell .admin-stock-ledger td:first-child { border-bottom: 1px solid var(--color-border); }
 }

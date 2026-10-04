@@ -144,7 +144,7 @@ export async function createProduct(page: Page, product: DemoProduct) {
  */
 export async function syncProductDetails(page: Page, id: string, product: DemoProduct, categoryName: string): Promise<{ saved: boolean; uploaded: number }> {
   await openAdmin(page, `/admin/products/${id}`);
-  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "儲存", exact: true }) });
+  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "儲存變更", exact: true }) });
   // 以欄位 name 定位：包住 textarea 的 label，其無障礙名稱會連同目前的內容一起計算，精確比對標籤文字會失敗
   const fields: Array<[Locator, string]> = [
     [form.locator('[name="description"]'), product.description],
@@ -158,7 +158,7 @@ export async function syncProductDetails(page: Page, id: string, product: DemoPr
   if (saved) {
     for (const [field, value] of fields) await field.fill(value);
     await category.selectOption({ label: categoryName });
-    await submitAndExpect(page, form.getByRole("button", { name: "儲存", exact: true }), "已儲存商品。");
+    await submitAndExpect(page, form.getByRole("button", { name: "儲存變更", exact: true }), "已儲存商品。");
     await openAdmin(page, `/admin/products/${id}`);
   }
 
@@ -184,11 +184,12 @@ function productRow(page: Page, name: string) {
   return page.getByRole("row").filter({ has: page.getByRole("cell", { name, exact: true }) });
 }
 
-/** 庫存只能以增減量調整。 */
-export async function adjustStock(page: Page, name: string, delta: number) {
+/** 庫存只能以增減量調整，並須填寫原因（寫進庫存流水）。 */
+export async function adjustStock(page: Page, name: string, delta: number, reason = "示範資料補貨") {
   await openAdmin(page, "/admin");
   const row = productRow(page, name);
   await row.getByLabel(`${name}的庫存增減量`).fill(delta > 0 ? `+${delta}` : String(delta));
+  await row.getByLabel(`${name}的庫存調整原因`).fill(reason);
   await submitAndExpect(page, row.getByRole("button", { name: "調整庫存" }), "已調整庫存。");
 }
 

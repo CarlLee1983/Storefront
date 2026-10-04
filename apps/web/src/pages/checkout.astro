@@ -1,5 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
+import { CHECKOUT_CONTACT_PATH } from "../account/contact";
 import { loginUrl } from "../auth/customer";
 import { describeCheckoutFailure, type CheckoutFailure } from "../checkout/failure";
 import { checkoutEntry } from "../checkout/entry";
@@ -16,6 +17,17 @@ if (entry.kind === "redirect") {
   return Astro.redirect(entry.location, 303);
 }
 
+// 首次結帳前須有已驗證的聯絡 email：還沒有就先到帳戶頁驗證（購物車在瀏覽器，不會遺失）
+if (Astro.request.method === "GET") {
+  const contact = await env.APP.getMyContact(Astro.request.headers.get("cookie") ?? "");
+  if (!contact.ok) return Astro.redirect(loginUrl(Astro.url), 303);
+  if (!contact.data.verifiedEmail) return Astro.redirect(CHECKOUT_CONTACT_PATH, 303);
+}
+
+// 地址簿只用來帶入收件資訊；訂單保存的是送出當下表單上的內容（快照），不引用地址簿
+const addressBook = await env.APP.listMyAddresses(Astro.request.headers.get("cookie") ?? "");
+const savedAddresses = addressBook.ok ? addressBook.data : [];
+
 let failure: CheckoutFailure | undefined;
 let placedOrderId: number | undefined;
 let resetKey = false;
@@ -31,6 +43,7 @@ if (Astro.request.method === "POST") {
   if (result.ok) placedOrderId = result.data.orderId;
   // session 在填表期間失效：導回登入，登入後回到結帳（購物車還在瀏覽器）
   if (!result.ok && result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+  if (!result.ok && result.reason === "contact_email_unverified") return Astro.redirect(CHECKOUT_CONTACT_PATH, 303);
   if (!result.ok) failure = describeCheckoutFailure(result, result.reason === "invalid_input" ? checkoutValidationIssues(input) : []);
   resetKey = !result.ok && result.reason === "idempotency_key_reused";
 }
@@ -59,7 +72,14 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
       </thead>
       <tbody id="checkout-lines"></tbody>
     </table>
-    <p>總金額：<strong>NT$ <span id="checkout-total">0</span></strong>（新台幣、含稅、免運）</p>
+    <dl class="checkout-fees">
+      <div><dt>商品小計</dt><dd>NT$ <span id="checkout-subtotal">0</span></dd></div>
+      <div id="checkout-fee-standard" hidden><dt>一般宅配運費</dt><dd>NT$ <span id="checkout-fee-standard-amount">0</span></dd></div>
+      <div id="checkout-fee-large" hidden><dt>大型配送運費</dt><dd>NT$ <span id="checkout-fee-large-amount">0</span></dd></div>
+    </dl>
+    <p>總金額：<strong>NT$ <span id="checkout-total">0</span></strong>（新台幣、含稅，已含運費）</p>
+    <p class="checkout-shipping-note">配送範圍限台灣本島。運費依商品的配送類型計算：一般宅配與大型配送各收一次，同類型不按件數另計；大型配送會由物流電話約定配送時間。</p>
+    <p id="checkout-shipping-error" class="error" role="alert" hidden>目前無法確認運費，請重新整理頁面後再試。</p>
     </section>
 
     {failure && <p class="error" role="alert">{failure.message}</p>}
@@ -72,6 +92,22 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
 
     <form id="checkout-form" method="post">
       <h2>收件資訊</h2>
+      <p class="saved-addresses">
+        {savedAddresses.length > 0 ? (
+          <label>
+            使用地址簿
+            <select id="saved-address">
+              <option value="">手動填寫</option>
+              {savedAddresses.map((item) => (
+                <option value={String(item.id)} data-name={item.name} data-phone={item.phone} data-address={item.address}>{item.name}／{item.address}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span>地址簿還是空的。</span>
+        )}
+        <a href="/account/addresses">管理地址簿</a>
+      </p>
       {failure?.fields.shippingInfo && <div id="shipping-errors" class="error" role="alert">{failure.fields.shippingInfo.map((m) => <p>{m}</p>)}</div>}
       {failure?.fields.idempotencyKey?.map((m) => <p class="error">{m}</p>)}
       <label>
@@ -89,7 +125,12 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         <input name="address" autocomplete="shipping street-address" inputmode="text" aria-describedby={failure?.fields.address ? "address-error" : failure?.fields.shippingInfo ? "shipping-errors" : undefined} aria-invalid={failure?.fields.address || failure?.fields.shippingInfo ? "true" : undefined} value={submitted.address} required />
         {failure?.fields.address && <span id="address-error" class="error">{failure.fields.address.join(" ")}</span>}
       </label>
+      <label class="checkout-confirm">
+        <input type="checkbox" name="mainlandOnly" required />
+        我確認配送地點位於台灣本島，並已確認上方的運費與總金額
+      </label>
       <input type="hidden" name="lines" />
+      <input type="hidden" name="seenShippingTwd" />
       <input type="hidden" name="idempotencyKey" />
       <button type="submit" id="checkout-submit">送出訂單</button>
     </form>
@@ -106,7 +147,9 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   import { applyPriceChanges, describeIssue, removeLines, type CheckoutIssue } from "../checkout/failure";
   import { clearIdempotencyKey, getOrCreateIdempotencyKey, sessionStorageOf } from "../checkout/idempotency";
   import { rememberPlacedOrder } from "../checkout/placed";
+  import { bindSavedAddressPicker } from "../checkout/saved-address";
   import { cartToCheckoutLines, checkoutFingerprint } from "../checkout/request";
+  import { cartShippingFees, parseShippingQuote, shippingQuoteUrl, type ShippingQuote } from "../checkout/shipping";
 
   const priceFormat = new Intl.NumberFormat("zh-TW");
   const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -123,6 +166,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   }
 
   function init() {
+  bindSavedAddressPicker(document);
   const form = $<HTMLFormElement>("#checkout-form");
   let issues: CheckoutIssue[] = pageData.issues ?? [];
   // 舊的冪等鍵帶著不同內容被拒：丟掉它，下一次送出用新鍵
@@ -139,7 +183,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   function renderIssues(cart: Cart) {
     const items = issues.map((issue) => {
       const li = document.createElement("li");
-      li.textContent = `${describeIssue(issue, cart.lines.find((line) => line.productId === issue.productId))} `;
+      li.textContent = `${describeIssue(issue, cart.lines.find((line) => line.variantId === issue.variantId))} `;
       if (issue.kind !== "price_changed") {
         const remove = document.createElement("button");
         remove.type = "button";
@@ -147,7 +191,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         remove.textContent = "移除";
         remove.addEventListener("click", () => {
           issues = issues.filter((other) => other !== issue);
-          change((current) => removeLines(current, [issue.productId]));
+          change((current) => removeLines(current, [issue.variantId]));
         });
         li.appendChild(remove);
       }
@@ -157,11 +201,49 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     $("#checkout-issues-actions").hidden = !issues.some((issue) => issue.kind === "price_changed");
   }
 
+  // 運費由 App 試算（購物車只有價格，沒有配送類型）：查到之前不顯示總額、不能送出，避免讓顧客確認一個不完整的金額
+  let quote: ShippingQuote | null = null;
+  let quoteRequest = 0;
+  const submitButton = $<HTMLButtonElement>("#checkout-submit");
+
+  function renderFees(cart: Cart) {
+    const subtotal = cartTotal(cart);
+    $("#checkout-subtotal").textContent = priceFormat.format(subtotal);
+    const fees = quote ? cartShippingFees(cart, quote) : null;
+    for (const type of ["standard", "large"] as const) {
+      // 該類型有商品才列（費率為 0 時列出 0）；查到運費之前都不列
+      const present = quote?.variants.some((variant) => variant.deliveryType === type && cart.lines.some((line) => line.variantId === variant.variantId)) ?? false;
+      $(`#checkout-fee-${type}`).hidden = !fees || !present;
+      if (fees) $(`#checkout-fee-${type}-amount`).textContent = priceFormat.format(fees[type]);
+    }
+    $("#checkout-total").textContent = fees ? priceFormat.format(subtotal + fees.totalTwd) : "—";
+    submitButton.disabled = !fees;
+  }
+
+  async function refreshQuote(cart: Cart) {
+    const request = ++quoteRequest;
+    quote = null;
+    $("#checkout-shipping-error").hidden = true;
+    renderFees(cart);
+    if (cart.lines.length === 0) return;
+    let fetched: ShippingQuote | null = null;
+    try {
+      const response = await fetch(shippingQuoteUrl(cart));
+      fetched = response.ok ? parseShippingQuote(await response.json()) : null;
+    } catch {
+      fetched = null;
+    }
+    if (request !== quoteRequest) return;
+    quote = fetched;
+    $("#checkout-shipping-error").hidden = fetched !== null;
+    renderFees(loadCart(storageOf(window)));
+  }
+
   function render(cart: Cart) {
     const empty = cart.lines.length === 0;
     $("#checkout-empty").hidden = !empty;
     $("#checkout-content").hidden = empty;
-    $("#checkout-total").textContent = priceFormat.format(cartTotal(cart));
+    renderFees(cart);
     $("#checkout-lines").replaceChildren(
       ...cart.lines.map((line) => {
         const row = document.createElement("tr");
@@ -174,6 +256,12 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         cover.setAttribute("aria-hidden", "true");
         product.appendChild(cover);
         product.appendChild(name);
+        if (line.label) {
+          const label = document.createElement("span");
+          label.className = "summary-variant";
+          label.textContent = line.label;
+          product.appendChild(label);
+        }
         for (const child of [product, cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`, "單價"), cell(String(line.quantity), "數量"), cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`, "小計")]) row.appendChild(child);
         return row;
       }),
@@ -187,6 +275,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     error.textContent = saved ? "" : SAVE_FAILED_MESSAGE;
     error.hidden = saved;
     render(cart);
+    void refreshQuote(cart);
   }
 
   // 更新為新價格：購物車不清空，價格變動的問題消失，顧客確認新總額後再送出
@@ -202,11 +291,12 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   // 送出前把購物車明細與冪等鍵放進表單；同一次結帳重送沿用 sessionStorage 裡的同一個鍵
   form.addEventListener("submit", (event) => {
     const cart = loadCart(storageOf(window));
-    if (cart.lines.length === 0) {
+    if (cart.lines.length === 0 || !quote) {
       event.preventDefault();
       return;
     }
     const lines = cartToCheckoutLines(cart);
+    const seenShippingTwd = cartShippingFees(cart, quote).totalTwd;
     const value = (name: string) => form.querySelector<HTMLInputElement>(`input[name=${name}]`)!.value;
     // 內容（購物車、收件資訊）沒變就沿用同一個鍵；變了換新鍵
     const key = getOrCreateIdempotencyKey(
@@ -214,6 +304,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
       () => crypto.randomUUID(),
       checkoutFingerprint(lines, { name: value("name"), phone: value("phone"), address: value("address") }),
     );
+    form.querySelector<HTMLInputElement>("input[name=seenShippingTwd]")!.value = String(seenShippingTwd);
     form.querySelector<HTMLInputElement>("input[name=lines]")!.value = JSON.stringify(lines);
     form.querySelector<HTMLInputElement>("input[name=idempotencyKey]")!.value = key;
     const submitBtn = $<HTMLButtonElement>("#checkout-submit");
@@ -224,13 +315,19 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   // 從瀏覽器的上一頁回來時恢復按鈕
   window.addEventListener("pageshow", () => {
     const submitBtn = $<HTMLButtonElement>("#checkout-submit");
-    submitBtn.disabled = false;
+    submitBtn.disabled = !quote;
     submitBtn.textContent = "送出訂單";
     submitBtn.classList.remove("is-submitting");
   });
 
-  render(loadCart(storageOf(window)));
-  window.addEventListener("storage", () => render(loadCart(storageOf(window))));
+  const initialCart = loadCart(storageOf(window));
+  render(initialCart);
+  void refreshQuote(initialCart);
+  window.addEventListener("storage", () => {
+    const cart = loadCart(storageOf(window));
+    render(cart);
+    void refreshQuote(cart);
+  });
   }
 </script>
 
@@ -240,19 +337,31 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   .checkout-summary, #checkout-form { min-width: 0; padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-subtle); }
   .checkout-summary { background: var(--color-panel); }
   .checkout-summary h2, #checkout-form h2 { margin-top: 0; font-size: var(--text-base); font-weight: 700; }
+  .checkout-fees { display: grid; gap: var(--space-2); margin: var(--space-4) 0; }
+  .checkout-fees div { display: flex; justify-content: space-between; gap: var(--space-3); }
+  .checkout-fees div[hidden] { display: none; }
+  .checkout-fees dt { color: var(--color-muted); }
+  .checkout-fees dd { margin: 0; }
+  .checkout-shipping-note { color: var(--color-muted); font-size: var(--text-sm); }
+  .checkout-confirm { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; margin-top: var(--space-4); }
+  #checkout-form .checkout-confirm input { flex-shrink: 0; width: 44px; height: 44px; margin: 0; }
+  .saved-addresses { display: grid; gap: var(--space-2); }
+  .saved-addresses a { display: inline-flex; align-items: center; min-height: 44px; }
+  #checkout-form select { width: 100%; min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
   #checkout-form input { min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
   #checkout-form button { width: 100%; margin-top: var(--space-4); }
   #checkout-issues:empty { display: none; }
   :global(#checkout-lines .summary-product) { display: flex; align-items: center; gap: var(--space-3); font-weight: 600; }
   :global(#checkout-lines .cart-cover) { display: grid; flex-shrink: 0; place-items: center; width: var(--product-thumb-size); height: var(--product-thumb-size); background: var(--color-surface); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--color-border); }
   :global(#checkout-lines .cart-cover img) { width: 100%; height: 100%; object-fit: cover; }
-  :global(#checkout-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-subtle); text-align: center; }
+  :global(#checkout-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-muted); text-align: center; }
   thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   :global(#checkout-lines) { display: grid; gap: var(--space-4); }
   :global(#checkout-lines tr) { display: grid; padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
   :global(#checkout-lines td) { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border: 0; font-size: var(--text-sm); }
   :global(#checkout-lines td:not(.summary-product)::before) { content: attr(data-label); color: var(--color-muted); }
   :global(#checkout-lines .summary-product) { justify-content: start; }
+  :global(#checkout-lines .summary-variant) { font-weight: 400; font-size: var(--text-sm); color: var(--color-muted); }
   @media (min-width: 64rem) {
     #checkout-content:not([hidden]) { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: var(--space-8); }
     .checkout-summary { grid-column: 2; grid-row: 1 / span 10; position: sticky; top: var(--space-4); }

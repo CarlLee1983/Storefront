@@ -1,7 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { BASE_URL } from "../harness/constants";
+import { analyzeWhenSettled } from "../harness/axe";
 
 for (const width of [375, 1280]) {
   test(`新增商品頁可操作且無障礙（${width}px）`, async ({ browser }) => {
@@ -19,7 +19,7 @@ for (const width of [375, 1280]) {
       await expect(page.getByRole("navigation", { name: "後台導覽" }).getByRole("link", { name: "商品管理" })).toHaveAttribute("aria-current", "page");
       await expect(page.getByRole("link", { name: "取消", exact: true })).toHaveAttribute("href", "/admin");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
       const name = `新增頁${width}-${Date.now()}`;
       await page.getByLabel("名稱", { exact: true }).fill(name);
@@ -54,8 +54,9 @@ test("新增商品驗證保留輸入，舊清單及未知動作不會建立商�
       const rejected = await context.request.post(path, { form: submitted, headers: { origin: BASE_URL }, maxRedirects: 0 });
       expect(rejected.status(), path).toBe(400);
     }
-    const listing = await (await context.request.get("/admin")).text();
-    expect(listing).not.toContain(name);
+    const listing = await (await context.request.get(`/admin?q=${encodeURIComponent(name)}`)).text();
+    expect(listing).toContain("沒有符合篩選條件的商品");
+    expect(listing).not.toContain(`>${name}</a>`);
   } finally {
     await context.close();
   }

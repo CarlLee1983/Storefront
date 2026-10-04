@@ -1,4 +1,6 @@
-import { cancelPayment, createPayment, getPayment, refundPayment } from "./api";
+import { cancelPayment, createPayment, getPayment, getRefund, refundPayment } from "./api";
+import { getAllowance, issueAllowance } from "./allowances";
+import { getInvoice, issueInvoice } from "./invoices";
 import { type Clock, systemClock } from "./clock";
 import { handleConsole } from "./console";
 import { type GatewayConfig, readConfig } from "./config";
@@ -15,7 +17,12 @@ const routes = {
   createPayment: route("POST", "/v1/payments"),
   getPayment: route("GET", `/v1/payments/${PAYMENT_ID}`),
   cancelPayment: route("POST", `/v1/payments/${PAYMENT_ID}/cancel`),
-  refundPayment: route("POST", `/v1/payments/${PAYMENT_ID}/refund`),
+  refundPayment: route("POST", `/v1/payments/${PAYMENT_ID}/refunds`),
+  getRefund: route("GET", `/v1/payments/${PAYMENT_ID}/refunds/([A-Za-z0-9_-]+)`),
+  issueInvoice: route("POST", "/v1/invoices"),
+  getInvoice: route("GET", "/v1/invoices/([A-Za-z0-9_-]+)"),
+  issueAllowance: route("POST", "/v1/invoices/([A-Za-z0-9_-]+)/allowances"),
+  getAllowance: route("GET", "/v1/allowances/([A-Za-z0-9_-]+)"),
   showPayPage: route("GET", `/pay/${PAYMENT_ID}`),
   submitPayPage: route("POST", `/pay/${PAYMENT_ID}`),
 };
@@ -30,7 +37,16 @@ async function handleApi(request: Request, pathname: string, env: Env, clock: Cl
   const cancel = routes.cancelPayment(request, pathname);
   if (cancel) return cancelPayment(cancel[0]!, env, clock);
   const refund = routes.refundPayment(request, pathname);
-  if (refund) return refundPayment(refund[0]!, env, config.webhookSecret, clock);
+  if (refund) return refundPayment(refund[0]!, request, env, clock);
+  const lookup = routes.getRefund(request, pathname);
+  if (lookup) return getRefund(lookup[0]!, lookup[1]!, env);
+  if (routes.issueInvoice(request, pathname)) return issueInvoice(request, env, clock);
+  const allowance = routes.issueAllowance(request, pathname);
+  if (allowance) return issueAllowance(allowance[0]!, request, env, clock);
+  const allowanceLookup = routes.getAllowance(request, pathname);
+  if (allowanceLookup) return getAllowance(allowanceLookup[0]!, env);
+  const invoice = routes.getInvoice(request, pathname);
+  if (invoice) return getInvoice(invoice[0]!, env);
   return undefined;
 }
 

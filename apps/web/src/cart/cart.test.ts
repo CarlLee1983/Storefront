@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { CART_VERSION, MAX_QUANTITY, addToCart, clampQuantity, cartCount, cartTotal, deserializeCart, emptyCart, lineSubtotal, removeFromCart, serializeCart, setQuantity } from "./cart";
 
-const mug = { productId: 1, name: "馬克杯", unitPriceTwd: 320 };
+const mug = { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320 };
 
 describe("addToCart", () => {
   it.each([
-    ["productId 是 NaN", { ...mug, productId: Number.NaN }],
-    ["productId 是 0", { ...mug, productId: 0 }],
+    ["variantId 是 NaN", { ...mug, variantId: Number.NaN }],
+    ["productId 是 0", { ...mug, variantId: 0, productId: 0 }],
     ["單價是 0", { ...mug, unitPriceTwd: 0 }],
     ["單價是小數", { ...mug, unitPriceTwd: 1.5 }],
     ["單價是負數", { ...mug, unitPriceTwd: -5 }],
@@ -19,18 +19,18 @@ describe("addToCart", () => {
 
   it("空購物車加入商品：多一筆，記住加入當下的名稱與單價", () => {
     const cart = addToCart(emptyCart, mug, 2);
-    expect(cart.lines).toEqual([{ productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 2 }]);
+    expect(cart.lines).toEqual([{ variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 2 }]);
   });
 
   it("同一商品再次加入：數量相加，名稱與單價以最新加入時看到的為準", () => {
     const first = addToCart(emptyCart, mug, 2);
-    const cart = addToCart(first, { productId: 1, name: "馬克杯（新款）", unitPriceTwd: 350 }, 3);
-    expect(cart.lines).toEqual([{ productId: 1, name: "馬克杯（新款）", unitPriceTwd: 350, quantity: 5 }]);
+    const cart = addToCart(first, { variantId: 1, productId: 1, name: "馬克杯（新款）", unitPriceTwd: 350 }, 3);
+    expect(cart.lines).toEqual([{ variantId: 1, productId: 1, name: "馬克杯（新款）", unitPriceTwd: 350, quantity: 5 }]);
   });
 
   it("不同商品各自一筆，維持加入順序", () => {
-    const cart = addToCart(addToCart(emptyCart, mug, 1), { productId: 2, name: "杯墊", unitPriceTwd: 80 }, 1);
-    expect(cart.lines.map((l) => l.productId)).toEqual([1, 2]);
+    const cart = addToCart(addToCart(emptyCart, mug, 1), { variantId: 2, productId: 2, name: "杯墊", unitPriceTwd: 80 }, 1);
+    expect(cart.lines.map((l) => l.variantId)).toEqual([1, 2]);
   });
 
   it("不改動傳入的購物車", () => {
@@ -51,14 +51,14 @@ describe("addToCart", () => {
   });
 });
 
-const twoLines = addToCart(addToCart(emptyCart, mug, 2), { productId: 2, name: "杯墊", unitPriceTwd: 80 }, 1);
+const twoLines = addToCart(addToCart(emptyCart, mug, 2), { variantId: 2, productId: 2, name: "杯墊", unitPriceTwd: 80 }, 1);
 
 describe("setQuantity", () => {
   it("把該筆數量改成指定值，單價與其他筆不變", () => {
     const cart = setQuantity(twoLines, 1, 7);
     expect(cart.lines).toEqual([
-      { productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 7 },
-      { productId: 2, name: "杯墊", unitPriceTwd: 80, quantity: 1 },
+      { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 7 },
+      { variantId: 2, productId: 2, name: "杯墊", unitPriceTwd: 80, quantity: 1 },
     ]);
   });
 
@@ -77,7 +77,7 @@ describe("setQuantity", () => {
 
 describe("removeFromCart", () => {
   it("移除該筆，其他筆保留", () => {
-    expect(removeFromCart(twoLines, 1).lines.map((l) => l.productId)).toEqual([2]);
+    expect(removeFromCart(twoLines, 1).lines.map((l) => l.variantId)).toEqual([2]);
   });
 
   it("車內沒有該商品：內容不變", () => {
@@ -87,7 +87,7 @@ describe("removeFromCart", () => {
 
 describe("小計、總額與件數", () => {
   it("小計是加入時單價 × 數量", () => {
-    expect(lineSubtotal({ productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 3 })).toBe(960);
+    expect(lineSubtotal({ variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 3 })).toBe(960);
   });
 
   it("總額是各筆小計加總；件數是各筆數量加總", () => {
@@ -118,15 +118,16 @@ describe("serializeCart / deserializeCart", () => {
     ["不是 JSON", "{oops"],
     ["JSON 但不是物件", "[]"],
     ["版本不符", JSON.stringify({ version: 999, lines: [] })],
+    ["舊版（以商品編號為單位的第 1 版）", JSON.stringify({ version: 1, lines: [{ productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 1 }] })],
     ["沒有版本", JSON.stringify({ lines: [] })],
     ["lines 不是陣列", JSON.stringify({ version: CART_VERSION, lines: {} })],
   ])("%s：視為空購物車", (_label, raw) => {
     expect(deserializeCart(raw)).toEqual(emptyCart);
   });
 
-  const line = { productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 2 };
+  const line = { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 2 };
   it.each([
-    ["productId 不是正整數", { ...line, productId: 0 }],
+    ["productId 不是正整數", { ...line, variantId: 0, productId: 0 }],
     ["name 不是字串", { ...line, name: 5 }],
     ["單價是小數", { ...line, unitPriceTwd: 1.5 }],
     ["單價是負數", { ...line, unitPriceTwd: -1 }],
@@ -159,5 +160,30 @@ describe("clampQuantity", () => {
     expect(clampQuantity(-3)).toBe(1);
     expect(clampQuantity(5)).toBe(5);
     expect(clampQuantity(MAX_QUANTITY + 1)).toBe(MAX_QUANTITY);
+  });
+});
+
+describe("商品變體", () => {
+  const table120 = { variantId: 10, productId: 3, name: "餐桌", label: "120 公分 / 胡桃色", unitPriceTwd: 9000 };
+  const table150 = { variantId: 11, productId: 3, name: "餐桌", label: "150 公分 / 胡桃色", unitPriceTwd: 12000 };
+
+  it("同商品的不同變體各佔一筆，不合併；同一變體再加入才合併並以最新選項標籤為準", () => {
+    const cart = addToCart(addToCart(addToCart(emptyCart, table120, 1), table150, 2), { ...table120, label: "120 公分 / 白橡色" }, 1);
+    expect(cart.lines).toEqual([
+      { ...table120, label: "120 公分 / 白橡色", quantity: 2 },
+      { ...table150, quantity: 2 },
+    ]);
+    expect(cartTotal(cart)).toBe(9000 * 2 + 12000 * 2);
+  });
+
+  it("選項標籤隨購物車序列化還原；沒有標籤的舊資料照舊可用", () => {
+    const cart = addToCart(addToCart(emptyCart, table120, 1), mug, 1);
+    expect(deserializeCart(serializeCart(cart))).toEqual(cart);
+    expect(cart.lines[1]).not.toHaveProperty("label");
+  });
+
+  it("選項標籤不是字串：整份視為空購物車", () => {
+    const raw = JSON.stringify({ version: CART_VERSION, lines: [{ ...table120, quantity: 1, label: 5 }] });
+    expect(deserializeCart(raw)).toEqual(emptyCart);
   });
 });

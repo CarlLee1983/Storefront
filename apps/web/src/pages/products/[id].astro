@@ -1,6 +1,7 @@
 ---
 import { env } from "cloudflare:workers";
 import { MAX_QUANTITY } from "../../cart/cart";
+import { describeAvailability, initialVariant, optionChoices, variantFromParam } from "../../catalog/variant-picker";
 import CartToast from "../../components/CartToast.astro";
 import NotFoundContent from "../../components/NotFoundContent.astro";
 import ProductGallery from "../../components/ProductGallery.astro";
@@ -9,6 +10,8 @@ import QuantityStepper from "../../components/QuantityStepper.astro";
 import Layout from "../../layouts/Layout.astro";
 import { notFoundDescription, previewText } from "../../metadata";
 import { saleDisplay } from "../../sale/price";
+import { productJsonLd, serializeJsonLd } from "../../seo/product-jsonld";
+import { siteOrigin } from "../../seo/site-origin";
 
 export const prerender = false;
 const id = /^\d+$/.test(Astro.params.id ?? "") ? Number(Astro.params.id) : NaN;
@@ -16,10 +19,24 @@ const result = await env.APP.getProduct({ id });
 const product = result.ok ? result.data : null;
 if (!product) Astro.response.status = 404;
 const priceFormat = new Intl.NumberFormat("zh-TW");
-const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) : null;
+const variants = product?.variants ?? [];
+// 初始選取的變體：與瀏覽器端的選取邏輯共用 variant-picker，伺服器端渲染與互動後的畫面一致
+// `?variant=<id>` 讓每個變體有可直接開啟的網址；無效或已停賣時退回預設選取
+const selected = variantFromParam(variants, Astro.url.searchParams.get("variant")) ?? initialVariant(variants);
+const selection = selected?.optionValues ?? [];
+// 選定變體指定了圖片就以它為首屏圖（也是分享預覽圖）；沒指定維持第一張
+const selectedImageIndex = Math.max(0, product?.images.findIndex((image) => image.id === selected?.imageId) ?? 0);
+const shareImage = product?.images[selectedImageIndex]?.variants.at(-1)?.key;
+const sale = selected ? saleDisplay(selected.priceTwd, selected.compareAtPriceTwd) : null;
+const specs = product ? [["尺寸", product.dimensions], ["材質", product.material], ["保養", product.care]].filter(([, text]) => text !== "") : [];
+const variantsData = product ? JSON.stringify({ productId: product.id, name: product.name, images: product.images, variants }).replace(/</g, "\\u003c") : "";
+const origin = siteOrigin(env.SITE_ORIGIN, Astro.url);
+const productData = product ? productJsonLd(product, new URL(Astro.url.pathname, origin).href, origin) : null;
+const jsonLd = productData ? serializeJsonLd(productData) : "";
 ---
-<Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={product?.images[0]?.variants.at(-1)?.key ? `/images/${product.images[0]!.variants.at(-1)!.key}` : undefined} noindex={!product} hideTitle={!!product}>
+<Layout title={product?.name ?? "找不到這個頁面"} headTitle={product ? undefined : "找不到頁面｜靜物"} description={product ? previewText(product.description?.split(/\n\s*\n/)[0], `在靜物查看${product.name}的圖片、售價與商品資訊。`) : notFoundDescription} image={shareImage ? `/images/${shareImage}` : undefined} noindex={!product} hideTitle={!!product}>
   {product ? <>
+    {jsonLd && <script is:inline type="application/ld+json" set:html={jsonLd} />}
     <nav class="breadcrumb" aria-label="麵包屑">
       <ol>
         <li><a href="/products">全部商品</a></li>
@@ -28,26 +45,47 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
       </ol>
     </nav>
     <div class="product-detail">
-      <ProductGallery name={product.name} images={product.images} />
+      <ProductGallery name={product.name} images={product.images} initialIndex={selectedImageIndex} />
       <section class="product-information" aria-label="商品資訊">
         {product.category && <p class="eyebrow">{product.category.name}</p>}
         <h1>{product.name}</h1>
-        <p class:list={["price", { "on-sale": sale }]}>
-          <span class="price-now">NT$ {priceFormat.format(product.priceTwd)}</span>
-          {sale && <s class="price-was"><span class="visually-hidden">原價 </span>NT$ {priceFormat.format(sale.compareAtTwd)}</s>}
-          {sale?.badge && <span class="sale-tag"><span aria-hidden="true">{sale.badge}</span><span class="visually-hidden">省 {sale.percent}%</span></span>}
-        </p>
-        <p class:list={["availability", { "is-low-stock": product.purchasable && product.available > 0 && product.available <= 5 }]}>
-          {product.purchasable ? (product.available <= 5 ? `僅剩 ${product.available} 件現貨` : `現貨，可售 ${product.available} 件`) : "已售完"}
-        </p>
+        <div class="variant-status" aria-live="polite" aria-atomic="true">
+          {selected && product.optionNames.length > 0 && <p class="visually-hidden" id="variant-summary">已選：{selected.optionValues.join(" / ")}</p>}
+          {selected
+            ? <p class:list={["price", { "on-sale": sale }]} id="variant-price">
+                <span class="price-now">NT$ {priceFormat.format(selected.priceTwd)}</span>
+                <s class="price-was" hidden={!sale}><span class="visually-hidden">原價 </span>NT$ <span class="price-was-amount">{sale ? priceFormat.format(sale.compareAtTwd) : ""}</span></s>
+                <span class="sale-tag" hidden={!sale?.badge}><span aria-hidden="true">{sale?.badge}</span><span class="visually-hidden">省 {sale?.percent}%</span></span>
+              </p>
+            : <p class="price" id="variant-price"><span class="price-now unavailable">目前無法購買</span></p>}
+          {selected && <p class:list={["availability", { "is-low-stock": selected.available > 0 && selected.available <= 5 }]} id="variant-availability">{describeAvailability(selected.available)}</p>}
+        </div>
         <p class="description">{product.description}</p>
-        {product.purchasable && <form class="buy-form" data-product-id={product.id} data-name={product.name} data-price={product.priceTwd} data-cover={JSON.stringify(product.images[0] ?? null)}>
+        {specs.length > 0 && <section class="specs" aria-labelledby="specs-heading">
+          <h2 id="specs-heading">尺寸、材質與保養</h2>
+          <dl>
+            {specs.map(([label, text]) => <div class="spec"><dt>{label}</dt><dd>{text}</dd></div>)}
+          </dl>
+        </section>}
+        {selected && product.optionNames.length > 0 && <div class="option-picker" id="option-picker">
+          {product.optionNames.map((optionName, dimension) => <fieldset class="option-group" data-dimension={dimension}>
+            <legend>{optionName}</legend>
+            <div class="option-choices">
+              {optionChoices(variants, selection, dimension).map((choice) => <label class="option-choice">
+                <input type="radio" name={`option-${dimension}`} value={choice.value} checked={choice.selected} />
+                <span>{choice.value}<span class="option-sold-out" hidden={!choice.soldOut}>（售完）</span></span>
+              </label>)}
+            </div>
+          </fieldset>)}
+        </div>}
+        {selected && <form class="buy-form" id="buy-form" data-variant-id={selected.id}>
           <label for="buy-quantity">數量</label>
           <QuantityStepper id="buy-quantity" max={MAX_QUANTITY} decreaseLabel="減少數量" increaseLabel="增加數量" />
-          <button type="submit" class="buy-button">加入購物車<span aria-hidden="true"> →</span></button>
+          <button type="submit" class="buy-button" disabled={selected.available <= 0}>{selected.available > 0 ? "加入購物車" : "目前無法購買"}{selected.available > 0 && <span aria-hidden="true"> →</span>}</button>
           <CartToast />
         </form>}
-        <p class="policy">售價含稅、免運。付款後無法自行取消訂單；商品或訂單問題請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。詳情請見<a href="/returns">退換貨說明</a>。</p>
+        {variantsData && <script is:inline type="application/json" id="product-variants" set:html={variantsData} />}
+        <p class="policy">售價含稅，運費依配送類型於結帳時計算。付款後、出貨前可在訂單頁申請取消；商品或訂單問題請寫信至 <a href="mailto:hello@gravito.dev">hello@gravito.dev</a>。詳情請見<a href="/returns">退換貨說明</a>。</p>
       </section>
     </div>
     {product.related.length > 0 && <section class="related" aria-labelledby="related-heading">
@@ -57,39 +95,105 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
   </> : <NotFoundContent />}
 </Layout>
 <script>
+  import type { ProductImage } from "@storefront/app/product-images";
+  import type { VariantDetail } from "@storefront/app/catalog-types";
   import { parseCartCover } from "../../cart/cover";
   import { showCartToast } from "../../cart/toast";
   import { addToCart, clampQuantity } from "../../cart/cart";
   import { addFeedback } from "../../cart/feedback";
   import { storageOf } from "../../cart/storage";
   import { updateCart } from "../../cart/store";
+  import { describeAvailability, findVariant, initialVariant, optionChoices, selectOption, variantLabel } from "../../catalog/variant-picker";
+  import { saleDisplay } from "../../sale/price";
+
   const form = document.querySelector<HTMLFormElement>("form.buy-form");
-  if (form) {
+  const dataElement = document.querySelector<HTMLScriptElement>("#product-variants");
+  if (form && dataElement) {
+    const data = JSON.parse(dataElement.textContent ?? "{}") as { productId: number; name: string; images: ProductImage[]; variants: VariantDetail[] };
+    const { variants, images } = data;
+    const priceFormat = new Intl.NumberFormat("zh-TW");
     const input = form.querySelector<HTMLInputElement>("input[name=quantity]")!;
+    const buyBtn = form.querySelector<HTMLButtonElement>(".buy-button")!;
+    const picker = document.querySelector<HTMLElement>("#option-picker");
+    const priceBlock = document.querySelector<HTMLElement>("#variant-price")!;
+    const availability = document.querySelector<HTMLElement>("#variant-availability")!;
+    const summary = document.querySelector<HTMLElement>("#variant-summary");
+    const gallery = document.querySelector<HTMLElement>(".gallery");
+    // 伺服器端已依網址選定變體（form 帶著它的編號），客戶端從同一個起點接手
+    let current = variants.find((variant) => variant.id === Number(form.dataset.variantId)) ?? initialVariant(variants)!;
+
+    // 圖庫跳到變體指定的那一張；沒有指定就維持目前顯示
+    function showVariantImage() {
+      const index = images.findIndex((image) => image.id === current.imageId);
+      if (index >= 0) gallery?.dispatchEvent(new CustomEvent("gallery:select", { detail: { index } }));
+    }
+
+    // 把選取的變體反映到畫面：確切價格、可售量、指定圖片與按鈕狀態
+    function render() {
+      const sale = saleDisplay(current.priceTwd, current.compareAtPriceTwd);
+      priceBlock.classList.toggle("on-sale", sale !== null);
+      priceBlock.querySelector(".price-now")!.textContent = `NT$ ${priceFormat.format(current.priceTwd)}`;
+      const was = priceBlock.querySelector<HTMLElement>(".price-was")!;
+      was.hidden = sale === null;
+      was.querySelector(".price-was-amount")!.textContent = sale ? priceFormat.format(sale.compareAtTwd) : "";
+      const tag = priceBlock.querySelector<HTMLElement>(".sale-tag")!;
+      tag.hidden = !sale?.badge;
+      const badge = Object.assign(document.createElement("span"), { textContent: sale?.badge ?? "" });
+      badge.setAttribute("aria-hidden", "true");
+      tag.replaceChildren(badge, Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: sale ? `省 ${sale.percent}%` : "" }));
+      if (summary) summary.textContent = current.optionValues.length > 0 ? `已選：${variantLabel(current)}` : "";
+      availability.textContent = describeAvailability(current.available);
+      availability.classList.toggle("is-low-stock", current.available > 0 && current.available <= 5);
+      form!.dataset.variantId = String(current.id);
+      buyBtn.disabled = current.available <= 0;
+      buyBtn.textContent = current.available > 0 ? "加入購物車" : "目前無法購買";
+      if (current.available > 0) buyBtn.insertAdjacentHTML("beforeend", '<span aria-hidden="true"> →</span>');
+      picker?.querySelectorAll<HTMLFieldSetElement>("fieldset").forEach((group) => {
+        const dimension = Number(group.dataset.dimension);
+        const choices = optionChoices(variants, current.optionValues, dimension);
+        group.querySelectorAll<HTMLLabelElement>(".option-choice").forEach((label, index) => {
+          label.querySelector("input")!.checked = choices[index]!.selected;
+          label.querySelector<HTMLElement>(".option-sold-out")!.hidden = !choices[index]!.soldOut;
+        });
+      });
+    }
+
+    picker?.addEventListener("change", (event) => {
+      const radio = event.target as HTMLInputElement;
+      const dimension = Number(radio.closest<HTMLElement>("fieldset")?.dataset.dimension);
+      const next = findVariant(variants, selectOption(variants, current.optionValues, dimension, radio.value));
+      if (next) current = next;
+      render();
+      showVariantImage();
+    });
+
+    // 初始選取的變體若指定了圖片，等圖庫的腳本掛好事件後再跳過去
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", showVariantImage);
+    else showVariantImage();
+
     // 加減按鈕只在 1 到上限之間調整；輸入框內容無效（空白、小數）時從 1 起算
     for (const button of form.querySelectorAll<HTMLButtonElement>("[data-step]")) {
       button.addEventListener("click", () => {
-        const current = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 1;
-        input.value = String(clampQuantity(current + Number(button.dataset.step)));
+        const value = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 1;
+        input.value = String(clampQuantity(value + Number(button.dataset.step)));
       });
     }
-    const buyBtn = form.querySelector<HTMLButtonElement>(".buy-button");
     form.addEventListener("submit", event => {
       event.preventDefault();
-      const item = { productId: Number(form.dataset.productId), name: form.dataset.name ?? "", unitPriceTwd: Number(form.dataset.price), cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")) };
+      if (current.available <= 0) return;
+      const coverImage = images.find((image) => image.id === current.imageId) ?? images[0] ?? null;
+      const label = variantLabel(current);
+      const item = { variantId: current.id, productId: data.productId, name: data.name, ...(label ? { label } : {}), unitPriceTwd: current.priceTwd, cover: parseCartCover(coverImage) };
       const quantity = Number(new FormData(form).get("quantity"));
-      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.productId, () =>
-        updateCart(storageOf(window), window, current => addToCart(current, item, quantity))));
+      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.variantId, () =>
+        updateCart(storageOf(window), window, existing => addToCart(existing, item, quantity))));
 
-      if (buyBtn) {
-        const originalText = buyBtn.innerHTML;
-        buyBtn.innerHTML = '已加入購物車 <span aria-hidden="true">✓</span>';
-        buyBtn.classList.add("is-added");
-        window.setTimeout(() => {
-          buyBtn.innerHTML = originalText;
-          buyBtn.classList.remove("is-added");
-        }, 1500);
-      }
+      buyBtn.innerHTML = '已加入購物車 <span aria-hidden="true">✓</span>';
+      buyBtn.classList.add("is-added");
+      window.setTimeout(() => {
+        buyBtn.classList.remove("is-added");
+        render();
+      }, 1500);
     });
   }
 </script>
@@ -137,7 +241,31 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
     color: var(--color-primary);
     font-weight: 600;
   }
+  .variant-status { margin-bottom: 0; }
+  .price .unavailable { color: var(--color-muted); }
+  .option-picker { display: grid; gap: var(--space-4); margin-bottom: var(--space-6); }
+  .option-group { margin: 0; padding: 0; border: 0; min-width: 0; }
+  .option-group legend { margin-bottom: var(--space-2); padding: 0; font-size: var(--text-sm); font-weight: 600; }
+  .option-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  /* 選項按鈕的觸控範圍至少 44px，手機也好按 */
+  .option-choice { position: relative; display: inline-flex; margin: 0; scroll-margin-block: 6rem; }
+  /* 原生單選鈕只負責焦點與鍵盤：點擊落在標籤上由標籤啟動它 */
+  .option-choice input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; pointer-events: none; }
+  .option-choice { cursor: pointer; }
+  .option-choice span {
+    display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0 var(--space-4); justify-content: center;
+    background: var(--color-surface); border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); font-size: var(--text-sm);
+  }
+  .option-choice input:checked + span { border-color: var(--color-text); box-shadow: 0 0 0 1px var(--color-text); font-weight: 600; }
+  .option-choice input:focus-visible + span { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  .option-sold-out { margin-left: var(--space-1); min-height: 0; min-width: 0; padding: 0; border: 0; color: var(--color-muted); }
   .description { margin: 0 0 var(--space-6); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; color: var(--color-text); }
+  .specs { margin: 0 0 var(--space-6); }
+  .specs h2 { margin: 0 0 var(--space-2); font-size: var(--text-lg); font-weight: 700; }
+  .specs dl { margin: 0; }
+  .spec { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); font-size: var(--text-sm); line-height: 1.7; }
+  .spec dt { font-weight: 600; }
+  .spec dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .buy-form {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -172,6 +300,6 @@ const sale = product ? saleDisplay(product.priceTwd, product.compareAtPriceTwd) 
   .related h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); font-weight: 700; }
   @media (min-width: 56.25rem) {
     .product-detail { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-8); }
-    .product-information { position: sticky; top: calc(var(--space-8) + 40px); }
+    .product-information { position: sticky; top: var(--site-header-offset); }
   }
 </style>

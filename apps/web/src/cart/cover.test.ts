@@ -4,7 +4,7 @@ import { parseCartCover } from "./cover";
 
 const key = `products/1/00000000-0000-4000-8000-000000000001/${"a".repeat(64)}.webp`;
 const cover = { variants: [{ key, width: 320, height: 240 }] };
-const item = { productId: 1, name: "馬克杯", unitPriceTwd: 320 };
+const item = { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320 };
 
 describe("add-time cover snapshot", () => {
   it("persists the cover with price, preserves it on quantity changes and replaces it on the next add", () => {

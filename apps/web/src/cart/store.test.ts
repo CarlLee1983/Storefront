@@ -8,7 +8,7 @@ const memoryStorage = (): CartStorage => {
   return { getItem: () => value, setItem: (_key, v) => void (value = v) };
 };
 
-const mug = { productId: 1, name: "馬克杯", unitPriceTwd: 320 };
+const mug = { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320 };
 const add = (n: number) => (cart: Cart) => addToCart(cart, mug, n);
 
 describe("updateCart", () => {

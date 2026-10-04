@@ -67,14 +67,16 @@ function d1(dir: string, config: string, state: string, database: string, comman
   run(["bunx", "wrangler", "d1", ...command, database, "--local", "-c", config, "--persist-to", state, ...options], dir);
 }
 
-/** 測試會員與 session 直接寫入 App 的 D1，取代社群登入（ADR 0013）。值都是 constants.ts 的常數（不含單引號），直接內插。 */
+/** 測試會員、session 與已驗證的聯絡 email（結帳的前提）直接寫入 App 的 D1，取代社群登入（ADR 0013）。值都是 constants.ts 的常數（不含單引號），直接內插。 */
 function insertMemberSession(database: string): void {
   const now = Date.now();
   const sql = `
     INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
       VALUES ('${MEMBER.id}', '${MEMBER.name}', '${MEMBER.email}', 0, ${now}, ${now});
     INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
-      VALUES ('${SESSION.id}', ${now + DAY_MS}, '${SESSION.token}', ${now}, ${now}, '${MEMBER.id}');`;
+      VALUES ('${SESSION.id}', ${now + DAY_MS}, '${SESSION.token}', ${now}, ${now}, '${MEMBER.id}');
+    INSERT INTO contact_verifications (customer_id, email, token, created_at, expires_at, verified_at)
+      VALUES ('${MEMBER.id}', '${MEMBER.contactEmail}', 'e2e-member-contact-token', ${now}, ${now + DAY_MS}, ${now});`;
   d1(APP_DIR, APP_CONFIG, APP_STATE, database, ["execute"], ["--command", sql]);
 }
 
@@ -117,7 +119,8 @@ async function waitForGateway(gateway: Subprocess): Promise<void> {
 // 殺整個群組（process.kill(-pid)）才收得乾淨。所以一 spawn 就要登記，任何後續失敗都走 stopAll。
 const children: Subprocess[] = [];
 function spawnWorker(cmd: string[], cwd: string): Subprocess {
-  const child = Bun.spawn(cmd, { cwd, stdout: "inherit", stderr: "inherit", detached: true });
+  // X_LOCAL_EXPLORER：夾具（customer-fixture.ts）依賴 wrangler dev 的 Local Explorer 實驗端點，明確開啟而不靠預設值；關閉遙測避免測試連外
+  const child = Bun.spawn(cmd, { cwd, stdout: "inherit", stderr: "inherit", detached: true, env: { ...process.env, X_LOCAL_EXPLORER: "true", WRANGLER_SEND_METRICS: "false" } });
   children.push(child);
   return child;
 }

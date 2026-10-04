@@ -24,7 +24,7 @@ it("顧客與管理員的清單、詳情讀取現在封面；換封面、下架�
     expect(await app.getMyOrder(cookie, { orderId })).toMatchObject({ ok: true, data: { lines: [line] } });
     expect(await app.listMyOrders(cookie)).toMatchObject({ ok: true, data: [{ id: orderId, lines: [line] }] });
     expect(await app.getOrderForAdmin(jwt, { orderId })).toMatchObject({ ok: true, data: { lines: [line] } });
-    expect(await app.listOrdersForAdmin(jwt, {})).toMatchObject({ ok: true, data: [{ id: orderId, lines: [line] }] });
+    expect(await app.listOrdersForAdmin(jwt, {})).toMatchObject({ ok: true, data: { items: [{ id: orderId, lines: [line] }] } });
   }
   await expectCover(first);
   expect(await app.reorderProductImages(jwt, { id, imageIds: [second.data.image.id, first.id] })).toMatchObject({ ok: true });

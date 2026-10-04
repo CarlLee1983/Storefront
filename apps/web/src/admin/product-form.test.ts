@@ -14,6 +14,13 @@ const form = (values: Record<string, string>) => {
   return data;
 };
 
+describe("productFormToInput 的配送類型", () => {
+  it("有選就帶上、沒有欄位就不帶（App 用預設的一般宅配）", () => {
+    expect(productFormToInput(form({ name: "桌", description: "", priceTwd: "6000", deliveryType: "large" }))).toMatchObject({ deliveryType: "large" });
+    expect(productFormToInput(form({ name: "桌", description: "", priceTwd: "6000" }))).not.toHaveProperty("deliveryType");
+  });
+});
+
 describe("productFormToInput", () => {
   it("表單欄位轉成 RPC 輸入，單價轉成數字", () => {
     expect(productFormToInput(form({ name: "馬克杯", description: "陶瓷", priceTwd: "320" }))).toEqual({
@@ -49,6 +56,16 @@ describe("productUpdateFormToInput", () => {
     expect(productUpdateFormToInput(form(base), 7).compareAtPriceTwd).toBeUndefined();
   });
 
+  it("尺寸、材質、保養：欄位存在是文字（留空即清空）、不存在是 undefined（不動）", () => {
+    const base = { name: "馬克杯", description: "", priceTwd: "320" };
+    const input = productUpdateFormToInput(form({ ...base, dimensions: "寬 45 cm", material: "", care: "乾布擦拭" }), 7);
+    expect(input).toMatchObject({ dimensions: "寬 45 cm", material: "", care: "乾布擦拭" });
+    const untouched = productUpdateFormToInput(form(base), 7);
+    expect(untouched.dimensions).toBeUndefined();
+    expect(untouched.material).toBeUndefined();
+    expect(untouched.care).toBeUndefined();
+  });
+
   it("原價不是數字時轉成 NaN，由 App 回報欄位錯誤", () => {
     expect(productUpdateFormToInput(form({ name: "a", description: "", priceTwd: "1", compareAtPriceTwd: "abc" }), 7).compareAtPriceTwd).toBeNaN();
   });
@@ -80,16 +97,17 @@ describe("dispatchProductForm", () => {
     expect(dispatchProductForm(form({ intent: "feature" }))).toEqual({ kind: "invalid" });
   });
 
-  it("庫存調整的表單解析出商品編號與增減量", () => {
-    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "3", delta: "-3" }))).toEqual({
+  it("庫存調整的表單解析出商品變體編號、增減量與原因", () => {
+    expect(dispatchProductForm(form({ intent: "adjust-stock", variantId: "3", delta: "-3", reason: "盤損" }))).toEqual({
       kind: "stock",
-      input: { id: 3, delta: -3 },
+      input: { variantId: 3, delta: -3, reason: "盤損" },
     });
   });
 
-  it("庫存調整缺少或無效的 id 是 invalid，不呼叫 RPC", () => {
+  it("庫存調整缺少或無效的 variantId 是 invalid，不呼叫 RPC（只帶商品 id 也不行）", () => {
     expect(dispatchProductForm(form({ intent: "adjust-stock", delta: "5" }))).toEqual({ kind: "invalid" });
-    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "0", delta: "5" }))).toEqual({ kind: "invalid" });
+    expect(dispatchProductForm(form({ intent: "adjust-stock", variantId: "0", delta: "5" }))).toEqual({ kind: "invalid" });
+    expect(dispatchProductForm(form({ intent: "adjust-stock", id: "3", delta: "5" }))).toEqual({ kind: "invalid" });
   });
 
   it.each([
@@ -104,9 +122,9 @@ describe("dispatchProductForm", () => {
 });
 
 describe("stockAdjustFormToInput", () => {
-  it("商品編號與增減量轉成 RPC 輸入，+20 與 -3 都是數字", () => {
-    expect(stockAdjustFormToInput(form({ delta: "+20" }), 3)).toEqual({ id: 3, delta: 20 });
-    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ id: 3, delta: -3 });
+  it("變體編號、增減量與原因轉成 RPC 輸入，+20 與 -3 都是數字；沒填原因送空字串由 App 拒絕", () => {
+    expect(stockAdjustFormToInput(form({ delta: "+20", reason: "進貨" }), 3)).toEqual({ variantId: 3, delta: 20, reason: "進貨" });
+    expect(stockAdjustFormToInput(form({ delta: "-3" }), 3)).toEqual({ variantId: 3, delta: -3, reason: "" });
   });
 
   it("增減量留空或不是數字為 NaN，不在 Web 判斷，由 App 回報欄位錯誤", () => {

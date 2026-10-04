@@ -96,7 +96,7 @@ describe("首頁精選商品", () => {
     await feature(jwt, id, 2000);
     expect(await app.getFeaturedProducts()).toEqual({
       ok: true,
-      data: [{ id, name: "沙發", description: "沙發的說明", priceTwd: 500, compareAtPriceTwd: null, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
+      data: [{ id, name: "沙發", description: "沙發的說明", defaultVariantId: expect.any(Number), hasOptions: false, priceTwd: 500, maxPriceTwd: 500, compareAtPriceTwd: null, onSale: false, purchasable: false, cover: expect.objectContaining({ id: expect.any(String) }) }],
     });
   });
 

@@ -6,6 +6,8 @@
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": true },
+  // 正式網站 origin：sitemap、robots.txt 與結構化資料的網址用它；本機留空時用請求自己的 origin
+  "vars": { "SITE_ORIGIN": "" },
   "assets": { "directory": "./dist", "binding": "ASSETS" },
   // 商品圖片直接唯讀取 R2；其餘資料經 App RPC，沒有 D1 binding
   "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-local" }],
@@ -17,6 +19,7 @@
   // workers.dev 網址會繞過它。標示 REPLACE_WITH_ 的網域部署前必須填入。
   "env": {
     "preview": {
+      "vars": { "SITE_ORIGIN": "https://storefront-preview.gravito.dev" },
       "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-preview" }],
       "workers_dev": false,
       "preview_urls": false,
@@ -26,6 +29,7 @@
       ]
     },
     "production": {
+      "vars": { "SITE_ORIGIN": "https://storefront.gravito.dev" },
       "r2_buckets": [{ "binding": "PRODUCT_IMAGES", "bucket_name": "storefront-product-images-production" }],
       "workers_dev": false,
       "preview_urls": false,

@@ -30,8 +30,8 @@ export const GATEWAY_API_KEY = "storefront-e2e-only-gateway-api-key";
 /** 閘道簽 webhook、Web 驗簽用的同一把 secret。 */
 export const GATEWAY_WEBHOOK_SECRET = "storefront-e2e-only-gateway-webhook-secret";
 
-/** 測試會員與它的 session（直接寫入 E2E 的 D1，不經 OAuth）。 */
-export const MEMBER = { id: "e2e-member", name: "E2E 會員", email: "e2e-member@members.storefront.invalid" } as const;
+/** 測試會員與它的 session、已驗證的聯絡 email（直接寫入 E2E 的 D1，不經 OAuth）。 */
+export const MEMBER = { id: "e2e-member", name: "E2E 會員", email: "e2e-member@members.storefront.invalid", contactEmail: "e2e-member-contact@members.storefront.invalid" } as const;
 export const SESSION = { id: "e2e-session", token: "e2e-session-token" } as const;
 
 /**

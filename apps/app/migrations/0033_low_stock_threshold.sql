@@ -1,0 +1,2 @@
+ALTER TABLE `product_variants` ADD `low_stock_threshold` integer;--> statement-breakpoint
+CREATE INDEX `product_variants_low_stock_idx` ON `product_variants` (`low_stock_threshold`) WHERE low_stock_threshold is not null;

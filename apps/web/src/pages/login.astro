@@ -67,7 +67,8 @@ if (Astro.locals.customer) {
   .social-button.line {
     background: #06c755;
     border-color: #06c755;
-    color: #ffffff;
+    /* 白字在 LINE 綠上對比只有 2.25，改深色字（實測 7.78:1，hover 6.12:1）以符合 WCAG AA 並保留品牌綠底 */
+    color: var(--color-text);
   }
   .social-button.line:hover {
     background: #05b04c;

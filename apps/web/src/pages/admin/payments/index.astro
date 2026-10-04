@@ -1,0 +1,96 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import {
+  describeReconcileFailure,
+  describeReconcileOutcome,
+  parseReconcileResult,
+  reconcileIssueAdvice,
+  reconcileIssueLabel,
+  reconcileSourceLabel,
+} from "../../../admin/payment-reconcile";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { formatDateTime } from "../../../orders/labels";
+import { toText } from "../../../shared/form-values";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let failure: string | undefined;
+let unauthorized = false;
+
+// 補查（POST）：向閘道查證這筆付款並套用結果；成功後 303 回本頁並帶結果
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const result = await env.APP.reconcilePayment(jwt, { paymentId: Number(toText(form.get("paymentId"))) });
+  if (result.ok) {
+    const reason = result.data.outcome === "issue" ? `&reason=${result.data.reason}` : "";
+    return Astro.redirect(`/admin/payments?result=${result.data.outcome}${reason}`, 303);
+  }
+  if (result.reason === "unauthorized") unauthorized = true;
+  else failure = describeReconcileFailure(result);
+}
+
+const listing = unauthorized ? null : await env.APP.listPaymentsToReconcile(jwt);
+if (unauthorized || (listing && !listing.ok)) Astro.response.status = 403;
+const saved = parseReconcileResult(Astro.url.searchParams);
+const notice = saved ? describeReconcileOutcome(saved.outcome, saved.reason) : null;
+const priceFormat = new Intl.NumberFormat("zh-TW");
+const issueCount = listing?.ok ? listing.data.payments.filter((payment) => payment.issue).length : 0;
+---
+
+<AdminLayout title="付款補查">
+  {
+    !listing?.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        {notice && (notice.isError ? <p class="error" role="alert">{notice.text}</p> : <p role="status">{notice.text}</p>)}
+        {failure && <p class="error" role="alert">{failure}</p>}
+        <p>
+          顧客付款後關窗、或付款通知遺失時，訂單會停在待付款。系統每分鐘會自動向閘道補查建立超過 5 分鐘的待付款付款；
+          也可以在這裡手動補查。補查的結果與 webhook、顧客導回走同一條套用路徑，重複補查不會重複入帳。
+        </p>
+        {issueCount > 0 && <p><strong>待處理 {issueCount} 筆：</strong>下列標示「待處理」的付款補查沒能確認結果，請依建議處理。</p>}
+        {listing.data.omitted > 0 && <p class="error" role="alert">另有 {listing.data.omitted} 筆待補查的付款未列出。</p>}
+        {listing.data.payments.length === 0 && <p>目前沒有需要補查的付款。</p>}
+        {listing.data.payments.length > 0 && (
+          <div class="table-scroll" tabindex="0" role="region" aria-label="待補查的付款"><table>
+            <thead>
+              <tr><th>付款</th><th>訂單</th><th>金額</th><th>補查狀況</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {listing.data.payments.map((payment) => (
+                <tr>
+                  <td data-label="付款">#{payment.paymentId}{payment.issue && <strong class="pending"> 待處理</strong>}<br />{formatDateTime(payment.createdAt)}</td>
+                  <td data-label="訂單"><a href={`/admin/orders/${payment.orderId}`}>#{payment.orderId}</a></td>
+                  <td data-label="金額">NT$ {priceFormat.format(payment.amountTwd)}</td>
+                  <td data-label="補查狀況">
+                    {payment.issue ? (
+                      <>
+                        <strong>{reconcileIssueLabel(payment.issue.reason)}</strong><br />
+                        已失敗 {payment.issue.attempts} 次（{formatDateTime(payment.issue.firstAt)} 起，最近 {formatDateTime(payment.issue.lastAt)}，{reconcileSourceLabel(payment.issue.lastSource)}）<br />
+                        {reconcileIssueAdvice(payment.issue.reason)}
+                      </>
+                    ) : "尚未發現問題"}
+                  </td>
+                  <td data-label="操作">
+                    <form method="post">
+                      <input type="hidden" name="paymentId" value={payment.paymentId} />
+                      <button type="submit" aria-label={`補查付款 #${payment.paymentId}`}>補查</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+      </>
+    )
+  }
+</AdminLayout>
+
+<style>
+  .pending { color: var(--color-error); }
+</style>

@@ -27,10 +27,10 @@ export const prerender = false;
       <h2 id="cart-summary-heading">訂單摘要</h2>
       <dl>
         <div><dt>小計</dt><dd>NT$ <span id="cart-subtotal">0</span></dd></div>
-        <div><dt>運費</dt><dd>免運</dd></div>
+        <div><dt>運費</dt><dd>結帳時依配送類型計算</dd></div>
       </dl>
-      <p class="cart-total"><span>總金額</span><strong>NT$ <span id="cart-total">0</span></strong></p>
-      <p class="cart-currency">金額為新台幣，含稅、免運。</p>
+      <p class="cart-total"><span>商品合計</span><strong>NT$ <span id="cart-total">0</span></strong></p>
+      <p class="cart-currency">金額為新台幣、含稅，未含運費；運費於結帳時依配送類型計算（配送範圍限台灣本島）。</p>
       <a class="checkout-link" href="/checkout">前往結帳</a>
       <p class="cart-note">單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。</p>
     </aside>
@@ -67,18 +67,18 @@ export const prerender = false;
   // 商品名稱來自 localStorage，一律用 textContent，不當 HTML
   function renderLine(line: CartLine) {
     const item = make("li", "cart-line");
-    item.dataset.productId = String(line.productId);
+    item.dataset.variantId = String(line.variantId);
     const cover = createCartCover(line.cover, line.name);
     cover.classList.add("line-cover");
     const stepper = stepperTemplate.content.firstElementChild!.cloneNode(true) as HTMLElement;
     const input = stepper.querySelector<HTMLInputElement>("input")!;
     input.value = String(line.quantity);
     input.setAttribute("aria-label", `${line.name} 數量`);
-    input.addEventListener("change", () => change((c) => setQuantity(c, line.productId, Number(input.value)), input));
+    input.addEventListener("change", () => change((c) => setQuantity(c, line.variantId, Number(input.value)), input));
     // 以最新的購物車內容加減；已在下限或上限時數量不變
     const stepBy = (delta: number) => (cart: Cart) => {
-      const current = cart.lines.find((l) => l.productId === line.productId);
-      return current ? setQuantity(cart, line.productId, clampQuantity(current.quantity + delta)) : cart;
+      const current = cart.lines.find((l) => l.variantId === line.variantId);
+      return current ? setQuantity(cart, line.variantId, clampQuantity(current.quantity + delta)) : cart;
     };
     for (const button of stepper.querySelectorAll<HTMLButtonElement>("[data-step]")) {
       const delta = Number(button.dataset.step);
@@ -89,11 +89,11 @@ export const prerender = false;
     remove.type = "button";
     remove.dataset.action = "remove";
     remove.setAttribute("aria-label", `移除${line.name}`);
-    remove.addEventListener("click", () => change((c) => removeFromCart(c, line.productId)));
+    remove.addEventListener("click", () => change((c) => removeFromCart(c, line.variantId)));
     const actions = make("div", "line-actions");
     actions.replaceChildren(stepper, remove);
     const main = make("div", "line-main");
-    main.replaceChildren(make("span", "line-name", line.name), make("p", "line-price", `單價 ${money(line.unitPriceTwd)}`), actions);
+    main.replaceChildren(make("span", "line-name", line.name), ...(line.label ? [make("p", "line-variant", line.label)] : []), make("p", "line-price", `單價 ${money(line.unitPriceTwd)}`), actions);
     const subtotal = make("p", "line-subtotal");
     subtotal.replaceChildren(...subtotalText(line));
     item.replaceChildren(cover, main, subtotal);
@@ -116,9 +116,9 @@ export const prerender = false;
   // 無效數量（如清空輸入框）會被 setQuantity 拒絕、購物車不變；照樣重畫，輸入框就還原成實際數量
   function change(fn: (cart: Cart) => Cart, quantityInput?: HTMLInputElement) {
     const focused = document.activeElement as HTMLElement | null;
-    const row = focused?.closest<HTMLLIElement>("li[data-product-id]");
+    const row = focused?.closest<HTMLLIElement>("li[data-variant-id]");
     const previousIndex = row ? Array.from(row.parentElement!.children).indexOf(row) : -1;
-    const productId = row?.dataset.productId;
+    const variantId = row?.dataset.variantId;
     const action = focused?.dataset.action;
     const { cart, saved } = updateCart(storageOf(window), window, fn);
     const error = $("#cart-error");
@@ -127,7 +127,7 @@ export const prerender = false;
     // Keep the edited input in the DOM so Tab/Shift+Tab retain their native focus order.
     if (quantityInput) {
       const editedRow = quantityInput.closest<HTMLLIElement>("li")!;
-      const line = cart.lines.find(line => String(line.productId) === editedRow.dataset.productId);
+      const line = cart.lines.find(line => String(line.variantId) === editedRow.dataset.variantId);
       if (line) {
         quantityInput.value = String(line.quantity);
         editedRow.querySelector<HTMLElement>(".line-subtotal")!.replaceChildren(...subtotalText(line));
@@ -136,8 +136,8 @@ export const prerender = false;
       }
     }
     render(cart);
-    if (productId && action) {
-      const next = document.querySelector<HTMLElement>(`li[data-product-id="${productId}"] [data-action="${action}"]`)
+    if (variantId && action) {
+      const next = document.querySelector<HTMLElement>(`li[data-variant-id="${variantId}"] [data-action="${action}"]`)
         ?? document.querySelectorAll<HTMLElement>(`#cart-lines [data-action="${action}"]`)[Math.min(previousIndex, cart.lines.length - 1)]
         ?? document.querySelector<HTMLElement>("#cart-empty a");
       next?.focus();
@@ -278,9 +278,10 @@ export const prerender = false;
     overflow: hidden;
   }
   :global(#cart-lines .line-cover img) { width: 100%; height: 100%; object-fit: cover; }
-  :global(#cart-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-subtle); text-align: center; }
+  :global(#cart-lines .cover-placeholder) { font-size: var(--text-sm); color: var(--color-muted); text-align: center; }
   :global(#cart-lines .line-main) { min-width: 0; }
   :global(#cart-lines .line-name) { display: block; font-weight: 600; }
+  :global(#cart-lines .line-variant) { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-muted); }
   :global(#cart-lines .line-price) { margin: var(--space-1) 0 var(--space-2); font-size: var(--text-sm); color: var(--color-muted); }
   :global(#cart-lines .line-actions) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
   :global(#cart-lines .line-subtotal) { grid-column: 2; margin: 0; font-size: var(--text-lg); font-weight: 700; color: var(--color-text); }
@@ -295,7 +296,7 @@ export const prerender = false;
   :global(#cart-lines .line-remove:hover) { background: var(--color-panel); color: var(--color-error); border-color: var(--color-error); }
   @media (min-width: 56.25rem) {
     .cart-layout { grid-template-columns: minmax(0, 1fr) 22rem; gap: var(--space-8); }
-    .cart-summary { position: sticky; top: var(--space-4); }
+    .cart-summary { position: sticky; top: var(--site-header-offset); }
     :global(#cart-lines .cart-line) { grid-template-columns: 100px minmax(0, 1fr) auto; }
     :global(#cart-lines .line-cover) { grid-row: 1; }
     :global(#cart-lines .line-subtotal) { grid-column: 3; grid-row: 1; }

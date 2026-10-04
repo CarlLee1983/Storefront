@@ -1,9 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function createProduct(admin: Page, name: string, stock: number) {
   await admin.goto("/admin/products/new");
@@ -16,6 +17,7 @@ async function createProduct(admin: Page, name: string, stock: number) {
   let row = admin.getByRole("row", { name: new RegExp(name) });
   if (stock) {
     await row.getByLabel(`${name}的庫存增減量`).fill(String(stock));
+    await row.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
     await row.getByRole("button", { name: "調整庫存" }).click();
     await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
   }
@@ -30,7 +32,7 @@ async function createProduct(admin: Page, name: string, stock: number) {
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   await admin.getByRole("button", { name: "上傳商品圖片" }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByRole("button", { name: "重新上架" }).click();
   await expect(row).toContainText("上架中");
@@ -63,7 +65,7 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   await expect(page.locator("#cart-count")).toHaveText("1");
   await expect(page.locator("#cart-count")).toHaveClass("count-bump");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
   await testInfo.attach("homepage-mobile-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.keyboard.press("Enter");

@@ -3,8 +3,11 @@ import { createAuth, type Auth } from "./auth/auth";
 import { AuthConfigError, parseAuthConfig } from "./auth/config";
 import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readCustomerSession } from "./auth/session";
+import { createAddressService } from "./addresses/service";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
+import { createContactService } from "./contact/service";
+import { createInvoiceService } from "./invoices/service";
 import { createOrderService } from "./orders/service";
 import { readPaymentConfig } from "./payments/config";
 import { createPaymentService } from "./payments/service";
@@ -27,7 +30,13 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       teamDomain: this.env.ACCESS_TEAM_DOMAIN,
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
-    }, this.env.PRODUCT_IMAGES);
+    }, {
+      images: this.env.PRODUCT_IMAGES,
+      reconcilePayment: (paymentId, actor) => this.#payments().reconcilePayment(paymentId, actor),
+      retryRefund: (refundId, actor) => this.#payments().retryRefund(refundId, actor),
+      retryInvoice: (invoiceId, actor) => this.#invoices().retryInvoice(invoiceId, actor),
+      retryAllowance: (refundId, actor) => this.#invoices().retryAllowance(refundId, actor),
+    });
   }
 
   /** 顧客 RPC：以 cookie 換顧客身分（session 由 Better Auth 判斷），沒有有效 session 一律 unauthorized。 */
@@ -44,6 +53,28 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     );
   }
 
+  /** 顧客的聯絡 email 與模擬信箱：與訂單同樣以 cookie 換顧客身分。 */
+  #contact() {
+    return createContactService(this.env.DB, systemClock, async (cookie) => {
+      const { customer } = await readCustomerSession(this.#auth(), cookie);
+      return customer?.customerId ?? null;
+    });
+  }
+
+  /** 顧客的地址簿：與訂單同樣以 cookie 換顧客身分。 */
+  #addresses() {
+    return createAddressService(this.env.DB, systemClock, async (cookie) => {
+      const { customer } = await readCustomerSession(this.#auth(), cookie);
+      return customer?.customerId ?? null;
+    });
+  }
+
+  /** 模擬發票服務與金流閘道同一組設定：不全時 `gateway` 是 null，補辦回 `payment_unavailable`，開立義務仍留著。 */
+  #invoices() {
+    const config = readPaymentConfig(this.env);
+    return createInvoiceService(this.env.DB, systemClock, config.ok ? config.config.invoices : null);
+  }
+
   /**
    * 付款設定（閘道網址、API 金鑰）在這裡才驗證：不全時 `gateway` 是 null，付款 RPC 回 `payment_unavailable`，
    * 其他 RPC 不受影響。log 只含變數名稱，不含值。
@@ -55,7 +86,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       const { customer } = await readCustomerSession(this.#auth(), cookie);
       return customer?.customerId ?? null;
     };
-    return createPaymentService(this.env.DB, systemClock, authenticate, config.ok ? config.config.gateway : null, config.ok ? config.config.webOrigin : "");
+    return createPaymentService(this.env.DB, systemClock, authenticate, config.ok ? config.config.gateway : null, config.ok ? config.config.webOrigin : "", createInvoiceService(this.env.DB, systemClock, config.ok ? config.config.invoices : null));
   }
 
   /**
@@ -94,8 +125,16 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return readCustomerSession(this.#auth(), cookie);
   }
 
-  /** 每分鐘的 Cron（wrangler.jsonc 的 triggers）：把超過付款期限的待付款訂單轉為已逾期，釋放保留。冪等。 */
+  /**
+   * 每分鐘的 Cron（wrangler.jsonc 的 triggers）：先補查漏掉通知的待付款付款，再把超過付款期限的待付款訂單轉為已逾期，釋放保留。冪等。
+   * 補查在逾期之前：期限內已付款的訂單先轉為已付款，不必走遲到付款；補查出錯只記 log，不擋逾期與圖片清理。
+   */
   async scheduled(_controller: ScheduledController): Promise<void> {
+    try {
+      await this.#payments().reconcileDuePayments();
+    } catch (error) {
+      console.error(JSON.stringify({ event: "payment_reconcile_failed", error: error instanceof Error ? error.message : String(error) }));
+    }
     await this.#orders().expireOverdueOrders();
     await cleanupDeletedProductImages(this.env.DB, this.env.PRODUCT_IMAGES);
   }
@@ -112,6 +151,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#catalog().getStorefrontNav();
   }
 
+  listSitemapProductIds() {
+    return this.#catalog().listSitemapProductIds();
+  }
+
   getFeaturedProducts() {
     return this.#catalog().getFeaturedProducts();
   }
@@ -125,6 +168,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   }
 
   // 顧客 RPC：第一個參數是瀏覽器的 cookie，由 App 自行驗 session，不信任呼叫端的任何身分聲明。
+  getShippingQuote(input: unknown) {
+    return this.#catalog().getShippingQuote(input);
+  }
+
   checkout(cookie: string, input: unknown) {
     return this.#orders().checkout(cookie, input);
   }
@@ -139,6 +186,50 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   cancelOrder(cookie: string, input: unknown) {
     return this.#orders().cancelOrder(cookie, input);
+  }
+
+  requestCancellation(cookie: string, input: unknown) {
+    return this.#orders().requestCancellation(cookie, input);
+  }
+
+  requestReturn(cookie: string, input: unknown) {
+    return this.#orders().requestReturn(cookie, input);
+  }
+
+  getMyContact(cookie: string) {
+    return this.#contact().getMyContact(cookie);
+  }
+
+  requestContactEmail(cookie: string, input: unknown) {
+    return this.#contact().requestContactEmail(cookie, input);
+  }
+
+  verifyContactEmail(cookie: string, input: unknown) {
+    return this.#contact().verifyContactEmail(cookie, input);
+  }
+
+  listMyMail(cookie: string) {
+    return this.#contact().listMyMail(cookie);
+  }
+
+  getMyMail(cookie: string, input: unknown) {
+    return this.#contact().getMyMail(cookie, input);
+  }
+
+  listMyAddresses(cookie: string) {
+    return this.#addresses().listMyAddresses(cookie);
+  }
+
+  addAddress(cookie: string, input: unknown) {
+    return this.#addresses().addAddress(cookie, input);
+  }
+
+  updateAddress(cookie: string, input: unknown) {
+    return this.#addresses().updateAddress(cookie, input);
+  }
+
+  deleteAddress(cookie: string, input: unknown) {
+    return this.#addresses().deleteAddress(cookie, input);
   }
 
   startPayment(cookie: string, input: unknown) {
@@ -188,6 +279,34 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().listCategoriesForAdmin(jwt);
   }
 
+  setProductOptions(jwt: string, input: unknown) {
+    return this.#admin().setProductOptions(jwt, input);
+  }
+
+  createVariant(jwt: string, input: unknown) {
+    return this.#admin().createVariant(jwt, input);
+  }
+
+  updateVariant(jwt: string, input: unknown) {
+    return this.#admin().updateVariant(jwt, input);
+  }
+
+  getShippingRates(jwt: string) {
+    return this.#admin().getShippingRates(jwt);
+  }
+
+  setShippingRate(jwt: string, input: unknown) {
+    return this.#admin().setShippingRate(jwt, input);
+  }
+
+  setLowStockThreshold(jwt: string, input: unknown) {
+    return this.#admin().setLowStockThreshold(jwt, input);
+  }
+
+  setVariantDiscontinued(jwt: string, input: unknown) {
+    return this.#admin().setVariantDiscontinued(jwt, input);
+  }
+
   setProductFeatured(jwt: string, input: unknown) {
     return this.#admin().setProductFeatured(jwt, input);
   }
@@ -224,16 +343,128 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().adjustStock(jwt, input);
   }
 
+  listLowStockVariants(jwt: string) {
+    return this.#admin().listLowStockVariants(jwt);
+  }
+
+  listStockMovements(jwt: string, input: unknown) {
+    return this.#admin().listStockMovements(jwt, input);
+  }
+
   listOrdersForAdmin(jwt: string, input: unknown) {
     return this.#admin().listOrdersForAdmin(jwt, input);
+  }
+
+  exportOrdersForAdmin(jwt: string, input: unknown) {
+    return this.#admin().exportOrdersForAdmin(jwt, input);
+  }
+
+  addOrderNote(jwt: string, input: unknown) {
+    return this.#admin().addOrderNote(jwt, input);
   }
 
   getOrderForAdmin(jwt: string, input: unknown) {
     return this.#admin().getOrderForAdmin(jwt, input);
   }
 
+  listPaymentsToReconcile(jwt: string) {
+    return this.#admin().listPaymentsToReconcile(jwt);
+  }
+
+  reconcilePayment(jwt: string, input: unknown) {
+    return this.#admin().reconcilePayment(jwt, input);
+  }
+
+  listRefundsToHandle(jwt: string) {
+    return this.#admin().listRefundsToHandle(jwt);
+  }
+
+  retryRefund(jwt: string, input: unknown) {
+    return this.#admin().retryRefund(jwt, input);
+  }
+
+  listInvoicesToHandle(jwt: string) {
+    return this.#admin().listInvoicesToHandle(jwt);
+  }
+
+  retryInvoice(jwt: string, input: unknown) {
+    return this.#admin().retryInvoice(jwt, input);
+  }
+
+  resendInvoice(jwt: string, input: unknown) {
+    return this.#admin().resendInvoice(jwt, input);
+  }
+
+  retryAllowance(jwt: string, input: unknown) {
+    return this.#admin().retryAllowance(jwt, input);
+  }
+
+  resendAllowance(jwt: string, input: unknown) {
+    return this.#admin().resendAllowance(jwt, input);
+  }
+
+  listCancellationsToReview(jwt: string) {
+    return this.#admin().listCancellationsToReview(jwt);
+  }
+
+  decideCancellation(jwt: string, input: unknown) {
+    return this.#admin().decideCancellation(jwt, input);
+  }
+
+  listReturnsToHandle(jwt: string) {
+    return this.#admin().listReturnsToHandle(jwt);
+  }
+
+  decideReturn(jwt: string, input: unknown) {
+    return this.#admin().decideReturn(jwt, input);
+  }
+
+  recordReturnReceipt(jwt: string, input: unknown) {
+    return this.#admin().recordReturnReceipt(jwt, input);
+  }
+
+  recordReturnInspection(jwt: string, input: unknown) {
+    return this.#admin().recordReturnInspection(jwt, input);
+  }
+
+  scrapUnavailableStock(jwt: string, input: unknown) {
+    return this.#admin().scrapUnavailableStock(jwt, input);
+  }
+
+  listMailForAdmin(jwt: string) {
+    return this.#admin().listMailForAdmin(jwt);
+  }
+
+  resendMail(jwt: string, input: unknown) {
+    return this.#admin().resendMail(jwt, input);
+  }
+
+  setMailDeliveryFailure(jwt: string, input: unknown) {
+    return this.#admin().setMailDeliveryFailure(jwt, input);
+  }
+
   shipOrder(jwt: string, input: unknown) {
     return this.#admin().shipOrder(jwt, input);
+  }
+
+  recordShipmentEvent(jwt: string, input: unknown) {
+    return this.#admin().recordShipmentEvent(jwt, input);
+  }
+
+  confirmShipmentLoss(jwt: string, input: unknown) {
+    return this.#admin().confirmShipmentLoss(jwt, input);
+  }
+
+  declareShipmentReturn(jwt: string, input: unknown) {
+    return this.#admin().declareShipmentReturn(jwt, input);
+  }
+
+  recordShipmentReturnReceipt(jwt: string, input: unknown) {
+    return this.#admin().recordShipmentReturnReceipt(jwt, input);
+  }
+
+  recordShipmentReturnInspection(jwt: string, input: unknown) {
+    return this.#admin().recordShipmentReturnInspection(jwt, input);
   }
 }
 

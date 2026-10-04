@@ -13,3 +13,11 @@ export const applyPaymentResultInput = z.object({
   gatewayPaymentId: gatewayId("閘道付款 ID"),
   outcome: z.enum(PAYMENT_OUTCOMES, { error: "付款結果必須是 succeeded 或 failed" }),
 });
+
+export const reconcilePaymentInput = z.object({
+  paymentId: z.number({ error: "付款編號必須是數字" }).int("付款編號必須是整數").positive("付款編號無效"),
+});
+
+export const retryRefundInput = z.object({
+  refundId: z.number({ error: "退款編號必須是數字" }).int("退款編號必須是整數").positive("退款編號無效"),
+});

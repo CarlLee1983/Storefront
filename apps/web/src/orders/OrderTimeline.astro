@@ -1,0 +1,48 @@
+---
+import type { CustomerTimeline, AdminTimeline } from "@storefront/app/order-timeline";
+import { formatDateTime } from "./labels";
+import { moneyRows, progressFlagLabel, quantityRows, timelineEventText, todoLabel } from "./timeline";
+interface Props {
+  timeline: CustomerTimeline | AdminTimeline;
+  /** 顧客頁：不顯示操作人與待辦入口，退款只分處理中與已退回。 */
+  customer?: boolean;
+}
+const { timeline, customer = false } = Astro.props;
+const flags = timeline.progress.flags.map((flag) => progressFlagLabel(flag, customer)).filter((label): label is string => label !== null);
+const todos = "todos" in timeline ? timeline.todos : [];
+---
+<section class="order-detail-section order-timeline" aria-labelledby="timeline-title">
+  <h2 id="timeline-title">進度與時間線</h2>
+  {flags.length > 0 && <ul class="timeline-flags" aria-label="目前同時成立的進度">
+    {flags.map((label) => <li>{label}</li>)}
+  </ul>}
+  {!customer && todos.length > 0 && <div class="timeline-todos">
+    <h3>待辦</h3>
+    <ul>{todos.map((todo) => <li><a href={todo.href}>{todoLabel(todo)}</a></li>)}</ul>
+  </div>}
+  <dl class="timeline-totals" aria-label="數量與款項">
+    {quantityRows(timeline.progress.quantities).map((row) => <div><dt>{row.label}</dt><dd>{row.value} 件</dd></div>)}
+    {moneyRows(timeline.progress.money).map((row) => <div><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+  </dl>
+  <ol class="timeline-events" aria-label="事件時間線（台北時間）">
+    {timeline.events.map((event) => <li>
+      <time datetime={new Date(event.at).toISOString()}>{formatDateTime(event.at)}</time>
+      <span>{timelineEventText(event, customer)}{!customer && event.actor ? `・${event.actor}` : ""}</span>
+    </li>)}
+  </ol>
+</section>
+<style>
+  .timeline-flags { list-style: none; padding: 0; margin: var(--space-3) 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .timeline-flags li { padding: var(--space-1) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-xs); }
+  .timeline-todos ul { padding-left: var(--space-5); margin: var(--space-2) 0; }
+  .timeline-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); margin: var(--space-3) 0; }
+  .timeline-totals div { padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-xs); }
+  .timeline-totals dt { font-size: var(--text-sm, 0.875rem); }
+  .timeline-totals dd { margin: 0; font-weight: 600; }
+  .timeline-events { list-style: none; padding: 0; margin: var(--space-3) 0; display: grid; gap: var(--space-2); }
+  .timeline-events li { display: grid; gap: var(--space-1); padding-left: var(--space-3); border-left: 2px solid var(--color-border); overflow-wrap: anywhere; }
+  .timeline-events time { font-size: var(--text-sm, 0.875rem); }
+  @media (min-width: 40rem) {
+    .timeline-events li { grid-template-columns: 11rem 1fr; gap: var(--space-3); }
+  }
+</style>

@@ -1,8 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
+import { gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const CATEGORY = { slug: "e2e-detail", name: "詳情分類", description: "詳情頁與購物車改版測試用的分類" };
 const MAIN = { name: "改版主打花器", priceTwd: 680 };
@@ -18,6 +19,7 @@ async function createListedProduct(admin: Page, name: string, priceTwd: number) 
   await assignCategory(admin, name, CATEGORY.name);
   const row = admin.getByRole("row", { name: new RegExp(name) });
   await row.getByLabel(`${name}的庫存增減量`).fill("10");
+  await row.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
   await row.getByRole("button", { name: "調整庫存" }).click();
   await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
   await row.getByRole("link", { name: "編輯" }).click();
@@ -31,13 +33,13 @@ async function createListedProduct(admin: Page, name: string, priceTwd: number) 
   await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   await admin.getByRole("button", { name: "上傳商品圖片" }).click();
   await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-  await admin.goto("/admin");
+  await gotoProductList(admin, name);
   await row.getByRole("button", { name: "重新上架" }).click();
   await expect(row).toContainText("上架中");
 }
 
 const noHorizontalScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
-const noAxeViolations = async (page: Page) => expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+const noAxeViolations = async (page: Page) => expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
@@ -78,7 +80,7 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   await expect(information).toContainText(CATEGORY.name);
   await expect(information).toContainText("NT$ 680");
   await expect(information).toContainText("現貨，可售 10 件");
-  await expect(information).toContainText("售價含稅、免運。付款後無法自行取消訂單；商品或訂單問題請寫信至 hello@gravito.dev。");
+  await expect(information).toContainText("售價含稅，運費依配送類型於結帳時計算。付款後、出貨前可在訂單頁申請取消；商品或訂單問題請寫信至 hello@gravito.dev。");
 
   // 鍵盤：焦點在「增加數量」按鈕上按 Enter 加一、在「減少數量」上按空白鍵減一，再 Tab 到加入購物車
   const quantity = information.getByLabel("數量", { exact: true });
@@ -134,8 +136,8 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(line).toContainText("單價 NT$ 680");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   const summary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
-  await expect(summary).toContainText(/總金額\s*NT\$ 1,360/);
-  await expect(summary).toContainText("金額為新台幣，含稅、免運。");
+  await expect(summary).toContainText(/商品合計\s*NT\$ 1,360/);
+  await expect(summary).toContainText("金額為新台幣、含稅，未含運費；運費於結帳時依配送類型計算");
   // 所有加減按鈕都是 44px
   for (const button of await line.locator("[data-step]").all()) expect((await button.boundingBox())!.width).toBe(44);
   await expect(summary).toContainText("單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。");
@@ -157,7 +159,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(quantity).toHaveValue("2");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
   await line.getByRole("button", { name: "移除" }).click();
-  await expect(page.getByText("購物車目前是空的。")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "購物車目前是空的" })).toBeVisible();
   await expect(page.locator("#cart-count")).toHaveText("0");
   await noAxeViolations(page);
 });
@@ -165,7 +167,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
 // 桌機（>= 56.25rem）詳情頁購買區與購物車訂單摘要固定在畫面上方（故事 54、58）；手機維持一般流動版面。
 // sticky 只能在所屬的 grid 容器內移動：測試商品只有一張小圖、左欄比右欄矮，容器沒有多餘高度，元素無處可「黏」，
 // 所以先把左欄（圖片區、購物車品項清單）撐高，模擬圖片多的商品與品項多的購物車，再確認真的捲得動。
-const STICKY_TOP_MAX = 32; // top: var(--space-4)（16px）加上容許誤差
+const STICKY_TOP_MAX = 80; // top: calc(var(--space-8) + 40px)（72px，讓出固定的站台 header）加上容許誤差
 
 const SCROLL_PX = 1000;
 

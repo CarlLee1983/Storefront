@@ -1,0 +1,28 @@
+diff --git a/dist/worker/lib/cloudflare/test-internal.mjs b/dist/worker/lib/cloudflare/test-internal.mjs
+index 0e2022f4106d157988f41def39e9b60fb4ccbc26..9d3f50e842a6aed41ebf2d290fff70f1f66cc3dc 100644
+--- a/dist/worker/lib/cloudflare/test-internal.mjs
++++ b/dist/worker/lib/cloudflare/test-internal.mjs
+@@ -303,13 +303,17 @@ const IGNORED_KEYS = ["self"];
+ * things a little trickier for us...
+ */
+ function createProxyPrototypeClass(superClass, getUnknownPrototypeKey) {
++	let proxied = false;
+ 	function Class(...args) {
+-		Class.prototype = new Proxy(Class.prototype, { get(target, key, receiver) {
+-			const value = Reflect.get(target, key, receiver);
+-			if (value !== void 0) return value;
+-			if (typeof key === "symbol" || IGNORED_KEYS.includes(key)) return;
+-			return getUnknownPrototypeKey.call(receiver, key);
+-		} });
++		if (!proxied) {
++			proxied = true;
++			Class.prototype = new Proxy(Class.prototype, { get(target, key, receiver) {
++				const value = Reflect.get(target, key, receiver);
++				if (value !== void 0) return value;
++				if (typeof key === "symbol" || IGNORED_KEYS.includes(key)) return;
++				return getUnknownPrototypeKey.call(receiver, key);
++			} });
++		}
+ 		return Reflect.construct(superClass, args, Class);
+ 	}
+ 	Reflect.setPrototypeOf(Class.prototype, superClass.prototype);

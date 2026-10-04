@@ -1,0 +1,43 @@
+---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../../auth/customer";
+import { checkoutEntry } from "../../../checkout/entry";
+import { mailKindLabel } from "../../../account/contact";
+import Layout from "../../../layouts/Layout.astro";
+import { formatDateTime } from "../../../orders/labels";
+
+export const prerender = false;
+
+// 信箱只給顧客本人：App 以 session 的顧客身分查詢，永遠只回自己的信
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+
+const mail = await env.APP.listMyMail(Astro.request.headers.get("cookie") ?? "");
+if (!mail.ok) return Astro.redirect(loginUrl(Astro.url), 303);
+---
+
+<Layout title="我的信箱" description="演練用的模擬信箱，不會寄出真實郵件。" noindex>
+  <p class="hint">這是演練用的模擬信箱，信件不會寄到真實的郵件服務。</p>
+  {mail.data.length === 0 && <div class="empty"><h2>信箱還是空的</h2><p>驗證信、下單與付款通知會出現在這裡。</p><a href="/account">前往帳戶頁</a></div>}
+  <ul class="mails">
+    {mail.data.map((item) => <li class="mail-card">
+      <h2><a href={`/account/mailbox/${item.id}`}>{item.subject}</a></h2>
+      <p class="meta">{mailKindLabel(item.kind)}・收件地址 <span class="address">{item.recipientAddress}</span>・<time datetime={new Date(item.receivedAt).toISOString()}>{formatDateTime(item.receivedAt)}</time></p>
+    </li>)}
+  </ul>
+  <p><a class="back" href="/account">回帳戶頁</a></p>
+</Layout>
+
+<style>
+  .mails { list-style: none; padding: 0; display: grid; gap: var(--space-4); }
+  .mail-card, .empty { padding: var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-subtle); }
+  .mail-card h2 { margin: 0 0 var(--space-2); font-size: var(--text-base); font-weight: 700; }
+  .mail-card h2 a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; color: var(--color-text); }
+  .mail-card h2 a:hover { color: var(--color-primary); text-decoration: underline; }
+  .meta, .hint { margin: 0; color: var(--color-muted); font-size: var(--text-sm); }
+  .hint { margin-bottom: var(--space-4); }
+  .address { overflow-wrap: anywhere; }
+  .back, .empty a { display: inline-flex; align-items: center; min-height: 44px; }
+</style>

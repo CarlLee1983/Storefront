@@ -1,9 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { assignSharedCategory } from "../harness/admin-categories";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { gotoOrderList, gotoProductList } from "../harness/admin-list";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const name = "訂單封面測試商品";
 
@@ -21,6 +22,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await assignSharedCategory(admin, name);
     const row = admin.getByRole("row", { name: new RegExp(name) });
     await row.getByLabel(`${name}的庫存增減量`).fill("5");
+    await row.getByLabel(`${name}的庫存調整原因`).fill("E2E 補貨");
     await row.getByRole("button", { name: "調整庫存" }).click();
     await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
     await row.getByRole("link", { name: "編輯" }).click();
@@ -34,7 +36,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await admin.getByLabel("商品圖片（JPEG、PNG 或 WebP，20 MB 以內）").setInputFiles({ name: "order-cover.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
     await admin.getByRole("button", { name: "上傳商品圖片" }).click();
     await expect(admin.locator("#image-status")).toContainText("已上傳商品圖片");
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     await row.getByRole("button", { name: "重新上架" }).click();
     await expect(row).toContainText("上架中");
 
@@ -46,6 +48,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     await page.getByLabel("收件人姓名").fill("訂單測試");
     await page.getByLabel("收件人電話").fill("0912345678");
     await page.getByLabel("收件地址").fill("台北市中正區測試地址");
+    await page.getByLabel(/我確認配送地點位於台灣本島/).check();
     await page.getByRole("button", { name: "送出訂單" }).click();
     await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
     const path = new URL(page.url()).pathname;
@@ -61,14 +64,14 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
       await expect(page.getByRole("region", { name: "訂單進度" })).toContainText("待付款");
       await expect(page.getByRole("region", { name: "收件資訊" })).toContainText("台北市中正區測試地址");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`order-detail-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
       await page.goto("/orders");
       const card = page.locator(".order-card").filter({ has: page.getByRole("link", { name: `訂單 #${id}`, exact: true }) });
       await expect(card.getByRole("img", { name: name })).toHaveAttribute("src", source!);
       await expect(card.getByRole("button", { name: `訂單 #${id} 前往付款` })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`order-list-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
       await card.getByRole("link", { name: `查看訂單 #${id} 詳情` }).click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
@@ -82,7 +85,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
       await page.setViewportSize({ width, height: 900 });
       await expect(page.getByRole("region", { name: "付款資訊" }).getByRole("row")).toHaveCount(2);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
       await testInfo.attach(`order-payment-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     }
     page.once("dialog", dialog => void dialog.dismiss());
@@ -96,17 +99,17 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     }
-    await admin.goto("/admin/orders");
+    await gotoOrderList(admin, id);
     const orderRow = admin.getByRole("row").filter({ has: admin.getByRole("link", { name: `#${id}`, exact: true }) });
     await expect(orderRow.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", source!);
     await orderRow.getByRole("link", { name: `#${id}`, exact: true }).click();
     await expect(admin.getByRole("img", { name: `${name}的封面` })).toHaveAttribute("src", source!);
-    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(admin)).violations).toEqual([]);
     await testInfo.attach("admin-order-cover", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
     // Existing orders keep their lines when all images of an unlisted product are removed.
-    await admin.goto("/admin");
+    await gotoProductList(admin, name);
     await row.getByRole("button", { name: "下架", exact: true }).click();
     await expect(row).toContainText("已下架");
     await row.getByRole("link", { name: "編輯" }).click();
@@ -116,7 +119,7 @@ test("訂單封面、付款重點、手機排版與取消中斷", async ({ brows
     for (const location of [path, "/orders"]) {
       await page.goto(location);
       await expect(page.getByRole("img", { name: `${name}暫無商品圖片` })).toBeVisible();
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     }
     await admin.goto(`/admin${path}`);
     await expect(admin.getByRole("img", { name: `${name}暫無商品圖片` })).toBeVisible();

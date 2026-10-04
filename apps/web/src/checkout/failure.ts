@@ -9,16 +9,18 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
 const twd = (amount: number) => `NT$ ${priceFormat.format(amount)}`;
 
 /** 逐筆原因 → 提示文字；`line` 是購物車裡那一筆（找不到就用商品編號當名稱）。 */
-export function describeIssue(issue: CheckoutIssue, line: Pick<CartLine, "name" | "unitPriceTwd"> | undefined): string {
-  const name = `「${line?.name ?? `商品 #${issue.productId}`}」`;
+export function describeIssue(issue: CheckoutIssue, line: Pick<CartLine, "name" | "label" | "unitPriceTwd"> | undefined): string {
+  const name = `「${line ? (line.label ? `${line.name}（${line.label}）` : line.name) : `商品 #${issue.variantId}`}」`;
   switch (issue.kind) {
     case "price_changed":
       return `${name}的售價已更新為 ${twd(issue.currentUnitPriceTwd)}。請確認總金額，再決定是否更新購物車。`;
     case "unlisted":
       return `${name}目前無法購買，請從購物車移除。`;
+    case "discontinued":
+      return `${name}已停賣，請從購物車移除。`;
     case "insufficient_stock":
       return `${name}的可售數量不足，請減少數量或移除。`;
-    case "product_not_found":
+    case "variant_not_found":
       return `${name}目前無法購買，請從購物車移除。`;
   }
 }
@@ -28,21 +30,21 @@ export function applyPriceChanges(cart: Cart, issues: readonly CheckoutIssue[]):
   const newPrices = new Map<number, number>();
   for (const issue of issues) {
     if (issue.kind === "price_changed" && Number.isSafeInteger(issue.currentUnitPriceTwd) && issue.currentUnitPriceTwd >= 1) {
-      newPrices.set(issue.productId, issue.currentUnitPriceTwd);
+      newPrices.set(issue.variantId, issue.currentUnitPriceTwd);
     }
   }
   if (newPrices.size === 0) return cart;
   return {
     ...cart,
     lines: cart.lines.map((line) => {
-      const price = newPrices.get(line.productId);
+      const price = newPrices.get(line.variantId);
       return price === undefined ? line : { ...line, unitPriceTwd: price };
     }),
   };
 }
 
-export function removeLines(cart: Cart, productIds: readonly number[]): Cart {
-  return productIds.reduce(removeFromCart, cart);
+export function removeLines(cart: Cart, variantIds: readonly number[]): Cart {
+  return variantIds.reduce(removeFromCart, cart);
 }
 
 export interface CheckoutFailure {
@@ -89,6 +91,8 @@ export function describeCheckoutFailure(result: {
     invalid_input: "輸入有誤，請確認資料後再送出。",
     // 同一個冪等鍵帶了不同內容（例如另一個分頁改過購物車）；頁面會清掉舊鍵，下一次送出用新鍵
     idempotency_key_reused: "結帳內容已有變動，請確認商品與總金額後再送出一次。",
+    // 運費在顧客確認之後被調整；結帳頁重新載入會取得新的運費，顧客確認新總額後再送出
+    shipping_fee_changed: "運費已調整，請確認新的運費與總金額後再送出。",
     checkout_unavailable: "目前無法完成結帳，請稍後再試。",
   };
   return {

@@ -1,0 +1,55 @@
+---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../../auth/customer";
+import { checkoutEntry } from "../../../checkout/entry";
+import { mailKindLabel, parseMessageId, verificationStatusNote } from "../../../account/contact";
+import Layout from "../../../layouts/Layout.astro";
+import { formatDateTime } from "../../../orders/labels";
+
+export const prerender = false;
+
+// 別人的信與不存在的信一樣顯示找不到
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+
+const messageId = parseMessageId(Astro.params.id);
+const found = messageId === null ? null : await env.APP.getMyMail(Astro.request.headers.get("cookie") ?? "", { messageId });
+if (found && !found.ok && found.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+const mail = found?.ok ? found.data : undefined;
+if (!mail) Astro.response.status = 404;
+const verification = mail?.verification;
+---
+
+<Layout title={mail ? mail.subject : "找不到頁面"} noindex>
+  {
+    !mail ? (
+      <p class="error" role="alert">找不到這封信。<a href="/account/mailbox">返回我的信箱</a></p>
+    ) : (
+      <article class="mail">
+        <dl class="meta">
+          <div><dt>種類</dt><dd>{mailKindLabel(mail.kind)}</dd></div>
+          {mail.deliveries.map((delivery) => <div><dt>收件地址</dt><dd><span class="address">{delivery.recipientAddress}</span>（<time datetime={new Date(delivery.attemptedAt).toISOString()}>{formatDateTime(delivery.attemptedAt)}</time>）</dd></div>)}
+        </dl>
+        <p class="body">{mail.body}</p>
+        {verification?.status === "pending" && <p><a class="verify-link" href={`/account/verify?token=${encodeURIComponent(verification.token)}`}>驗證 {verification.email}</a></p>}
+        {verification && verificationStatusNote(verification.status) && <p class="note">{verificationStatusNote(verification.status)}</p>}
+        <p><a href="/account/mailbox">返回我的信箱</a></p>
+      </article>
+    )
+  }
+</Layout>
+
+<style>
+  .mail { max-width: 40rem; padding: var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-subtle); }
+  .meta { margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+  .meta div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .meta dt { font-weight: 600; }
+  .meta dd { margin: 0; }
+  .address { overflow-wrap: anywhere; }
+  .body { white-space: pre-line; }
+  .verify-link { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; overflow-wrap: anywhere; }
+  .note { color: var(--color-muted); }
+  .mail a { display: inline-flex; align-items: center; min-height: 44px; }
+</style>

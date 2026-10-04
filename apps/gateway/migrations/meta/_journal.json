@@ -15,6 +15,27 @@
       "when": 1790781804568,
       "tag": "0001_event_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790978355154,
+      "tag": "0002_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791000315544,
+      "tag": "0003_invoices",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791009058761,
+      "tag": "0004_allowances",
+      "breakpoints": true
     }
   ]
 }

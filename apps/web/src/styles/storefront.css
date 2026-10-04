@@ -134,6 +134,7 @@ body.storefront-shell .order-status.paid {
   border-color: var(--color-inverse);
   border-radius: var(--radius-xs);
 }
+body.storefront-shell .order-status.partially_shipped,
 body.storefront-shell .order-status.shipped {
   color: var(--color-text);
   background: var(--color-panel);

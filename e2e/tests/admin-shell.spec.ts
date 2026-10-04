@@ -1,16 +1,16 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
-import { seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
+import { defaultVariantIds, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 async function assertShell(page: Page, current: string, width: number) {
   const header = page.getByRole("banner");
   const nav = header.getByRole("navigation", { name: "後台導覽" });
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
   await expect(nav.getByRole("link", { name: current, exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(header.getByRole("link", { name: "Storefront", exact: true })).toHaveAttribute("href", "/admin");
+  await expect(header.getByRole("link", { name: "管理後台 Still Life", exact: true })).toHaveAttribute("href", "/admin");
   await expect(header.getByRole("link", { name: "前往前台", exact: true })).toHaveAttribute("href", "/");
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex");
@@ -30,14 +30,14 @@ async function assertShell(page: Page, current: string, width: number) {
     expect(box.width, await control.evaluate(element => element.outerHTML)).toBeGreaterThanOrEqual(44);
     expect(box.height, await control.evaluate(element => element.outerHTML)).toBeGreaterThanOrEqual(44);
   }
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 }
 
 async function assertEditForm(page: Page, width: number) {
   const box = (await page.getByRole("textbox", { name: /名稱/ }).first().boundingBox())!;
   expect(box.width).toBeLessThanOrEqual(640);
   if (width === 1280) expect(box.width).toBe(640);
-  const save = (await page.getByRole("button", { name: "儲存", exact: true }).boundingBox())!;
+  const save = (await page.getByRole("button", { name: /^儲存(變更)?$/ }).boundingBox())!;
   const cancel = (await page.getByRole("link", { name: "取消", exact: true }).boundingBox())!;
   expect(cancel.x - (save.x + save.width)).toBeGreaterThanOrEqual(8);
 }
@@ -67,19 +67,24 @@ for (const width of [375, 1280]) {
         await assertShell(admin, current, width);
       }
       const filter = (await admin.getByLabel("訂單狀態").boundingBox())!;
-      const button = (await admin.getByRole("button", { name: "篩選", exact: true }).boundingBox())!;
+      const button = (await admin.getByRole("button", { name: "查找", exact: true }).boundingBox())!;
       expect(filter.width).toBeLessThanOrEqual(240);
       expect(filter.height).toBe(button.height);
-      expect(button.y).toBe(filter.y);
-      expect(button.x - (filter.x + filter.width)).toBeGreaterThanOrEqual(8);
+      // 查找表單有多個欄位且欄位上方有標籤：桌機同一排（底緣對齊、按鈕在欄位右側），手機允許換行
+      if (width === 1280) {
+        expect(button.y + button.height).toBe(filter.y + filter.height);
+        expect(button.x - (filter.x + filter.width)).toBeGreaterThanOrEqual(8);
+      }
 
       await page.context().addCookies([memberSessionCookie()]);
       await page.goto("/cart");
-      await page.evaluate(({ ids, prefix }) => localStorage.setItem("storefront.cart", JSON.stringify({ version: 1, lines: ids.map((productId, index) => ({ productId, name: `${prefix}商品${index + 1}`, unitPriceTwd: (index + 1) * 100, quantity: 1 })) })), { ids, prefix });
+      const variantIds = await defaultVariantIds(context.request, ids);
+      await page.evaluate(({ ids, variantIds, prefix }) => localStorage.setItem("storefront.cart", JSON.stringify({ version: 2, lines: ids.map((productId, index) => ({ variantId: variantIds[index], productId, name: `${prefix}商品${index + 1}`, unitPriceTwd: (index + 1) * 100, quantity: 1 })) })), { ids, variantIds, prefix });
       await page.goto("/checkout");
       await page.getByLabel("收件人姓名").fill("後台測試");
       await page.getByLabel("收件人電話").fill("0912345678");
       await page.getByLabel("收件地址").fill("台北市中正區測試地址");
+      await page.getByLabel(/我確認配送地點位於台灣本島/).check();
       await page.getByRole("button", { name: "送出訂單" }).click();
       await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
       const orderPath = new URL(page.url()).pathname;

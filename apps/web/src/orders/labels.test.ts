@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
+import { refundAttemptLabel, refundStatusLabel, customerRefundStatusLabel, customerRefundStatusNote, appointmentSummary, deliveryStatusLabel, formatDateTime, shipmentProgressLabel, shipmentEventKindLabel, orderStatusLabel, shipmentSummary, orderStatusNote, parseOrderId, paymentStatusLabel, refundReasonLabel } from "./labels";
 import { customerOrderStatusLabel, customerOrderStatusNote, customerPaymentStatusLabel, customerPaymentStatusNote, customerRefundReasonLabel, customerShipmentSummary } from "./labels";
 
 describe("顧客訂單與付款文案", () => {
@@ -8,8 +8,6 @@ describe("顧客訂單與付款文案", () => {
     expect(customerOrderStatusNote("expired", 0)).toContain("狀態可能更新");
     expect(customerShipmentSummary(null, null)).toBe("尚未提供物流單號。");
     expect(customerShipmentSummary(null, "TW123")).toBe("物流單號：TW123");
-    expect(customerPaymentStatusLabel("refund_failed")).toBe("退款尚未完成");
-    expect(customerPaymentStatusNote("refund_failed")).not.toContain("已退回原付款方式");
     expect(customerRefundReasonLabel("duplicate_success")).toBe("同一張訂單有另一筆成功付款");
   });
 
@@ -20,7 +18,29 @@ describe("顧客訂單與付款文案", () => {
       expect(customerPaymentStatusLabel(code)).toBe("付款狀態待確認");
       expect(customerPaymentStatusNote(code)).toContain("無法確認這筆付款");
       expect(customerRefundReasonLabel(code)).toBe("退款原因待確認");
+      expect(customerRefundStatusLabel(code)).toBe("退款狀態待確認");
+      expect(customerRefundStatusNote(code)).toContain("無法確認這筆退款");
+      expect(refundStatusLabel(code)).toBe(code);
     }
+  });
+
+  it("顧客只看到「處理中」與「已退回」，不揭露內部的結果不明與明確失敗", () => {
+    expect(customerRefundStatusLabel("succeeded")).toBe("已退回原付款方式");
+    for (const status of ["pending", "processing", "unknown", "failed"]) {
+      expect(customerRefundStatusLabel(status)).toBe("退款處理中");
+      expect(customerRefundStatusNote(status)).not.toMatch(/不明|失敗/);
+    }
+  });
+});
+
+describe("管理員的退款進度與嘗試紀錄", () => {
+  it("如實區分尚未送出、處理中、結果不明、明確失敗與已退回", () => {
+    expect(["pending", "processing", "unknown", "failed", "succeeded"].map(refundStatusLabel)).toEqual([
+      "尚未送出", "處理中", "結果不明（須先查證）", "明確失敗（可重試）", "已退回",
+    ]);
+    expect(refundAttemptLabel("verify", "not_found")).toBe("向閘道查證：閘道從未收過這筆退款");
+    expect(refundAttemptLabel("send", "unknown")).toBe("送出退款：結果不明");
+    expect(refundAttemptLabel("x", "y")).toBe("x：y");
   });
 });
 
@@ -39,6 +59,7 @@ describe("orderStatusLabel", () => {
   it.each([
     ["pending_payment", "待付款"],
     ["paid", "已付款"],
+    ["partially_shipped", "部分出貨"],
     ["shipped", "已出貨"],
     ["expired", "已逾期"],
     ["cancelled", "已取消"],
@@ -57,8 +78,6 @@ describe("paymentStatusLabel", () => {
     ["succeeded", "付款成功"],
     ["failed", "付款失敗"],
     ["expired", "已失效"],
-    ["refunded", "已退款"],
-    ["refund_failed", "退款失敗"],
   ])("%s → %s", (status, label) => {
     expect(paymentStatusLabel(status)).toBe(label);
   });
@@ -102,6 +121,15 @@ describe("parseOrderId", () => {
   });
 });
 
+describe("appointmentSummary", () => {
+  it("顯示議定時段起訖（台北時間）", () => {
+    const start = Date.UTC(2026, 9, 10, 1, 0);
+    const end = Date.UTC(2026, 9, 10, 4, 0);
+
+    expect(appointmentSummary({ start, end })).toBe(`議定配送時段：${formatDateTime(start)} 至 ${formatDateTime(end)}（台北時間）`);
+  });
+});
+
 describe("shipmentSummary", () => {
   const shippedAt = Date.UTC(2026, 9, 1, 6, 30, 0);
 
@@ -115,5 +143,46 @@ describe("shipmentSummary", () => {
 
   it("沒有出貨時間（不應發生）：只顯示物流單號，不壞掉", () => {
     expect(shipmentSummary(null, null)).toBe("物流單號：（未附）");
+  });
+});
+
+describe("批次配送進度文案", () => {
+  it("已知進度與回報種類有專屬名稱，未知及 prototype 代碼不顯示原始值", () => {
+    expect(deliveryStatusLabel("delivered")).toBe("已送達");
+    expect(deliveryStatusLabel("delivery_failed")).toContain("再次配送");
+    expect(deliveryStatusLabel("lost")).toContain("遺失");
+    expect(customerRefundReasonLabel("loss")).toContain("遺失");
+    expect(refundReasonLabel("loss")).toBe("物流確認遺失");
+    expect(customerRefundReasonLabel("shipment_return")).toContain("物流退回");
+    expect(refundReasonLabel("shipment_return")).toBe("物流退回檢查完成");
+    expect(shipmentEventKindLabel("redelivery")).toBe("再次配送");
+    for (const code of ["future", "__proto__", "constructor"]) {
+      expect(deliveryStatusLabel(code)).toBe("進度未知");
+      expect(shipmentEventKindLabel(code)).toBe("回報");
+    }
+  });
+});
+
+describe("shipmentProgressLabel", () => {
+  const at = Date.UTC(2026, 9, 10, 4, 0);
+
+  it("部分遺失且已送達：說明遺失與其餘已送達，附送達時間", () => {
+    const label = shipmentProgressLabel("lost", at, true);
+    expect(label).toContain("部分商品已確認遺失");
+    expect(label).toContain("其餘已送達");
+    expect(label).toContain(formatDateTime(at));
+  });
+
+  it("全數遺失、晚到的送達回報不改變結果：只說遺失，不顯示送達時間", () => {
+    expect(shipmentProgressLabel("lost", at, false)).toBe(deliveryStatusLabel("lost"));
+  });
+
+  it("其餘進度沿用原標籤，已送達附送達時間，未送達不附", () => {
+    expect(shipmentProgressLabel("delivered", at, true)).toBe(`已送達（實際送達：${formatDateTime(at)}）`);
+    expect(shipmentProgressLabel("in_transit", null, true)).toBe(deliveryStatusLabel("in_transit"));
+    expect(shipmentProgressLabel("lost", null, true)).toBe(deliveryStatusLabel("lost"));
+    expect(shipmentProgressLabel("returned", null, true)).toBe(deliveryStatusLabel("returned"));
+    expect(shipmentProgressLabel("returned", at, true)).toContain("部分商品被物流退回倉庫");
+    expect(shipmentProgressLabel("returned", at, false)).toBe(deliveryStatusLabel("returned"));
   });
 });

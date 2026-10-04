@@ -1,0 +1,28 @@
+---
+import { DELIVERY_TYPE_LABELS, DELIVERY_TYPES, type DeliveryType } from "@storefront/app/shipping-types";
+
+interface Props {
+  totalTwd: number;
+  /** 成立當下各配送類型實收的運費快照。 */
+  shippingFees: Record<DeliveryType, number>;
+  lines: Array<{ deliveryType: DeliveryType; unitPriceTwd: number; quantity: number }>;
+}
+const { totalTwd, shippingFees, lines } = Astro.props;
+const priceFormat = new Intl.NumberFormat("zh-TW");
+const subtotal = lines.reduce((sum, line) => sum + line.unitPriceTwd * line.quantity, 0);
+// 只列訂單裡實際有的配送類型；舊單（運費上線前）的運費為 0，顯示為免運
+const types = DELIVERY_TYPES.filter((type) => lines.some((line) => line.deliveryType === type));
+const feeText = (fee: number) => (fee === 0 ? "免運" : `NT$ ${priceFormat.format(fee)}`);
+---
+<dl class="order-fees" aria-label="金額明細">
+  <div><dt>商品小計</dt><dd>NT$ {priceFormat.format(subtotal)}</dd></div>
+  {types.map((type) => <div><dt>{DELIVERY_TYPE_LABELS[type]}運費</dt><dd>{feeText(shippingFees[type])}</dd></div>)}
+</dl>
+<p class="order-total">總金額：<strong>NT$ {priceFormat.format(totalTwd)}</strong>（新台幣、含稅，已含運費）</p>
+<style>
+  .order-fees { display: grid; gap: var(--space-1); margin: var(--space-3) 0; font-size: var(--text-sm); }
+  .order-fees div { display: flex; justify-content: space-between; gap: var(--space-3); }
+  .order-fees dt { color: var(--color-muted); }
+  .order-fees dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .order-total { text-align: right; font-variant-numeric: tabular-nums; }
+</style>

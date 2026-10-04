@@ -1,10 +1,11 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { gotoProductList } from "../harness/admin-list";
 import { createCategory } from "../harness/admin-categories";
 import { expectFeaturedWithinBudget, featureProduct } from "../harness/admin-featured";
 import { featureProducts, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const HOME = { slug: "e2e-home", name: "E2E首頁", description: "首頁測試用的一行說明" };
 const ALPHA = { name: "首頁精選甲", priceTwd: 1200, stock: 5 };
@@ -39,7 +40,7 @@ const hero = (page: Page) => page.getByRole("region", { name: "主視覺" });
 const heroStatus = (page: Page) => hero(page).locator("#hero-status");
 const featuredSection = (page: Page) => page.getByRole("region", { name: "精選商品" });
 const categorySection = (page: Page) => page.getByRole("region", { name: "依空間選物" });
-const audit = async (page: Page, name: string) => expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+const audit = async (page: Page, name: string) => expect((await analyzeWhenSettled(page)).violations, name).toEqual([]);
 
 test("管理員在後台標為精選後，商品出現在首頁精選區", async ({ browser, page }) => {
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
@@ -91,20 +92,21 @@ test("商品卡：封面是正方形，加入購物車是只有圖示的按鈕�
 });
 
 // 後台清單的原價欄由 sale.spec.ts 斷言；這裡只驗精選欄
-test("後台商品清單：精選欄顯示「精選」，按鈕改為取消精選", async ({ browser }) => {
+test("後台商品清單：精選欄顯示「已精選」，按鈕改為取消精選", async ({ browser }) => {
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await context.newPage();
-    await admin.goto("/admin");
+    await gotoProductList(admin, ALPHA.name);
     // 精選欄以表頭位置定位：原價欄對未特價商品也是「—」，不能用文字找
     const headers = await admin.locator("thead th").allTextContents();
     const featuredColumn = headers.indexOf("精選");
     expect(featuredColumn, "後台清單要有「精選」欄").toBeGreaterThanOrEqual(0);
     const featuredCell = (name: string) => admin.getByRole("row", { name: new RegExp(name) }).locator("td").nth(featuredColumn);
-    await expect(featuredCell(ALPHA.name)).toContainText(/^精選/);
+    await expect(featuredCell(ALPHA.name)).toContainText(/^已精選/);
     await expect(featuredCell(ALPHA.name).getByRole("button", { name: `取消精選：${ALPHA.name}` })).toBeVisible();
-    // 沒標精選的商品是「—」，按鈕是標為精選
-    await expect(featuredCell(FILLER.name)).toContainText(/^—/);
+    // 沒標精選的商品，按鈕是標為精選
+    await gotoProductList(admin, FILLER.name);
+    await expect(featuredCell(FILLER.name)).toContainText(/^設為精選/);
     await expect(featuredCell(FILLER.name).getByRole("button", { name: `標為精選：${FILLER.name}` })).toBeVisible();
   } finally { await context.close(); }
 });
@@ -163,7 +165,7 @@ test("主視覺：版面預留尺寸、第一張優先載入，其餘延後；�
   await expect(heroStatus(page)).toHaveText("2 / 3");
   await expect(slides.nth(0)).toHaveJSProperty("inert", true);
   await expect(slides.nth(1)).not.toHaveJSProperty("inert", true);
-  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => Math.round(track.scrollLeft / track.clientWidth))).toBe(1);
+  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => track.scrollLeft - track.clientWidth)).toBeCloseTo(0, 1);
   await carousel.getByRole("button", { name: "上一張" }).focus();
   await page.keyboard.press("Enter");
   await expect(heroStatus(page)).toHaveText("1 / 3");
@@ -194,12 +196,14 @@ test("主視覺：焦點或滑鼠在輪播內時暫停自動輪播", async ({ pa
   await page.clock.install();
   await page.goto("/");
   const carousel = hero(page);
+  // 輪播腳本載入後才會掛上滑鼠與焦點的暫停監聽：等它就緒再操作，否則滑鼠移入會被漏掉
+  await expect(carousel).toHaveClass(/is-enhanced/);
   await carousel.getByRole("button", { name: "下一張" }).focus();
   await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("1 / 3");
   await page.locator("#main-content").focus();
-  const box = (await carousel.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+  // 用 hover 而不是自己算座標：分類多時固定的 header 會換行變高，可能蓋住輪播上緣；hover 會等到指標真的落在輪播上
+  await carousel.hover();
   await page.clock.fastForward(7000);
   await expect(heroStatus(page)).toHaveText("1 / 3");
 });
@@ -237,7 +241,7 @@ test("減少動態效果時主視覺不自動輪播、不顯示暫停按鈕", as
   // 手動切換仍可用，而且沒有轉場：下一張立即到位
   await carousel.getByRole("button", { name: "下一張" }).click();
   await expect(heroStatus(page)).toHaveText("2 / 3");
-  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => Math.round(track.scrollLeft / track.clientWidth))).toBe(1);
+  await expect.poll(() => carousel.locator("#hero-track").evaluate((track) => track.scrollLeft - track.clientWidth)).toBeCloseTo(0, 1);
 });
 
 test.describe("沒有 JavaScript", () => {

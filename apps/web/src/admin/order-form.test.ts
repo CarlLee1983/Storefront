@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { describeShipFailure, parseStatusFilter, shipFormToInput } from "./order-form";
+import { describeNoteFailure, describeShipFailure, describeShipmentEventFailure, noteFormToInput, parseStatusFilter, shipFormToInput, shipmentEventFormToInput } from "./order-form";
 
 describe("parseStatusFilter", () => {
-  it.each(["pending_payment", "paid", "shipped", "expired", "cancelled"])("%s 是有效的篩選", (status) => {
+  it.each(["pending_payment", "paid", "partially_shipped", "shipped", "expired", "cancelled"])("%s 是有效的篩選", (status) => {
     expect(parseStatusFilter(status)).toBe(status);
   });
 
@@ -12,26 +12,62 @@ describe("parseStatusFilter", () => {
 });
 
 describe("shipFormToInput", () => {
-  it("帶入訂單編號與物流單號原文（trim 與長度由 App 驗證）", () => {
+  it("帶入訂單編號、冪等鍵、物流單號原文（trim 與長度由 App 驗證）與各明細數量；0 與留空的明細不送", () => {
     const form = new FormData();
+    form.set("dispatchKey", "key-1");
     form.set("trackingNumber", "  TW123  ");
+    form.set("quantity-11", "2");
+    form.set("quantity-12", "0");
+    form.set("quantity-13", "");
 
-    expect(shipFormToInput(form, 7)).toEqual({ orderId: 7, trackingNumber: "  TW123  " });
+    expect(shipFormToInput(form, 7)).toEqual({ orderId: 7, dispatchKey: "key-1", items: [{ orderLineId: 11, quantity: 2 }], trackingNumber: "  TW123  ", appointment: undefined });
   });
 
   it("物流單號可以留空：欄位不存在或空字串都送出空字串", () => {
     const empty = new FormData();
     empty.set("trackingNumber", "");
 
-    expect(shipFormToInput(empty, 7)).toEqual({ orderId: 7, trackingNumber: "" });
-    expect(shipFormToInput(new FormData(), 7)).toEqual({ orderId: 7, trackingNumber: "" });
+    expect(shipFormToInput(empty, 7)).toMatchObject({ trackingNumber: "" });
+    expect(shipFormToInput(new FormData(), 7)).toMatchObject({ trackingNumber: "", items: [] });
+  });
+
+  it("負數與非數字的數量原樣送出，由 App 回報欄位錯誤", () => {
+    const form = new FormData();
+    form.set("quantity-1", "-1");
+    form.set("quantity-2", "abc");
+
+    const { items } = shipFormToInput(form, 7);
+
+    expect(items[0]).toEqual({ orderLineId: 1, quantity: -1 });
+    expect(items[1]).toMatchObject({ orderLineId: 2 });
+    expect(items[1]!.quantity).toBeNaN();
+  });
+
+  it("議定時段以台北時間解讀（UTC+8）；兩欄都留空為沒有，只填一欄或格式不對時另一欄為 NaN 由 App 拒絕", () => {
+    const form = new FormData();
+    form.set("appointmentStart", "2026-10-10T09:00");
+    form.set("appointmentEnd", "2026-10-10T12:00");
+    expect(shipFormToInput(form, 7).appointment).toEqual({ start: Date.UTC(2026, 9, 10, 1, 0), end: Date.UTC(2026, 9, 10, 4, 0) });
+
+    const half = new FormData();
+    half.set("appointmentStart", "2026-10-10T09:00");
+    expect(shipFormToInput(half, 7).appointment!.end).toBeNaN();
+
+    const bad = new FormData();
+    bad.set("appointmentStart", "tomorrow");
+    bad.set("appointmentEnd", "2026-10-10T12:00");
+    expect(shipFormToInput(bad, 7).appointment!.start).toBeNaN();
   });
 });
 
 describe("describeShipFailure", () => {
-  it("非已付款、找不到訂單各有專屬訊息", () => {
-    expect(describeShipFailure({ reason: "order_not_shippable" }).message).toBe("這張訂單目前不是已付款，不能出貨（可能已出貨或已被處理）");
+  it("不能交運、找不到訂單、數量超過、時段缺漏各有專屬訊息", () => {
+    expect(describeShipFailure({ reason: "order_not_shippable" }).message).toContain("不是已付款或部分出貨");
     expect(describeShipFailure({ reason: "order_not_found" }).message).toBe("找不到這張訂單");
+    expect(describeShipFailure({ reason: "shipment_quantity_exceeded" }).message).toContain("尚未交運的數量");
+    expect(describeShipFailure({ reason: "dispatch_key_conflict" }).message).toContain("重新整理");
+    expect(describeShipFailure({ reason: "appointment_required" }).message).toContain("配送時段");
+    expect(describeShipFailure({ reason: "appointment_not_applicable" }).message).toContain("不需要配送時段");
   });
 
   it("輸入有誤時帶回欄位錯誤，其他原因用預設訊息", () => {
@@ -39,6 +75,72 @@ describe("describeShipFailure", () => {
       message: "輸入有誤，請修正後再送出",
       fields: { trackingNumber: ["物流單號不可超過 100 個字"] },
     });
-    expect(describeShipFailure({ reason: "boom" })).toEqual({ message: "出貨失敗，請稍後再試", fields: {} });
+    expect(describeShipFailure({ reason: "boom" })).toEqual({ message: "交運失敗，請稍後再試", fields: {} });
+  });
+});
+
+describe("shipmentEventFormToInput", () => {
+  it("帶入批次編號、回報識別碼與種類；發生時間以台北時間解讀", () => {
+    const form = new FormData();
+    form.set("shipmentId", "5");
+    form.set("eventKey", "evt-1");
+    form.set("kind", "delivered");
+    form.set("occurredAt", "2026-10-10T09:30");
+
+    expect(shipmentEventFormToInput(form)).toEqual({ shipmentId: 5, eventKey: "evt-1", kind: "delivered", occurredAt: Date.UTC(2026, 9, 10, 1, 30) });
+  });
+
+  it("發生時間可帶秒（datetime-local step=1），不帶秒視為 0 秒", () => {
+    const withSeconds = new FormData();
+    withSeconds.set("occurredAt", "2026-10-10T09:30:45");
+    const without = new FormData();
+    without.set("occurredAt", "2026-10-10T09:30");
+
+    expect(shipmentEventFormToInput(withSeconds).occurredAt).toBe(Date.UTC(2026, 9, 10, 1, 30, 45));
+    expect(shipmentEventFormToInput(without).occurredAt).toBe(Date.UTC(2026, 9, 10, 1, 30, 0));
+  });
+
+  it("補寄通知的重送帶原始發生時間（epoch 毫秒），優先於日期時間欄位", () => {
+    const form = new FormData();
+    form.set("shipmentId", "5");
+    form.set("eventKey", "evt-1");
+    form.set("kind", "delivery_failed");
+    form.set("occurredAtMs", "1791000000000");
+
+    expect(shipmentEventFormToInput(form).occurredAt).toBe(1_791_000_000_000);
+  });
+
+  it("沒填或格式不對的發生時間送 NaN，由 App 回報欄位錯誤", () => {
+    expect(shipmentEventFormToInput(new FormData()).occurredAt).toBeNaN();
+    const bad = new FormData();
+    bad.set("occurredAt", "yesterday");
+    expect(shipmentEventFormToInput(bad).occurredAt).toBeNaN();
+  });
+});
+
+describe("describeShipmentEventFailure", () => {
+  it("找不到批次、時間不合理、鍵衝突各有專屬訊息", () => {
+    expect(describeShipmentEventFailure({ reason: "shipment_not_found" }).message).toContain("找不到");
+    expect(describeShipmentEventFailure({ reason: "event_time_invalid" }).message).toContain("交運");
+    expect(describeShipmentEventFailure({ reason: "event_key_conflict" }).message).toContain("重新整理");
+    expect(describeShipmentEventFailure({ reason: "boom" })).toEqual({ message: "記錄物流回報失敗，請稍後再試", fields: {} });
+  });
+});
+
+describe("noteFormToInput", () => {
+  it("帶入訂單編號與備註原文；欄位不存在送出空字串，由 App 回報不可為空", () => {
+    const form = new FormData();
+    form.set("note", "  電話確認過  ");
+
+    expect(noteFormToInput(form, 7)).toEqual({ orderId: 7, note: "  電話確認過  " });
+    expect(noteFormToInput(new FormData(), 7)).toEqual({ orderId: 7, note: "" });
+  });
+});
+
+describe("describeNoteFailure", () => {
+  it("已知原因有專屬訊息並帶出欄位錯誤；未知原因用通用訊息", () => {
+    expect(describeNoteFailure({ reason: "invalid_input", fields: { note: ["備註不可為空"] } })).toEqual({ message: "備註內容有誤，請修正後再送出", fields: { note: ["備註不可為空"] } });
+    expect(describeNoteFailure({ reason: "order_not_found" }).message).toBe("找不到這張訂單");
+    expect(describeNoteFailure({ reason: "boom" })).toEqual({ message: "新增備註失敗，請稍後再試", fields: {} });
   });
 });

@@ -9,7 +9,7 @@
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": true },
-  // 每分鐘一次的 Cron：把超過付款期限的待付款訂單轉為已逾期、釋放保留（冪等）。
+  // 每分鐘一次的 Cron：先補查漏通知的待付款付款，再把超過付款期限的待付款訂單轉為已逾期、釋放保留（冪等）。
   // triggers 不會被 env 繼承，各環境自己宣告。
   "triggers": { "crons": ["* * * * *"] },
   // Cloudflare Access 驗簽設定，純文字變數、不是 secret。vars 不會被 env 繼承，各環境自己宣告。
@@ -21,7 +21,7 @@
   // 顧客登入的 secrets（BETTER_AUTH_SECRET、GOOGLE_*、LINE_*）不寫在這裡，見 README「顧客登入」。
   //
   // GATEWAY_BASE_URL 是金流閘道 Worker 的網址（純文字、各環境自己宣告；本機預設是 `bun run dev:gateway` 的位址）。
-  // 付款的 secret GATEWAY_API_KEY 不寫在這裡，見 README「付款」。缺少任一個時只有付款相關 RPC（startPayment、confirmPayment）
+  // 付款的 secret GATEWAY_API_KEY 不寫在這裡，見 README「付款」。缺少任一個時只有付款相關 RPC（startPayment、confirmPayment、reconcilePayment）
   // 回 payment_unavailable，其餘 RPC 不受影響。
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",

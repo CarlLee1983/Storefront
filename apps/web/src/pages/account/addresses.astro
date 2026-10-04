@@ -1,0 +1,128 @@
+---
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../auth/customer";
+import { checkoutEntry } from "../../checkout/entry";
+import { addressFormToInput, describeAddressFailure, parseAddressId } from "../../account/addresses";
+import Layout from "../../layouts/Layout.astro";
+import { toText } from "../../shared/form-values";
+
+export const prerender = false;
+
+// 地址簿只給顧客本人：未登入導去登入，登入後回到這一頁
+const entry = checkoutEntry(Astro.locals.customer, Astro.url);
+if (entry.kind === "redirect") {
+  return Astro.redirect(entry.location, 303);
+}
+
+const cookie = Astro.request.headers.get("cookie") ?? "";
+let failure: string | undefined;
+// 失敗時留在本頁並保留輸入；target 是出錯的那張表單（新增為 "new"，其餘為地址編號）
+let failedTarget: string | undefined;
+let submitted = { name: "", phone: "", address: "" };
+
+// 新增、修改、刪除（POST）：成功後 303 回本頁（避免重新整理重送）
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = toText(form.get("intent"));
+  const addressId = parseAddressId(form.get("addressId"));
+  const input = addressFormToInput(form);
+  // 地址編號不合法時以 0 交給 App，由它的輸入驗證回報 invalid_input（不洩漏任何地址是否存在）
+  const payload = { addressId: addressId ?? 0 };
+  const result =
+    intent === "add" ? await env.APP.addAddress(cookie, input)
+    : intent === "update" ? await env.APP.updateAddress(cookie, { ...input, ...payload })
+    : intent === "delete" ? await env.APP.deleteAddress(cookie, payload)
+    : { ok: false as const, reason: "invalid_intent" };
+  if (!result.ok && result.reason === "unauthorized") return Astro.redirect(loginUrl(Astro.url), 303);
+  if (result.ok) return Astro.redirect(`/account/addresses?done=${intent}`, 303);
+  failure = describeAddressFailure(result);
+  failedTarget = intent === "add" ? "new" : String(addressId ?? "");
+  submitted = input;
+}
+
+const list = await env.APP.listMyAddresses(cookie);
+if (!list.ok) return Astro.redirect(loginUrl(Astro.url), 303);
+const addresses = list.data;
+const done = Astro.url.searchParams.get("done");
+const doneMessages: Record<string, string> = { add: "已新增地址。", update: "已儲存修改。", delete: "已刪除地址。" };
+// 刪除要二段確認：先帶 ?confirm=<編號> 回到本頁顯示確認區，再按確認才送出
+const confirmId = parseAddressId(Astro.url.searchParams.get("confirm"));
+const doneMessage = done && Object.hasOwn(doneMessages, done) ? doneMessages[done] : undefined;
+---
+
+<Layout title="地址簿" description="保存常用的收件資訊，結帳時直接選用。" noindex>
+  {doneMessage && <p role="status" class="notice">{doneMessage}</p>}
+  <p class="notice">結帳時可從地址簿選用；訂單會保留當時的收件資訊，之後修改或刪除地址不會影響已成立的訂單。</p>
+
+  {addresses.length === 0 && <p>地址簿還是空的，新增第一筆收件資訊吧。</p>}
+  <ul class="address-list">
+    {addresses.map((item) => {
+      const showFailure = failure && failedTarget === String(item.id);
+      const values = showFailure ? submitted : item;
+      return (
+        <li class="panel">
+          <form method="post" action="/account/addresses">
+            <fieldset>
+              <legend>{item.name}／{item.address}</legend>
+              <input type="hidden" name="addressId" value={item.id} />
+              <label>收件人姓名<input name="name" autocomplete="off" required value={values.name} aria-invalid={showFailure ? "true" : undefined} /></label>
+              <label>收件人電話<input name="phone" type="tel" inputmode="tel" autocomplete="off" required value={values.phone} aria-invalid={showFailure ? "true" : undefined} /></label>
+              <label>收件地址<input name="address" autocomplete="off" required value={values.address} aria-invalid={showFailure ? "true" : undefined} /></label>
+              {showFailure && <p class="error" role="alert">{failure}</p>}
+              <div class="actions">
+                <button type="submit" name="intent" value="update" aria-label={`儲存修改：${item.name}／${item.address}`}>儲存修改</button>
+                <a class="button-link" href={`/account/addresses?confirm=${item.id}`} aria-label={`刪除：${item.name}／${item.address}`}>刪除</a>
+              </div>
+            </fieldset>
+          </form>
+          {confirmId === item.id && (
+            <form method="post" action="/account/addresses" class="confirm" aria-label={`確認刪除：${item.name}／${item.address}`}>
+              <input type="hidden" name="addressId" value={item.id} />
+              <p role="alert">確定要刪除這筆地址嗎？已成立的訂單不受影響。</p>
+              <div class="actions">
+                <button type="submit" name="intent" value="delete" aria-label={`確認刪除：${item.name}／${item.address}`}>確認刪除</button>
+                <a class="button-link" href="/account/addresses">取消</a>
+              </div>
+            </form>
+          )}
+        </li>
+      );
+    })}
+  </ul>
+
+  <section class="panel" aria-labelledby="add-title">
+    <h2 id="add-title">新增地址</h2>
+    <form method="post" action="/account/addresses">
+      <label>收件人姓名<input name="name" autocomplete="off" required value={failedTarget === "new" ? submitted.name : ""} aria-invalid={failedTarget === "new" ? "true" : undefined} /></label>
+      <label>收件人電話<input name="phone" type="tel" inputmode="tel" autocomplete="off" required value={failedTarget === "new" ? submitted.phone : ""} aria-invalid={failedTarget === "new" ? "true" : undefined} /></label>
+      <label>收件地址<input name="address" autocomplete="off" required value={failedTarget === "new" ? submitted.address : ""} aria-invalid={failedTarget === "new" ? "true" : undefined} /></label>
+      {failure && failedTarget === "new" && <p class="error" role="alert">{failure}</p>}
+      <button type="submit" name="intent" value="add">新增地址</button>
+    </form>
+  </section>
+
+  {failure && failedTarget !== "new" && !addresses.some((item) => String(item.id) === failedTarget) && <p class="error" role="alert">{failure}</p>}
+
+  <p class="links"><a href="/account">回帳戶頁</a><a href="/checkout">前往結帳</a></p>
+</Layout>
+
+<style>
+  .address-list { list-style: none; padding: 0; margin: 0; }
+  .panel { max-width: 36rem; margin-bottom: var(--space-6); padding: var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-subtle); }
+  .panel h2 { margin-top: 0; font-size: var(--text-base); font-weight: 700; }
+  .panel input { width: 100%; min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  legend { padding: 0; margin-bottom: var(--space-4); font-weight: 700; overflow-wrap: anywhere; }
+  .confirm { margin-top: var(--space-4); }
+  .button-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .actions { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
+  .panel button { width: 100%; margin-top: var(--space-4); }
+  .actions button { margin-top: 0; }
+  .notice { max-width: 36rem; }
+  .links { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+  .links a { display: inline-flex; align-items: center; min-height: 44px; }
+  @media (min-width: 40rem) {
+    .panel button { width: auto; min-width: 10rem; }
+    .actions { flex-direction: row; }
+  }
+</style>

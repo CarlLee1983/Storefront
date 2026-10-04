@@ -17,6 +17,15 @@ describe("describeFailure", () => {
     });
   });
 
+  it.each([
+    ["option_count_mismatch", "選項值的個數必須與商品的選項維度個數相同"],
+    ["options_locked", "商品有多個變體時不能增減選項維度的個數"],
+    ["duplicate_variant", "這個商品已有相同選項組合的變體"],
+    ["image_not_found", "指定的圖片不屬於這個商品"],
+  ])("變體管理的 %s 有專屬說明", (reason, text) => {
+    expect(describeFailure({ reason }, "操作失敗").message).toContain(text);
+  });
+
   it("insufficient_stock 說庫存不足", () => {
     expect(describeFailure({ reason: "insufficient_stock" }, "操作失敗")).toEqual({
       message: "庫存不足：調整後的可售數量不可為負",

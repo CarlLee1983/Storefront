@@ -1,0 +1,94 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { deliveryStatusLabel, describeMailAdminFailure, mailKindLabel } from "../../../account/contact";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { formatDateTime } from "../../../orders/labels";
+import { toText } from "../../../shared/form-values";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+let failure: string | undefined;
+let unauthorized = false;
+
+// 演練控制（POST）：開關投遞失敗、重送一封信；成功後 303 回本頁
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = toText(form.get("intent"));
+  const result = intent === "set-failure"
+    ? await env.APP.setMailDeliveryFailure(jwt, { enabled: toText(form.get("enabled")) === "1" })
+    : intent === "resend"
+      ? await env.APP.resendMail(jwt, { messageId: Number(toText(form.get("messageId"))) })
+      : null;
+  if (result?.ok) {
+    return Astro.redirect(`/admin/mail?saved=${"delivered" in result.data ? (result.data.delivered ? "resent" : "resend-failed") : "control"}`, 303);
+  }
+  if (result && result.reason === "unauthorized") unauthorized = true;
+  else failure = describeMailAdminFailure(result ?? { reason: "invalid_input" });
+}
+
+const mail = unauthorized ? null : await env.APP.listMailForAdmin(jwt);
+if (unauthorized || (mail && !mail.ok)) Astro.response.status = 403;
+const saved = Astro.url.searchParams.get("saved");
+const pendingCount = mail?.ok ? mail.data.messages.filter((message) => message.needsAttention).length : 0;
+---
+
+<AdminLayout title="信件投遞">
+  {
+    !mail?.ok ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        {saved === "control" && <p role="status">已更新投遞演練設定。</p>}
+        {saved === "resent" && <p role="status">已重送，信件已送達顧客信箱。</p>}
+        {saved === "resend-failed" && <p role="status">已重送，但這次投遞仍失敗（投遞失敗演練開啟中）。</p>}
+        {failure && <p class="error" role="alert">{failure}</p>}
+        <div class="admin-card-section">
+          <h2>投遞失敗演練</h2>
+          <p>目前狀態：<strong>{mail.data.failDeliveries ? "開啟中，之後的每次投遞都會失敗" : "關閉，投遞正常送達"}</strong></p>
+          <form method="post">
+            <input type="hidden" name="intent" value="set-failure" />
+            <input type="hidden" name="enabled" value={mail.data.failDeliveries ? "0" : "1"} />
+            <button type="submit">{mail.data.failDeliveries ? "關閉投遞失敗" : "開啟投遞失敗"}</button>
+          </form>
+          <p>管理端只顯示投遞結果與實際收件地址；信件內文與驗證連結不公開。顯示最新 200 封信，尚未送達且還能處理的信不受此限（最多再列 500 封）。</p>
+        </div>
+        {pendingCount > 0 && <p><strong>待處理 {pendingCount} 封：</strong>下列標示「待處理」的信尚未送達顧客，請重送；重送會寄到顧客目前已驗證的聯絡 email，並記下處理人。</p>}
+        {mail.data.omittedAttention > 0 && <p class="error" role="alert">另有 {mail.data.omittedAttention} 封更舊的待處理信件未列出，請先處理上方的待辦。</p>}
+        {mail.data.messages.length === 0 && <p>還沒有信件。</p>}
+        {mail.data.messages.length > 0 && (
+          <div class="table-scroll" tabindex="0" role="region" aria-label="信件投遞紀錄"><table>
+            <thead>
+              <tr><th>信件</th><th>顧客</th><th>種類</th><th>投遞紀錄</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {mail.data.messages.map((message) => (
+                <tr>
+                  <td data-label="信件">#{message.id}{message.needsAttention && <strong class="pending"> 待處理</strong>}<br />{formatDateTime(message.createdAt)}</td>
+                  <td data-label="顧客">{message.customerName}</td>
+                  <td data-label="種類">{mailKindLabel(message.kind)}</td>
+                  <td data-label="投遞紀錄"><ol class="deliveries">{message.deliveries.map((delivery) => <li><span class="address">{delivery.recipientAddress}</span>：{deliveryStatusLabel(delivery.status)}（{formatDateTime(delivery.attemptedAt)}{delivery.handledBy && <>，由 {delivery.handledBy} 重送</>}）</li>)}{message.deliveries.length === 0 && <li>尚無投遞（顧客沒有已驗證的聯絡 email）</li>}</ol></td>
+                  <td data-label="操作">
+                    <form method="post">
+                      <input type="hidden" name="intent" value="resend" />
+                      <input type="hidden" name="messageId" value={message.id} />
+                      <button type="submit" aria-label={`重送信件 #${message.id}`}>重送</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+      </>
+    )
+  }
+</AdminLayout>
+
+<style>
+  .deliveries { margin: 0; padding-left: var(--space-4); }
+  .address { overflow-wrap: anywhere; }
+  .pending { color: var(--color-error); }
+</style>

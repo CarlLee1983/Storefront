@@ -2,8 +2,13 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
 import { selectProductForAdmin, selectProductsForAdmin } from "../catalog/queries";
-import { products } from "../catalog/schema";
+import { productVariants, products } from "../catalog/schema";
 import { adjustOnHand } from "../catalog/stock";
+import { selectLowStockVariants } from "../catalog/low-stock";
+import { createVariant, setLowStockThreshold, setProductOptions, setVariantDiscontinued, updateVariant } from "../catalog/variants";
+import { deliverNoticeSafely } from "../contact/notify";
+import { resendMessage, selectMailForAdmin, setDeliveryFailure } from "../contact/admin";
+import { mailMessageIdInput, setMailDeliveryFailureInput } from "../contact/input";
 import { categoryIdInput, createCategoryInput, updateCategoryInput } from "../categories/input";
 import { deleteCategory, setCategoryImage } from "../categories/manage";
 import { isValidSlug } from "../categories/slug";
@@ -11,18 +16,68 @@ import { categoryExists, insertCategory, selectCategoriesForAdmin, selectCategor
 import { addProductImageInput, reorderProductImagesInput, deleteProductImageInput, setCategoryImageInput } from "../images/input";
 import { reorderProductImages, deleteProductImage } from "../images/manage";
 import { uploadProductImage, type ProductImageBucket } from "../images/upload";
-import { selectOrdersForAdmin } from "../orders/admin-queries";
+import { selectStockMovements } from "../stock/ledger";
+import { selectShippingRates, updateShippingRate } from "../shipping/queries";
+import { selectOrderExportBatch, selectOrdersForAdmin } from "../orders/admin-queries";
+import { addOrderNote, selectOrderNotes } from "../order-notes/notes";
 import { orderIdInput } from "../orders/input";
-import { markOrderShipped, orderExists, selectOrderForAdmin } from "../orders/queries";
-import { SHIPPED } from "../orders/schema";
+import { selectOrderForAdmin } from "../orders/queries";
+import { buildAdminTimeline } from "../orders/timeline";
+import { selectTimelineFacts } from "../orders/timeline-facts";
+import { dispatchShipment } from "../shipments/dispatch";
+import { recordShipmentEvent } from "../shipments/events";
+import { declareShipmentReturn } from "../shipment-returns/declare";
+import { declareShipmentReturnInput, recordShipmentReturnInspectionInput, recordShipmentReturnReceiptInput } from "../shipment-returns/input";
+import { recordShipmentReturnInspection } from "../shipment-returns/inspect";
+import { selectOrderShipmentReturns, selectShipmentReturnsWithoutRefund } from "../shipment-returns/queries";
+import { recordShipmentReturnReceipt } from "../shipment-returns/receive";
+import { confirmShipmentLoss } from "../shipments/loss";
+import { confirmShipmentLossInput } from "../shipments/loss-input";
+import { selectLossesWithoutRefund, selectOrderLosses } from "../shipments/loss-queries";
 import { selectOrderPaymentSummaries } from "../payments/queries";
+import type { createInvoiceService } from "../invoices/service";
+import type { createPaymentService } from "../payments/service";
+import { reconcilePaymentInput, retryRefundInput } from "../payments/input";
+import { selectReconcileListing } from "../payments/reconcile";
+import { selectOrderRefunds, selectRefundTodos } from "../payments/refunds";
+import { invoiceIdInput, refundIdInput } from "../invoices/input";
+import { selectInvoiceTodos, selectOrderInvoices, selectPendingAllowances } from "../invoices/queries";
+import { resendAllowanceNotice, resendInvoiceCertificate } from "../invoices/resend";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type InvalidInput, type ProductNotFound, type Unauthorized } from "../shared/result";
+import { decideCancellationInput } from "../cancellations/input";
+import { decideCancellation } from "../cancellations/decide";
+import { decideReturnInput, recordReturnInspectionInput, recordReturnReceiptInput } from "../returns/input";
+import { decideReturn } from "../returns/decide";
+import { recordReturnInspection } from "../returns/inspect";
+import { selectCompletedWithoutRefund, selectOrderReturns, selectReturnsToHandle } from "../returns/queries";
+import { recordReturnReceipt } from "../returns/receive";
+import { scrapUnavailable } from "../stock/scrap";
+import { selectApprovedWithoutRefund, selectCancellationsToReview, selectOrderCancellations } from "../cancellations/queries";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import { adjustStockInput, createProductInput, listOrdersInput, productIdInput, setProductFeaturedInput, shipOrderInput, updateProductInput } from "./input";
+import { addOrderNoteInput, adjustStockInput, scrapUnavailableInput, createProductInput, createVariantInput, listOrdersInput, listStockMovementsInput, productIdInput, recordShipmentEventInput, setProductFeaturedInput, setProductOptionsInput, setShippingRateInput, setLowStockThresholdInput, setVariantDiscontinuedInput, shipOrderInput, updateProductInput, updateVariantInput } from "./input";
 
-export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, images?: ProductImageBucket) {
+/** 補查一筆付款（見 `createPaymentService().reconcilePayment`）；由 entrypoint 接上，管理服務自己不碰金流閘道。 */
+export type ReconcilePayment = ReturnType<typeof createPaymentService>["reconcilePayment"];
+
+/** 重試一筆退款（見 `createPaymentService().retryRefund`）；同樣由 entrypoint 接上。 */
+export type RetryRefund = ReturnType<typeof createPaymentService>["retryRefund"];
+
+/** 補辦一張發票（見 `createInvoiceService().retryInvoice`）；同樣由 entrypoint 接上。 */
+export type RetryInvoice = ReturnType<typeof createInvoiceService>["retryInvoice"];
+/** 補辦一筆退款的折讓（見 `createInvoiceService().retryAllowance`）；同樣由 entrypoint 接上。 */
+export type RetryAllowance = ReturnType<typeof createInvoiceService>["retryAllowance"];
+
+export interface AdminDependencies {
+  images?: ProductImageBucket;
+  reconcilePayment: ReconcilePayment;
+  retryRefund: RetryRefund;
+  retryInvoice: RetryInvoice;
+  retryAllowance: RetryAllowance;
+}
+
+export function createAdminService(d1: D1Database, clock: Clock, access: AccessConfig, { images, reconcilePayment, retryRefund, retryInvoice, retryAllowance }: AdminDependencies) {
   const db = drizzle(d1);
   const verifier = createAccessVerifier(access, clock);
 
@@ -64,10 +119,13 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       });
     },
 
-    /** 新增商品，預設下架。 */
+    /** 新增商品，預設下架；同時建立它的預設變體（售價由輸入帶入，在庫數 0），兩者同一個 batch，全有或全無。 */
     createProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, createProductInput, input, async (_actor, data) => {
-        const [row] = await db.insert(products).values({ ...data, listed: false }).returning({ id: products.id });
+      return authorized(jwt, createProductInput, input, async (_actor, { priceTwd, deliveryType, ...data }) => {
+        const [[row]] = await db.batch([
+          db.insert(products).values({ ...data, listed: false }).returning({ id: products.id }),
+          db.insert(productVariants).values({ productId: sql`last_insert_rowid()`, isDefault: true, priceTwd, deliveryType }),
+        ]);
         return ok({ id: row!.id });
       });
     },
@@ -86,32 +144,49 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
     },
 
     /**
-     * 修改名稱、說明、單價、原價與分類；不動上架狀態。
+     * 修改名稱、說明、分類，以及預設變體的單價與原價；不動上架狀態。
      * 指定的分類不存在回 `category_not_found`；上架中的商品不能把分類清成空，回 `no_category`（下架中的可以）。
      * 原價必須高於「儲存後」的售價，否則回 `invalid_compare_at_price`：不帶原價時比對既有原價，帶 `null` 則是清空，所以同時把售價改回並清空原價是合法的。
      */
     updateProduct(jwt: unknown, input: unknown) {
-      return authorized(jwt, updateProductInput, input, async (_actor, { id, ...values }) => {
-        if (typeof values.categoryId === "number" && !(await categoryExists(db, values.categoryId))) return fail("category_not_found");
+      return authorized(jwt, updateProductInput, input, async (_actor, { id, priceTwd, compareAtPriceTwd, deliveryType, ...productValues }) => {
+        if (typeof productValues.categoryId === "number" && !(await categoryExists(db, productValues.categoryId))) return fail("category_not_found");
         // 商品不存在優先於原價檢查：先確認存在，才有「原價不合法」可說
         const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
         if (!existing) return fail("product_not_found");
-        if (typeof values.compareAtPriceTwd === "number" && values.compareAtPriceTwd <= values.priceTwd) return fail("invalid_compare_at_price");
-        const clearsCategory = values.categoryId === null;
-        // 不帶原價時沿用既有原價，所以「原價仍高於新售價」也寫進同一句 UPDATE 的條件
-        const keepsCompareAt = values.compareAtPriceTwd === undefined;
-        // 「上架中不能清空分類」同樣寫進條件，不會和同時發生的上架互相穿插
-        const updated = await db.update(products).set(values)
-          .where(and(
-            eq(products.id, id),
-            clearsCategory ? eq(products.listed, false) : undefined,
-            keepsCompareAt ? sql`(${products.compareAtPriceTwd} is null or ${products.compareAtPriceTwd} > ${values.priceTwd})` : undefined,
-          ))
-          .returning({ id: products.id });
-        if (updated.length) return ok({ id });
-        const [product] = await db.select({ compareAtPriceTwd: products.compareAtPriceTwd }).from(products).where(eq(products.id, id));
-        if (!product) return fail("product_not_found");
-        return keepsCompareAt && product.compareAtPriceTwd !== null && product.compareAtPriceTwd <= values.priceTwd
+        if (typeof compareAtPriceTwd === "number" && compareAtPriceTwd <= priceTwd) return fail("invalid_compare_at_price");
+        const clearsCategory = productValues.categoryId === null;
+        // 不帶原價時沿用既有原價，所以「原價仍高於新售價」也寫進 UPDATE 的條件
+        const keepsCompareAt = compareAtPriceTwd === undefined;
+        const defaultVariantKeepsCompareAt = sql`exists (
+          select 1 from product_variants kept where kept.product_id = ${id} and kept.is_default = 1
+            and (kept.compare_at_price_twd is null or kept.compare_at_price_twd > ${priceTwd})
+        )`;
+        // 商品欄位與預設變體的價格在同一個 batch；兩句帶著同一組條件（「上架中不能清空分類」、「原價仍高於新售價」），
+        // 條件對兩句的判定相同，所以要嘛都寫入、要嘛都不寫，不會和同時發生的上架互相穿插
+        const [updatedVariant, updatedProduct] = await db.batch([
+          db.update(productVariants)
+            .set({ priceTwd, ...(compareAtPriceTwd === undefined ? {} : { compareAtPriceTwd }), ...(deliveryType === undefined ? {} : { deliveryType }) })
+            .where(and(
+              eq(productVariants.productId, id),
+              eq(productVariants.isDefault, true),
+              clearsCategory ? sql`exists (select 1 from products listed_check where listed_check.id = ${id} and listed_check.listed = 0)` : undefined,
+              keepsCompareAt ? defaultVariantKeepsCompareAt : undefined,
+            ))
+            .returning({ id: productVariants.id }),
+          db.update(products).set(productValues)
+            .where(and(
+              eq(products.id, id),
+              clearsCategory ? eq(products.listed, false) : undefined,
+              keepsCompareAt ? defaultVariantKeepsCompareAt : undefined,
+            ))
+            .returning({ id: products.id }),
+        ]);
+        if (updatedVariant.length && updatedProduct.length) return ok({ id });
+        const [variant] = await db.select({ compareAtPriceTwd: productVariants.compareAtPriceTwd }).from(productVariants)
+          .where(and(eq(productVariants.productId, id), eq(productVariants.isDefault, true)));
+        if (!variant) return fail("product_not_found");
+        return keepsCompareAt && variant.compareAtPriceTwd !== null && variant.compareAtPriceTwd <= priceTwd
           ? fail("invalid_compare_at_price")
           : fail("no_category");
       });
@@ -200,36 +275,360 @@ export function createAdminService(d1: D1Database, clock: Clock, access: AccessC
       });
     },
 
-    /** 庫存調整：只接受增減量，不能覆寫成某個數字。 */
-    adjustStock(jwt: unknown, input: unknown) {
-      return authorized(jwt, adjustStockInput, input, (_actor, { id, delta }) => adjustOnHand(db, id, delta));
+    /** 設定選項維度名稱（最多兩個）；個數改變時商品只能有一個變體，並以 `defaultVariantValues` 重設它的選項值。 */
+    setProductOptions(jwt: unknown, input: unknown) {
+      return authorized(jwt, setProductOptionsInput, input, (_actor, data) => setProductOptions(db, data));
     },
 
-    /** 所有訂單，可依訂單狀態篩選；新的在前，最多 200 筆。 */
-    listOrdersForAdmin(jwt: unknown, input: unknown) {
-      return authorized(jwt, listOrdersInput, input, async (_actor, { status }) => ok(await selectOrdersForAdmin(db, status)));
+    /** 新增變體（選項值組合不可與同商品的變體重複，個數須等於維度個數）；在庫數 0，由庫存調整補貨。 */
+    createVariant(jwt: unknown, input: unknown) {
+      return authorized(jwt, createVariantInput, input, (_actor, data) => createVariant(db, data));
+    },
+
+    /** 修改變體的選項值、售價、原價與指定圖片。 */
+    updateVariant(jwt: unknown, input: unknown) {
+      return authorized(jwt, updateVariantInput, input, (_actor, data) => updateVariant(db, data));
+    },
+
+    /** 目前兩類配送的費率。 */
+    async getShippingRates(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectShippingRates(db));
+    },
+
+    /** 調整某配送類型的費率；只影響之後成立的訂單，舊單的實收運費是快照，不變。 */
+    setShippingRate(jwt: unknown, input: unknown) {
+      return authorized(jwt, setShippingRateInput, input, async (_actor, { deliveryType, feeTwd }) => ok(await updateShippingRate(db, deliveryType, feeTwd)));
+    },
+
+    /** 只設定或清除（`null`）變體的低庫存門檻，不動其他欄位。 */
+    setLowStockThreshold(jwt: unknown, input: unknown) {
+      return authorized(jwt, setLowStockThresholdInput, input, (_actor, { variantId, lowStockThreshold }) => setLowStockThreshold(db, variantId, lowStockThreshold));
+    },
+
+    /** 停賣或恢復販售變體：停賣後不接受新購買，變體與歷史保留；重複操作冪等。 */
+    setVariantDiscontinued(jwt: unknown, input: unknown) {
+      return authorized(jwt, setVariantDiscontinuedInput, input, (_actor, { variantId, discontinued }) => setVariantDiscontinued(db, variantId, discontinued, clock.now()));
+    },
+
+    /** 庫存調整：只接受增減量與原因，不能覆寫成某個數字；操作人、時間與原因寫進庫存流水。 */
+    adjustStock(jwt: unknown, input: unknown) {
+      return authorized(jwt, adjustStockInput, input, (actor, { variantId, delta, reason }) => adjustOnHand(d1, { variantId, delta, reason, actor: actor.email }, clock.now()));
     },
 
     /**
-     * 出貨（Shipment）：把已付款的訂單標為已出貨，物流單號可以不附；已出貨是終點，不能撤回。
-     * 不是已付款（待付款、已逾期、已取消、已出貨）回 `order_not_shippable`，不存在回 `order_not_found`。
+     * 報廢隔離的損壞品：同時減少實體在庫與不可售數量（可售不變），原因與操作人寫進庫存流水。
+     * 只能報廢已檢查確認的損壞品（不可售扣掉待檢），超過回 `insufficient_unavailable`，變體不存在回 `variant_not_found`。
+     */
+    scrapUnavailableStock(jwt: unknown, input: unknown) {
+      return authorized(jwt, scrapUnavailableInput, input, (actor, { variantId, quantity, reason }) => scrapUnavailable(d1, { variantId, quantity, reason, actor: actor.email }, clock.now()));
+    },
+
+    /** 低庫存提醒：未停賣（含下架商品）、已設門檻且可售數量不高於門檻的變體，可售少的在前，超過上限時 `truncated` 為 true；補貨與盤損走 `adjustStock`，流水可依變體對回。 */
+    async listLowStockVariants(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectLowStockVariants(db));
+    },
+
+    /** 庫存流水（在庫數與不可售數量的每一次變動），新的在前；可依變體或訂單篩選，以 `nextBeforeId` 游標往舊的翻頁。 */
+    listStockMovements(jwt: unknown, input: unknown) {
+      return authorized(jwt, listStockMovementsInput, input, async (_actor, query) => ok(await selectStockMovements(db, query)));
+    },
+
+    /**
+     * 查找訂單：可依編號、顧客 email 片段、狀態、成立日期區間（台北時間）篩選；新的在前，一頁 20 筆，
+     * 以 `nextBeforeId` 游標往舊的翻頁（沒有下一頁為 null），舊單翻得到。
+     */
+    listOrdersForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, listOrdersInput, input, async (_actor, filter) => ok(await selectOrdersForAdmin(db, filter)));
+    },
+
+    /**
+     * 匯出一批：條件與 `listOrdersForAdmin` 相同（同一份條件、同一個排序），每批至多 500 筆，每列含付款與各流程進度彙總；
+     * 呼叫端帶回 `nextBeforeId` 取下一批，直到為 null。
+     */
+    exportOrdersForAdmin(jwt: unknown, input: unknown) {
+      return authorized(jwt, listOrdersInput, input, async (_actor, filter) => ok(await selectOrderExportBatch(db, filter)));
+    },
+
+    /** 新增客服備註（只增不改不刪），留下操作者與時間；訂單不存在回 `order_not_found`。顧客端讀不到。 */
+    addOrderNote(jwt: unknown, input: unknown) {
+      return authorized(jwt, addOrderNoteInput, input, (actor, { orderId, note }) => addOrderNote(d1, { orderId, note, actor: actor.email }, clock.now()));
+    },
+
+    /**
+     * 交運一批（Shipment）：指定訂單明細與本批數量，扣這批的實體在庫並消耗對應的已付款保留，物流單號可以不附；
+     * 含大型配送明細的批次必須帶議定時段。訂單依各明細已交運數量轉為部分出貨或已出貨，分批不追加運費。
+     * 同一冪等鍵重送回原批次（`replayed: true`），不重複扣庫與通知。
+     * 訂單不是已付款或部分出貨回 `order_not_shippable`，不存在回 `order_not_found`，數量超過未交運數量回 `shipment_quantity_exceeded`。
      */
     shipOrder(jwt: unknown, input: unknown) {
-      return authorized(jwt, shipOrderInput, input, async (actor, { orderId, trackingNumber }) => {
-        if (await markOrderShipped(d1, orderId, trackingNumber, clock.now())) {
-          console.log(JSON.stringify({ event: "order_shipped", orderId, actor: actor.email, hasTrackingNumber: trackingNumber !== null }));
-          return ok({ orderId, status: SHIPPED });
+      return authorized(jwt, shipOrderInput, input, async (actor, request) => {
+        const result = await dispatchShipment(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (result.ok) {
+          console.log(JSON.stringify({ event: "shipment_dispatched", orderId: request.orderId, shipmentId: result.data.shipmentId, actor: actor.email, replayed: result.data.replayed }));
+          // 信件本體已在交運 batch 內寫好；投遞出錯不影響交運，重送同一批時會補上首次投遞
+          await deliverNoticeSafely(db, `shipment:${result.data.shipmentId}`, clock.now());
         }
-        return fail((await orderExists(db, orderId)) ? "order_not_shippable" : "order_not_found");
+        return result;
       });
     },
 
-    /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間。 */
+    /**
+     * 記錄一筆物流回報（模擬物流）：送達、配送失敗、再次配送；進度與實際送達時間由全部回報推導（見 `recordShipmentEvent`）。
+     * 同一事件鍵重送回 `replayed: true` 並補回遺失的通知；批次不存在回 `shipment_not_found`，
+     * 發生時間早於交運或晚於現在回 `event_time_invalid`，同鍵不同內容回 `event_key_conflict`。
+     */
+    recordShipmentEvent(jwt: unknown, input: unknown) {
+      return authorized(jwt, recordShipmentEventInput, input, async (actor, request) => {
+        const result = await recordShipmentEvent(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (result.ok) {
+          console.log(JSON.stringify({ event: "shipment_event_recorded", shipmentId: request.shipmentId, eventKey: request.eventKey, kind: request.kind, actor: actor.email, replayed: result.data.replayed }));
+          // 信件本體已在同一個 batch 內寫好；投遞出錯不影響記錄，同一回報重送時會補上首次投遞
+          await deliverNoticeSafely(db, `shipment_delivered:${request.shipmentId}`, clock.now());
+          await deliverNoticeSafely(db, `shipment_delivery_failed:${request.shipmentId}:${request.eventKey}`, clock.now());
+        }
+        return result;
+      });
+    },
+
+    /**
+     * 確認某一批的部分商品遺失（模擬物流）：退受影響的商品數量（按原實付單價）與符合條件的該類原運費一次，不回補庫存、不補寄；
+     * 批次進度成為 `lost`，之後才到的物流回報只留紀錄。與退貨申請共用數量（遺失的不可再退貨，反之亦然）；已送達的批次、暫時配送失敗以外的情形不可確認。
+     * 在同一個 batch 登記這案的退款並通知，退款接續執行（`retryRefund` 同一條路徑，操作者記在嘗試紀錄上），退款失敗、被前筆阻擋或額度不足都不反轉遺失事實，留在退款待辦重試。
+     * 批次不存在回 `shipment_not_found`，已送達回 `shipment_delivered`，明細不在這一批回 `loss_line_invalid`，
+     * 數量超過可遺失的數量（含已遺失、被退貨占用）回 `loss_quantity_exceeded`，同鍵不同內容回 `loss_key_conflict`；同鍵同內容重送冪等（會再嘗試登記與執行退款）。
+     */
+    confirmShipmentLoss(jwt: unknown, input: unknown) {
+      return authorized(jwt, confirmShipmentLossInput, input, async (actor, request) => {
+        const result = await confirmShipmentLoss(d1, db, request, actor.email, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "shipment_loss_confirmed", shipmentId: request.shipmentId, lossId: result.data.lossId, actor: actor.email, replayed: result.data.replayed }));
+        await deliverNoticeSafely(db, `shipment_loss:${result.data.lossId}:confirmed`, clock.now());
+        if (result.data.refund === null) return ok({ ...result.data, refund: null });
+        const executed = await retryRefund(result.data.refund.id, actor.email);
+        return ok({ ...result.data, refund: { id: result.data.refund.id, status: executed.ok ? executed.data.status : result.data.refund.status } });
+      });
+    },
+
+    /**
+     * 登記某一批的部分商品被物流退回倉庫（模擬物流；尚未收到，不動庫存與款項）：批次進度成為 `returned`，之後才到的物流回報只留紀錄，並通知顧客。
+     * 與退貨申請、確認遺失共用數量（占用的不可再退回）；先前確認遺失的商品被物流尋回時，在明細填 `foundLostQuantity`（入庫但不再退款）。
+     * 批次不存在回 `shipment_not_found`，已送達回 `shipment_delivered`，明細不在這一批回 `return_line_invalid`，
+     * 數量超過可退回的數量（含已遺失、被退貨與別案占用，或尋回超過已遺失）回 `return_quantity_exceeded`，同鍵不同內容回 `return_key_conflict`；同鍵同內容重送冪等（會補回遺失的通知）。
+     */
+    declareShipmentReturn(jwt: unknown, input: unknown) {
+      return authorized(jwt, declareShipmentReturnInput, input, async (actor, request) => {
+        const result = await declareShipmentReturn(d1, db, request, actor.email, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "shipment_return_declared", shipmentId: request.shipmentId, returnId: result.data.returnId, actor: actor.email, replayed: result.data.replayed }));
+        await deliverNoticeSafely(db, `shipment_return:${result.data.returnId}:declared`, clock.now());
+        return result;
+      });
+    },
+
+    /**
+     * 記錄一案物流退回的收回：每筆明細填實際收到的數量與其中尋回的遺失品數量；收到實物才增加實體在庫與不可售（待檢，不可販售），一件都沒收到則結案並釋出數量。
+     * 案件不存在回 `shipment_return_not_found`，不是退回中（或內容與先前記錄不同的重送）回 `shipment_return_wrong_state`，明細對不上或超過登記數量回 `shipment_return_item_invalid`。
+     */
+    recordShipmentReturnReceipt(jwt: unknown, input: unknown) {
+      return authorized(jwt, recordShipmentReturnReceiptInput, input, async (actor, request) => {
+        const result = await recordShipmentReturnReceipt(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (result.ok) console.log(JSON.stringify({ event: "shipment_return_received", returnId: request.returnId, status: result.data.status, actor: actor.email, replayed: result.data.replayed }));
+        return result;
+      });
+    },
+
+    /**
+     * 記錄一案物流退回的檢查：良品由不可售轉可售（實體在庫不變）、損壞品留在不可售；按實際收回的數量（不含先前已退款的尋回遺失品）與原實付單價在同一個 batch 登記這案的退款並通知，
+     * 退款接續執行（`retryRefund` 同一條路徑，操作者記在嘗試紀錄上）。退款失敗、被前筆阻擋或額度不足都不反轉已發生的實物事件，退款留在退款待辦重試。
+     * 案件不存在回 `shipment_return_not_found`，不是已收回（或內容與先前記錄不同的重送）回 `shipment_return_wrong_state`，數量加不起來回 `shipment_return_item_invalid`；
+     * 同內容重送冪等（會補回遺失的通知，並再嘗試登記與執行退款）。
+     */
+    recordShipmentReturnInspection(jwt: unknown, input: unknown) {
+      return authorized(jwt, recordShipmentReturnInspectionInput, input, async (actor, request) => {
+        const result = await recordShipmentReturnInspection(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "shipment_return_inspected", returnId: request.returnId, actor: actor.email, replayed: result.data.replayed }));
+        await deliverNoticeSafely(db, `shipment_return:${request.returnId}:completed`, clock.now());
+        if (result.data.refund === null) return ok({ ...result.data, refund: null });
+        const executed = await retryRefund(result.data.refund.id, actor.email);
+        return ok({ ...result.data, refund: { id: result.data.refund.id, status: executed.ok ? executed.data.status : result.data.refund.status } });
+      });
+    },
+
+    /** 模擬信箱的投遞結果與演練控制狀態（不含信件內文與驗證連結）。 */
+    async listMailForAdmin(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectMailForAdmin(db, clock.now()));
+    },
+
+    /** 重送一封信（同一封信的新投遞）；驗證已失效的驗證信回 `message_not_resendable`，沒有已驗證地址的通知回 `no_verified_contact`。 */
+    resendMail(jwt: unknown, input: unknown) {
+      return authorized(jwt, mailMessageIdInput, input, (actor, { messageId }) => resendMessage(db, clock, actor.email, messageId));
+    },
+
+    /** 開關模擬信箱的「投遞失敗」演練：開啟後之後的每次投遞都失敗，直到關閉。 */
+    setMailDeliveryFailure(jwt: unknown, input: unknown) {
+      return authorized(jwt, setMailDeliveryFailureInput, input, (actor, { enabled }) => setDeliveryFailure(db, clock, actor.email, enabled));
+    },
+
+    /** 本地仍是 pending 的付款與它們開著的補查待辦（Cron 或管理員補查沒能確認結果）。 */
+    async listPaymentsToReconcile(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectReconcileListing(db));
+    },
+
+    /** 補查一筆付款：向閘道查證並套用結果（與 webhook 同一條套用路徑）。 */
+    reconcilePayment(jwt: unknown, input: unknown) {
+      return authorized(jwt, reconcilePaymentInput, input, (actor, { paymentId }) => reconcilePayment(paymentId, actor.email));
+    },
+
+    /**
+     * 退款待辦：所有尚未成功的退款（結果不明、明確失敗、等待與處理中），含每次嘗試的紀錄與操作者；
+     * 另列 `unregisteredCancellations`、`unregisteredReturns`、`unregisteredLosses`、`unregisteredShipmentReturns`：已核准取消、已完成檢查的退貨、已確認遺失、已完成入倉檢查的物流退回卻沒有登記退款的案件（到訂單頁「重新登記退款」）。
+     */
+    async listRefundsToHandle(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok({ ...(await selectRefundTodos(db)), unregisteredCancellations: await selectApprovedWithoutRefund(db), unregisteredReturns: await selectCompletedWithoutRefund(db), unregisteredLosses: await selectLossesWithoutRefund(db), unregisteredShipmentReturns: await selectShipmentReturnsWithoutRefund(db) });
+    },
+
+    /** 重試一筆退款：明確失敗的直接重送，結果不明的先向閘道查證再決定；操作者記在嘗試紀錄上。 */
+    retryRefund(jwt: unknown, input: unknown) {
+      return authorized(jwt, retryRefundInput, input, (actor, { refundId }) => retryRefund(refundId, actor.email));
+    },
+
+    /**
+     * 發票待辦：所有尚未開立的模擬發票（結果不明、明確失敗、待開立），含每次嘗試的紀錄與操作者；
+     * 另列 `allowances`：所有尚未折讓的義務（已成功退款、憑證待補：結果不明、明確失敗、待折讓），含每次嘗試的紀錄與原票狀態。
+     */
+    async listInvoicesToHandle(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      const pending = await selectPendingAllowances(db);
+      return ok({ ...(await selectInvoiceTodos(db)), allowances: pending.allowances, omittedAllowances: pending.omitted });
+    },
+
+    /** 補辦一張發票：失敗的直接重送，結果不明的先向發票服務查證再決定；操作者記在嘗試紀錄上，已開立的冪等回成功。 */
+    retryInvoice(jwt: unknown, input: unknown) {
+      return authorized(jwt, invoiceIdInput, input, (actor, { invoiceId }) => retryInvoice(invoiceId, actor.email));
+    },
+
+    /** 重寄一張已開立發票的憑證信：寄到顧客目前已驗證的 email，不改歷史投遞與憑證內容（見 `resendInvoiceCertificate`）。 */
+    resendInvoice(jwt: unknown, input: unknown) {
+      return authorized(jwt, invoiceIdInput, input, (actor, { invoiceId }) => resendInvoiceCertificate(db, clock, actor.email, invoiceId));
+    },
+
+    /** 補辦一筆退款的折讓（`refundId`）：失敗的直接重送，結果不明的先查證再決定；原票未開立回 `invoice_not_issued`；已折讓的冪等回成功。 */
+    retryAllowance(jwt: unknown, input: unknown) {
+      return authorized(jwt, refundIdInput, input, (actor, { refundId }) => retryAllowance(refundId, actor.email));
+    },
+
+    /** 重寄一筆已折讓的折讓通知：寄到顧客目前已驗證的 email，不改歷史投遞與信件內容（見 `resendAllowanceNotice`）。 */
+    resendAllowance(jwt: unknown, input: unknown) {
+      return authorized(jwt, refundIdInput, input, (actor, { refundId }) => resendAllowanceNotice(db, clock, actor.email, refundId));
+    },
+
+    /** 取消審核待辦：所有待審的取消申請（舊的在前）。 */
+    async listCancellationsToReview(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectCancellationsToReview(db));
+    },
+
+    /**
+     * 審核一案取消申請：核准（停止履約、釋放保留、登記並執行這一案的退款）或拒絕（恢復可交運）。
+     * 審核人、時間與備註記在申請上，並留審核通知；退款在核准之後接續執行（`retryRefund` 同一條路徑，操作者記在嘗試紀錄上），
+     * 退款失敗或被前筆阻擋都不影響已核准的取消，也不恢復出貨，退款留在退款待辦重試。
+     * 申請不存在回 `cancellation_not_found`，已做出相反決定回 `cancellation_already_decided`；同一決定重送冪等（核准重送會再嘗試登記與執行退款）。
+     */
+    decideCancellation(jwt: unknown, input: unknown) {
+      return authorized(jwt, decideCancellationInput, input, async (actor, request) => {
+        const result = await decideCancellation(d1, { ...request, actor: actor.email }, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "cancellation_decided", requestId: request.requestId, decision: result.data.decision, actor: actor.email, replayed: result.data.replayed }));
+        // 信件本體已在審核 batch 內寫好；投遞出錯不影響審核，重送同一決定時會補上首次投遞
+        await deliverNoticeSafely(db, `cancellation:${request.requestId}:${result.data.decision}`, clock.now());
+        if (result.data.refund === null) return ok({ ...result.data, refund: null });
+        // 退款由獨立的退款流程執行（同單逐筆、結果不明先查證）；沒執行成功只是留待重試，不改變取消結果
+        const executed = await retryRefund(result.data.refund.id, actor.email);
+        return ok({ ...result.data, refund: { id: result.data.refund.id, status: executed.ok ? executed.data.status : result.data.refund.status } });
+      });
+    },
+
+    /** 退貨待辦：待審、已核准待收回、已收回待檢查的申請（舊的在前）。 */
+    async listReturnsToHandle(jwt: unknown) {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      return ok(await selectReturnsToHandle(db));
+    },
+
+    /**
+     * 審核一案退貨申請：核准（等待收回）或拒絕（數量釋出）；審核人、時間與備註記在申請上，並留審核通知。不動庫存與款項。
+     * 申請不存在回 `return_not_found`，已做出相反決定回 `return_already_decided`；同一決定重送冪等。
+     */
+    decideReturn(jwt: unknown, input: unknown) {
+      return authorized(jwt, decideReturnInput, input, async (actor, request) => {
+        const result = await decideReturn(d1, { ...request, actor: actor.email }, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "return_decided", requestId: request.requestId, decision: result.data.decision, actor: actor.email, replayed: result.data.replayed }));
+        await deliverNoticeSafely(db, `return:${request.requestId}:${result.data.decision}`, clock.now());
+        return result;
+      });
+    },
+
+    /**
+     * 記錄一案退貨的收回：每筆明細填實際收到的數量；收到實物才增加實體在庫與不可售（待檢，不可販售），一件都沒收到則結案並釋出數量。
+     * 申請不存在回 `return_not_found`，不是已核准（或內容與先前記錄不同的重送）回 `return_wrong_state`，明細對不上或超過申請數量回 `return_item_invalid`。
+     */
+    recordReturnReceipt(jwt: unknown, input: unknown) {
+      return authorized(jwt, recordReturnReceiptInput, input, async (actor, request) => {
+        const result = await recordReturnReceipt(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (result.ok) console.log(JSON.stringify({ event: "return_received", requestId: request.requestId, status: result.data.status, actor: actor.email, replayed: result.data.replayed }));
+        return result;
+      });
+    },
+
+    /**
+     * 記錄一案退貨的檢查：良品由不可售轉可售（實體在庫不變）、損壞品留在不可售；按實際收到數量與原實付單價在同一個 batch 登記這案的退款並通知，
+     * 退款接續執行（`retryRefund` 同一條路徑，操作者記在嘗試紀錄上）。退款失敗、被前筆阻擋或額度不足都不反轉已發生的實物事件，退款留在退款待辦重試。
+     * 申請不存在回 `return_not_found`，不是已收回（或內容與先前記錄不同的重送）回 `return_wrong_state`，數量加不起來回 `return_item_invalid`；
+     * 同內容重送冪等（會再嘗試登記與執行退款）。
+     */
+    recordReturnInspection(jwt: unknown, input: unknown) {
+      return authorized(jwt, recordReturnInspectionInput, input, async (actor, request) => {
+        const result = await recordReturnInspection(d1, db, { ...request, actor: actor.email }, clock.now());
+        if (!result.ok) return result;
+        console.log(JSON.stringify({ event: "return_inspected", requestId: request.requestId, actor: actor.email, replayed: result.data.replayed }));
+        await deliverNoticeSafely(db, `return:${request.requestId}:completed`, clock.now());
+        if (result.data.refund === null) return ok({ ...result.data, refund: null });
+        const executed = await retryRefund(result.data.refund.id, actor.email);
+        return ok({ ...result.data, refund: { id: result.data.refund.id, status: executed.ok ? executed.data.status : result.data.refund.status } });
+      });
+    },
+
+    /** 單張訂單的明細：訂單明細快照、收件資訊、所有付款嘗試、物流單號與出貨時間，以及由各域推導的事件時間線、進度與待辦入口。 */
     getOrderForAdmin(jwt: unknown, input: unknown) {
       return authorized(jwt, orderIdInput, input, async (_actor, { orderId }) => {
         const order = await selectOrderForAdmin(db, orderId);
         if (!order) return fail("order_not_found");
-        return ok({ ...order, payments: await selectOrderPaymentSummaries(db, clock.now(), orderId) });
+        const detail = {
+          payments: await selectOrderPaymentSummaries(db, clock.now(), orderId),
+          refunds: await selectOrderRefunds(db, orderId),
+          invoices: await selectOrderInvoices(db, orderId),
+          cancellations: await selectOrderCancellations(db, orderId),
+          returns: await selectOrderReturns(db, orderId),
+          losses: await selectOrderLosses(db, orderId),
+          shipmentReturns: await selectOrderShipmentReturns(db, orderId),
+        };
+        // 時間線與待辦由上面各域的檢視推導，不另存
+        const timeline = buildAdminTimeline({ order, ...detail, facts: await selectTimelineFacts(db, orderId, { loadShipmentEvents: false }) });
+        return ok({ ...order, ...detail, notes: await selectOrderNotes(db, orderId), timeline });
       });
     },
   };

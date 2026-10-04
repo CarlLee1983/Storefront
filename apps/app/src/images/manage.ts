@@ -50,15 +50,17 @@ export async function deleteProductImage(d1: D1Database, bucket: ProductImageBuc
         SELECT i.id, i.product_id, i.variants FROM product_images i JOIN products p ON p.id = i.product_id
         WHERE i.product_id = ? AND i.id = ? AND (p.listed = 0 OR (SELECT count(*) FROM product_images WHERE product_id = p.id) > 1)
         ON CONFLICT(id) DO NOTHING`).bind(id, imageId),
+      // 變體的 image_id 沒有外鍵，由此句維持不留懸空引用；與下一句同一個 batch，只在這張圖確定要刪（已進 outbox）時清
+      d1.prepare("UPDATE product_variants SET image_id = NULL WHERE image_id = ? AND product_id = ? AND image_id IN (SELECT id FROM product_image_deletions WHERE product_id = ?)").bind(imageId, id, id),
       d1.prepare("DELETE FROM product_images WHERE product_id = ? AND id = ? AND id IN (SELECT id FROM product_image_deletions WHERE product_id = ?)").bind(id, imageId, id),
       d1.prepare(`WITH ranked AS MATERIALIZED (SELECT id, row_number() OVER (ORDER BY position, id) - 1 AS position FROM product_images WHERE product_id = ?)
         UPDATE product_images SET position = (SELECT position FROM ranked WHERE ranked.id = product_images.id) WHERE product_id = ?`).bind(id, id),
       d1.prepare("SELECT id, product_id, variants FROM product_image_deletions WHERE product_id = ? AND id = ?").bind(id, imageId),
       d1.prepare("SELECT id, listed, (SELECT count(*) FROM product_images WHERE product_id = products.id AND id = ?) AS has_image FROM products WHERE id = ?").bind(imageId, id),
     ]);
-    const row = results[3]!.results[0] as Deletion | undefined;
+    const row = results[4]!.results[0] as Deletion | undefined;
     if (!row) {
-      const product = results[4]!.results[0] as { listed: number; has_image: number } | undefined;
+      const product = results[5]!.results[0] as { listed: number; has_image: number } | undefined;
       if (!product) return fail("product_not_found");
       if (product.listed && product.has_image) return fail("last_product_image");
       // A retry after successful deletion (or completed Cron cleanup) is harmless.

@@ -8,11 +8,14 @@
     "./access": "./src/admin/access.ts",
     "./dev-keys": "./scripts/dev-keys.ts",
     "./payments-shared": "./src/payments/shared.ts",
+    "./invoices-shared": "./src/invoices/shared.ts",
     "./category-slug": "./src/categories/slug.ts",
     "./catalog-listing": "./src/catalog/listing.ts",
     "./product-images": "./src/product-images.ts",
     "./catalog-types": "./src/catalog/types.ts",
-    "./orders-input": "./src/orders/input.ts"
+    "./orders-input": "./src/orders/input.ts",
+    "./order-timeline": "./src/orders/timeline.ts",
+    "./shipping-types": "./src/shipping/types.ts"
   },
   "scripts": {
     "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

@@ -3,13 +3,13 @@ import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { createAdminService } from "../src/admin/service";
 import { systemClock } from "../src/shared/clock";
-import { mintAccessJwt } from "./access";
+import { mintAccessJwt, adminDeps } from "./access";
 import { imageVariants } from "./images";
 
 it("0007→0008 preserves full galleries, image keys and upload identities while enabling reorder", async () => {
   const d1 = env.MIGRATION_DB;
   await applyD1Migrations(d1, env.TEST_MIGRATIONS.slice(0, 8));
-  const service = createAdminService(d1, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, env.PRODUCT_IMAGES);
+  const service = createAdminService(d1, systemClock, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwksJson: env.ACCESS_JWKS_JSON }, adminDeps(env.PRODUCT_IMAGES));
   const jwt = await mintAccessJwt();
   // 0008 還沒有分類欄位，現行的 App 程式碼寫不進這個舊結構，所以商品以 SQL 直接安排
   const created = await d1.prepare("INSERT INTO products (name, description, price_twd, on_hand) VALUES ('既有完整圖庫', '保留', 200, 5) RETURNING id").first<{ id: number }>();
@@ -29,14 +29,15 @@ it("0007→0008 preserves full galleries, image keys and upload identities while
   const before = {
     ok: true,
     data: {
-      id, name: row!.name, description: row!.description, priceTwd: row!.price_twd, compareAtPriceTwd: null,
-      onHand: row!.on_hand, reserved: 0, available: row!.on_hand,
+      id, name: row!.name, description: row!.description, defaultVariantId: expect.any(Number), priceTwd: row!.price_twd, compareAtPriceTwd: null,
+      onHand: row!.on_hand, unavailable: 0, reserved: 0, available: row!.on_hand,
+      optionNames: [], variants: [{ id: expect.any(Number), isDefault: true, optionValues: [], priceTwd: row!.price_twd, compareAtPriceTwd: null, onHand: row!.on_hand, unavailable: 0, scrappable: 0, reserved: 0, available: row!.on_hand, discontinued: false, imageId: null, deliveryType: "standard", lowStockThreshold: null }],
       cover: images[0], images, listed: true, featured: false, category: null,
     },
   };
   await applyD1Migrations(d1, env.TEST_MIGRATIONS);
   // 0009 讓沒有分類的上架商品下架，其餘（封面、圖庫、庫存、內容）完全不變
-  expect(await service.getProductForAdmin(jwt, { id })).toEqual({ ...before, data: { ...before.data, listed: false, category: null } });
+  expect(await service.getProductForAdmin(jwt, { id })).toEqual({ ...before, data: { ...before.data, listed: false, category: null, dimensions: "", material: "", care: "" } });
   for (const upload of uploads) expect(await service.addProductImage(jwt, upload.input)).toEqual(upload.result);
   expect((await d1.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
   expect((await service.reorderProductImages(jwt, { id, imageIds: [...uploads].reverse().map(upload => upload.result.data.image.id) })).ok).toBe(true);

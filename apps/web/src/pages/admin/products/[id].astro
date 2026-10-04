@@ -1,8 +1,10 @@
 ---
 import { env } from "cloudflare:workers";
+import { DELIVERY_TYPE_LABELS, DELIVERY_TYPES } from "@storefront/app/shipping-types";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeFailure, type Failure } from "../../../admin/failure";
 import { parseProductId, productUpdateFormToInput } from "../../../admin/product-form";
+import { dispatchVariantForm, type VariantFormDispatch } from "../../../admin/variant-form";
 import { formToRecord } from "../../../shared/form-values";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 
@@ -14,14 +16,44 @@ const id = parseProductId(Astro.params.id);
 let failure: Failure | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
+/** 變體管理表單失敗時，錯誤訊息顯示在哪個表單上：選項維度（options）、新增變體（create）或某張變體卡片（variant-編號）。 */
+let failedTarget = "";
+
+function callVariantRpc(dispatch: Exclude<VariantFormDispatch, { kind: "invalid" }>) {
+  switch (dispatch.kind) {
+    case "set-options": return env.APP.setProductOptions(jwt, dispatch.input);
+    case "create-variant": return env.APP.createVariant(jwt, dispatch.input);
+    case "update-variant": return env.APP.updateVariant(jwt, dispatch.input);
+    case "set-low-stock": return env.APP.setLowStockThreshold(jwt, dispatch.input);
+    case "discontinue": return env.APP.setVariantDiscontinued(jwt, dispatch.input);
+    case "adjust-stock": return env.APP.adjustStock(jwt, dispatch.input);
+  }
+}
 
 if (id !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   submitted = formToRecord(form);
-  const result = await env.APP.updateProduct(jwt, productUpdateFormToInput(form, id));
-  if (result.ok) return Astro.redirect("/admin?saved=updated", 303);
-  if (result.reason === "unauthorized") unauthorized = true;
-  else failure = describeFailure(result, "儲存商品失敗，請稍後再試");
+  if (form.has("intent")) {
+    // 選項與變體管理：每個表單帶 intent，被竄改或不認得的表單不呼叫任何 RPC
+    const dispatch = dispatchVariantForm(form, id);
+    if (dispatch.kind === "invalid") {
+      Astro.response.status = 400;
+      failure = describeFailure({ reason: "invalid_input" }, "操作失敗，請稍後再試");
+    } else {
+      const result = await callVariantRpc(dispatch);
+      if (result.ok) return Astro.redirect(`/admin/products/${id}?saved=variants#variants-heading`, 303);
+      if (result.reason === "unauthorized") unauthorized = true;
+      else {
+        failure = describeFailure(result, "操作失敗，請稍後再試");
+        failedTarget = dispatch.kind === "set-options" ? "options" : dispatch.kind === "create-variant" ? "create" : `variant-${dispatch.input.variantId}`;
+      }
+    }
+  } else {
+    const result = await env.APP.updateProduct(jwt, productUpdateFormToInput(form, id));
+    if (result.ok) return Astro.redirect("/admin?saved=updated", 303);
+    if (result.reason === "unauthorized") unauthorized = true;
+    else failure = describeFailure(result, "儲存商品失敗，請稍後再試");
+  }
 }
 
 const categories = id === null || unauthorized ? null : await env.APP.listCategoriesForAdmin(jwt);
@@ -34,6 +66,9 @@ const values = {
   description: product?.description ?? "",
   priceTwd: String(product?.priceTwd ?? ""),
   compareAtPriceTwd: String(product?.compareAtPriceTwd ?? ""),
+  dimensions: product?.dimensions ?? "",
+  material: product?.material ?? "",
+  care: product?.care ?? "",
   categoryId: product?.category ? String(product.category.id) : "",
   ...submitted,
 };
@@ -48,7 +83,8 @@ const values = {
     ) : (
       <>
         {Astro.url.searchParams.get("saved") === "created" && <p role="status">已新增商品。</p>}
-        {failure && <p class="error" role="alert">{failure.message}</p>}
+        {Astro.url.searchParams.get("saved") === "variants" && <p role="status">已儲存選項與變體。</p>}
+        {failure && failedTarget === "" && <p class="error" role="alert">{failure.message}</p>}
         <div class="admin-card-section">
           <h2>基本資訊</h2>
           <form method="post">
@@ -62,6 +98,21 @@ const values = {
               <textarea name="description" rows="3">{values.description}</textarea>
               {failure?.fields.description?.map((m) => <span class="error">{m}</span>)}
             </label>
+            <label>
+              尺寸（選填）
+              <textarea name="dimensions" rows="2" maxlength="2000">{values.dimensions}</textarea>
+              {failure?.fields.dimensions?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              材質（選填）
+              <textarea name="material" rows="2" maxlength="2000">{values.material}</textarea>
+              {failure?.fields.material?.map((m) => <span class="error">{m}</span>)}
+            </label>
+            <label>
+              保養（選填）
+              <textarea name="care" rows="2" maxlength="2000">{values.care}</textarea>
+              {failure?.fields.care?.map((m) => <span class="error">{m}</span>)}
+            </label>
             <div class="admin-form-grid">
               <label>
                 單價（新台幣整數元）
@@ -74,7 +125,17 @@ const values = {
                 {failure?.fields.compareAtPriceTwd?.map((m) => <span class="error">{m}</span>)}
               </label>
             </div>
-            <p id="compare-at-hint"><small>填寫後商品以特價呈現，必須高於售價；清空即結束特價。</small></p>
+            {product && product.optionNames.length === 0 && (
+              <label>
+                配送類型
+                <select name="deliveryType" aria-describedby="delivery-type-hint">
+                  {DELIVERY_TYPES.map((type) => <option value={type} selected={(product.variants.find((variant) => variant.isDefault)?.deliveryType ?? "standard") === type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+                </select>
+                {failure?.fields.deliveryType?.map((m) => <span class="error">{m}</span>)}
+              </label>
+            )}
+            <p id="delivery-type-hint"><small>配送類型決定結帳時的運費，只影響之後的訂單。{product && product.optionNames.length > 0 && "有選項的商品在下方「選項與變體」逐一設定各變體的配送類型。"}</small></p>
+            <p id="compare-at-hint"><small>填寫後商品以特價呈現，必須高於售價；清空即結束特價。{product && product.optionNames.length > 0 && "有選項的商品，這裡的單價與原價是預設變體的，其他變體在下方「選項與變體」修改。"}</small></p>
             {/* 標籤文字用 for 關聯：巢狀在 label 裡的話，所有選項文字都會變成它的名稱 */}
             <label for="category-id">分類</label>
             <select id="category-id" name="categoryId">
@@ -89,6 +150,95 @@ const values = {
             </div>
           </form>
         </div>
+        {product && <section aria-labelledby="variants-heading" class="admin-card-section" id="variants">
+          <h2 id="variants-heading">選項與變體</h2>
+          <p>最多兩個選項維度（例如顏色、尺寸），只建立實際販售的組合；每個變體有自己的售價、原價與庫存。沒有選項的商品只有一個預設變體，價格在上方「基本資訊」修改。</p>
+          <form method="post" class="variant-form" aria-label="選項維度">
+            <input type="hidden" name="intent" value="set-options" />
+            <div class="admin-form-grid">
+              <label>選項維度 1 名稱<input name="optionName1" value={product.optionNames[0] ?? ""} maxlength="30" placeholder="例如：顏色" /></label>
+              <label>選項維度 2 名稱<input name="optionName2" value={product.optionNames[1] ?? ""} maxlength="30" placeholder="例如：尺寸（選填）" /></label>
+              {product.variants.length === 1 && <>
+                <label>預設變體的選項值 1<input name="defaultValue1" value={product.variants[0]?.optionValues[0] ?? ""} maxlength="50" aria-describedby="options-hint" /></label>
+                <label>預設變體的選項值 2<input name="defaultValue2" value={product.variants[0]?.optionValues[1] ?? ""} maxlength="50" aria-describedby="options-hint" /></label>
+              </>}
+            </div>
+            <p id="options-hint"><small>{product.variants.length === 1 ? "目前只有預設變體，可以增減維度；有幾個維度就填幾個選項值，沒有選項請把名稱清空。" : "已有多個變體，只能修改維度名稱，不能增減維度的個數。"}</small></p>
+            {failure && failedTarget === "options" && <p class="error" role="alert">{failure.message}</p>}
+            <button type="submit" class="button-primary">套用選項維度</button>
+          </form>
+          {product.optionNames.length === 0 && product.variants[0] && <form method="post" class="variant-form" aria-label="低庫存門檻" id={`variant-${product.variants[0].id}`}>
+            {failure && failedTarget === `variant-${product.variants[0].id}` && <p class="error" role="alert">{failure.message}{Object.values(failure.fields).flat().map((m) => `：${m}`)}</p>}
+            <input type="hidden" name="intent" value="set-low-stock" />
+            <input type="hidden" name="variantId" value={product.variants[0].id} />
+            <label>低庫存門檻（選填）<input name="lowStockThreshold" type="number" min="0" step="1" value={product.variants[0].lowStockThreshold ?? ""} aria-describedby="low-stock-hint" /></label>
+            <p id="low-stock-hint"><small>可售數量降到這個數量以下（含）時，會列在「低庫存提醒」；留白表示不提醒。</small></p>
+            <button type="submit" class="btn-action">儲存門檻</button>
+          </form>}
+          {product.optionNames.length > 0 && <>
+            <ul class="variant-list">
+              {product.variants.map((variant) => <li class:list={["variant-card", { "is-discontinued": variant.discontinued }]} id={`variant-${variant.id}`}>
+                <h3>{variant.optionValues.join(" / ")}{variant.isDefault && <span class="status-badge">預設</span>}{variant.discontinued && <span class="status-badge is-unlisted">已停賣</span>}</h3>
+                {failure && failedTarget === `variant-${variant.id}` && <p class="error" role="alert">{failure.message}{Object.values(failure.fields).flat().map((m) => `：${m}`)}</p>}
+                <form method="post" class="variant-form" aria-label={`修改變體：${variant.optionValues.join(" / ")}`}>
+                  <input type="hidden" name="intent" value="update-variant" />
+                  <input type="hidden" name="variantId" value={variant.id} />
+                  <div class="admin-form-grid">
+                    {product.optionNames.map((optionName, index) => <label>{optionName}<input name={`value${index + 1}`} value={variant.optionValues[index] ?? ""} maxlength="50" required /></label>)}
+                    <label>單價（新台幣整數元）<input name="priceTwd" type="number" min="1" step="1" value={variant.priceTwd} required /></label>
+                    <label>原價（選填）<input name="compareAtPriceTwd" type="number" min="1" step="1" value={variant.compareAtPriceTwd ?? ""} /></label>
+                    <label>配送類型
+                      <select name="deliveryType">
+                        {DELIVERY_TYPES.map((type) => <option value={type} selected={variant.deliveryType === type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+                      </select>
+                    </label>
+                    <label>低庫存門檻（選填）<input name="lowStockThreshold" type="number" min="0" step="1" value={variant.lowStockThreshold ?? ""} /></label>
+                    <label>選取時顯示的圖片
+                      <select name="imageId">
+                        <option value="" selected={variant.imageId === null}>不指定</option>
+                        {product.images.map((image, index) => <option value={image.id} selected={variant.imageId === image.id}>{index === 0 ? "封面（商品圖片 1）" : `商品圖片 ${index + 1}`}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <button type="submit" class="btn-action">更新變體</button>
+                </form>
+                <p class="variant-stock">在庫 {variant.onHand}，不可售 {variant.unavailable}，保留 {variant.reserved}，可售 {variant.available}{variant.lowStockThreshold !== null && !variant.discontinued && variant.available <= variant.lowStockThreshold && <> <strong class="error">（低庫存：可售已不高於門檻 {variant.lowStockThreshold}）</strong></>}</p>
+                <div class="admin-actions">
+                  <form method="post" class="inline inline-stock-adjust">
+                    <input type="hidden" name="intent" value="adjust-variant-stock" />
+                    <input type="hidden" name="variantId" value={variant.id} />
+                    <input name="delta" type="text" inputmode="numeric" pattern="[+-]?\d+" placeholder="±增減" aria-label={`${variant.optionValues.join(" / ")}的庫存增減量`} required />
+                    <input name="reason" type="text" maxlength="200" placeholder="原因" aria-label={`${variant.optionValues.join(" / ")}的庫存調整原因`} required />
+                    <button type="submit" class="btn-action">調整庫存</button>
+                  </form>
+                  <form method="post" class="inline">
+                    <input type="hidden" name="intent" value={variant.discontinued ? "resume-variant" : "discontinue-variant"} />
+                    <input type="hidden" name="variantId" value={variant.id} />
+                    <button type="submit" class="btn-action">{variant.discontinued ? "恢復販售" : "停賣"}</button>
+                  </form>
+                </div>
+              </li>)}
+            </ul>
+            <form method="post" class="variant-form" aria-label="新增變體">
+              <h3>新增變體</h3>
+              {failure && failedTarget === "create" && <p class="error" role="alert">{failure.message}{Object.values(failure.fields).flat().map((m) => `：${m}`)}</p>}
+              <input type="hidden" name="intent" value="create-variant" />
+              <div class="admin-form-grid">
+                {product.optionNames.map((optionName, index) => <label>{optionName}<input name={`value${index + 1}`} maxlength="50" required /></label>)}
+                <label>單價（新台幣整數元）<input name="priceTwd" type="number" min="1" step="1" required /></label>
+                <label>原價（選填）<input name="compareAtPriceTwd" type="number" min="1" step="1" /></label>
+                <label>配送類型
+                  <select name="deliveryType">
+                    {DELIVERY_TYPES.map((type) => <option value={type}>{DELIVERY_TYPE_LABELS[type]}</option>)}
+                  </select>
+                </label>
+                <label>低庫存門檻（選填）<input name="lowStockThreshold" type="number" min="0" step="1" /></label>
+              </div>
+              <p><small>低庫存門檻：未停賣的變體可售數量降到這個數量以下（含）時，會列在「低庫存提醒」；留白表示不提醒。配送類型決定結帳時的運費，只影響之後的訂單。新變體的在庫數從 0 開始，建立後在變體上調整庫存。停賣的變體不再接受新購買，但歷史訂單與庫存紀錄仍保留。</small></p>
+              <button type="submit" class="button-primary">新增變體</button>
+            </form>
+          </>}
+        </section>}
         <section aria-labelledby="image-heading" class="admin-card-section">
           <h2 id="image-heading">商品圖片</h2>
           <p>先上傳商品圖片才能上架。每件商品最多 8 張，第一張是封面。</p>
@@ -114,6 +264,14 @@ const values = {
     )
   }
 </AdminLayout>
+<style>
+  .variant-list { list-style: none; margin: var(--space-6) 0; padding: 0; display: grid; gap: var(--space-4); }
+  .variant-card { padding: var(--space-4); background: var(--color-panel); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .variant-card.is-discontinued { border-style: dashed; }
+  .variant-card h3, .variant-form h3 { margin: 0 0 var(--space-3); font-size: var(--text-base); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .variant-form { display: grid; gap: var(--space-3); }
+  .variant-stock { margin: var(--space-3) 0; font-size: var(--text-sm); color: var(--color-muted); }
+</style>
 
 <script>
   import { errorMessage, readResult, uploadImage } from "../../../images/client";

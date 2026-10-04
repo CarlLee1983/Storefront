@@ -1,11 +1,12 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { gotoOrderList, gotoProductList } from "../harness/admin-list";
 import { assignCategory, createCategory } from "../harness/admin-categories";
 import { featureProduct } from "../harness/admin-featured";
 import { seedListedProductsInCategory } from "../harness/admin-seed";
 import { BASE_URL, GATEWAY_API_KEY, GATEWAY_URL, MEMBER } from "../harness/constants";
 import { memberSessionCookie } from "../harness/session-cookie";
+import { analyzeWhenSettled } from "../harness/axe";
 
 const PRODUCT = { name: "E2E 測試商品", description: "E2E 流程用的商品", priceTwd: "1200", compareAtPriceTwd: "1500" };
 /** 主流程自己的分類。名稱刻意很短，導覽列才不會換行。 */
@@ -43,7 +44,7 @@ async function expectSaleCard(card: Locator) {
 
 async function audit(page: Page, testInfo: TestInfo, name: string) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations, name).toEqual([]);
   await testInfo.attach(name, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 }
 
@@ -102,6 +103,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   const productRow = admin.getByRole("row", { name: new RegExp(PRODUCT.name) });
   await productRow.getByLabel(`${PRODUCT.name}的庫存增減量`).fill("+5");
+  await productRow.getByLabel(`${PRODUCT.name}的庫存調整原因`).fill("E2E 補貨");
   await productRow.getByRole("button", { name: "調整庫存" }).click();
   await expect(admin.getByRole("status")).toHaveText("已調整庫存。");
   await expect(productRow).toContainText("已下架");
@@ -151,8 +153,9 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await testInfo.attach("admin-image-upload", { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
   // 儲存原價後回到商品管理
   await admin.getByLabel("原價（選填）").fill(PRODUCT.compareAtPriceTwd);
-  await admin.getByRole("button", { name: "儲存", exact: true }).click();
+  await admin.getByRole("button", { name: "儲存變更", exact: true }).click();
   await expect(admin.getByRole("status")).toHaveText("已儲存商品。");
+  await gotoProductList(admin, PRODUCT.name);
   await admin.getByRole("row", { name: new RegExp(PRODUCT.name) }).getByRole("button", { name: "重新上架" }).click();
   await expect(admin.getByRole("row", { name: new RegExp(PRODUCT.name) })).toContainText("上架中");
   await featureProduct(admin, PRODUCT.name);
@@ -286,8 +289,8 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await page.goto("/cart");
   await expect(page.getByRole("listitem").filter({ hasText: PRODUCT.name })).toBeVisible();
   const cartSummary = page.getByRole("complementary").filter({ hasText: "訂單摘要" });
-  await expect(cartSummary).toContainText(/總金額\s*NT\$ 1,200/);
-  for (const text of ["新台幣", "含稅", "免運"]) await expect(cartSummary).toContainText(text);
+  await expect(cartSummary).toContainText(/商品合計\s*NT\$ 1,200/);
+  for (const text of ["新台幣", "含稅", "未含運費", "結帳時依配送類型計算"]) await expect(cartSummary).toContainText(text);
   await expect(page.getByRole("img", { name: PRODUCT.name, exact: true })).toHaveAttribute("src", coverSrc);
   await audit(page, testInfo, "populated-cart-mobile");
   await page.getByRole("link", { name: "前往結帳" }).click();
@@ -298,6 +301,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await page.getByLabel("收件地址").fill("台北市中正區（E2E 示意地址）");
   await expect(page.locator("#checkout-lines .cart-cover")).toHaveAttribute("aria-hidden", "true");
   await audit(page, testInfo, "populated-checkout-mobile");
+  await page.getByLabel(/我確認配送地點位於台灣本島/).check();
   await page.getByRole("button", { name: "送出訂單" }).click();
 
   await expect(page).toHaveURL(/\/orders\/\d+\?placed=1$/);
@@ -305,7 +309,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   const orderId = orderPath.split("/").pop()!;
   await expect(page.getByText("訂單狀態：待付款")).toBeVisible();
 
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
   // 9. 前往付款 → 模擬閘道付款頁 → 成功＋立即回呼 → 導回訂單頁已付款
   await page.getByRole("button", { name: "前往付款" }).click();
@@ -331,10 +335,10 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await expect(paymentSection).toContainText("payment.succeeded");
   await expect(paymentSection).toContainText("HTTP 200");
 
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect((await analyzeWhenSettled(page)).violations).toEqual([]);
 
   // 10. 管理員在 /admin/orders 看到已付款 → 明細 → 出貨
-  await admin.goto("/admin/orders");
+  await gotoOrderList(admin, orderId);
   const orderRow = admin.getByRole("row", { name: new RegExp(`#${orderId}\\b`) });
   await expect(orderRow).toContainText(MEMBER.email);
   await expect(orderRow).toContainText("已付款");
@@ -342,8 +346,8 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   await expect(admin).toHaveURL(`${BASE_URL}/admin/orders/${orderId}`);
   await admin.getByLabel("物流單號（可留空）").fill(TRACKING_NUMBER);
-  await admin.getByRole("button", { name: "標為已出貨" }).click();
-  await expect(admin.getByRole("status")).toHaveText("已標為已出貨。");
+  await admin.getByRole("button", { name: "確認交運這一批" }).click();
+  await expect(admin.getByRole("status")).toHaveText("已記錄這一批出貨。");
   await expect(admin.getByText(`物流單號：${TRACKING_NUMBER}`)).toBeVisible();
 
   // 11. 顧客訂單列表與詳情都顯示目前封面、已出貨狀態及物流單號
@@ -359,7 +363,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   for (const width of [320, 375, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await testInfo.attach(`order-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   }
   await page.setViewportSize({ width: 390, height: 844 });

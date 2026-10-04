@@ -1,9 +1,11 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { fail, ok, type Unauthorized } from "../shared/result";
 import { orderIdInput } from "../orders/input";
-import type { OrderStatus } from "../orders/schema";
+import { orders, type OrderStatus } from "../orders/schema";
+import type { PaymentStatus } from "./schema";
 import { applyPaymentResultInput, confirmPaymentInput } from "./input";
 import { diagnoseStart } from "./diagnosis";
 import { GatewayError, type GatewayPayment, type PaymentGateway } from "./gateway";
@@ -16,12 +18,30 @@ import {
   selectHighWaterMark,
   selectPaymentAndOrderStatus,
   selectPaymentByGatewayId,
-  recordRefundResult,
   selectPendingPayments,
 } from "./queries";
+import { deliverNoticeSafely } from "../contact/notify";
+import type { InvoiceService } from "../invoices/service";
 import { paymentExpiresAt } from "../orders/payment-deadline";
-import { refundReasonFor } from "./refund";
-import type { PaymentEvent } from "./shared";
+import { isExplicitRefundFailure, refundReasonFor } from "./refund";
+import {
+  actionFor,
+  claimRefund,
+  hasOtherUncertainRefund,
+  recordRefundAttempt,
+  registerPaymentRefund,
+  selectRefundToRun,
+  type RefundToRun,
+} from "./refunds";
+import { markReconciled, paymentExists, RECONCILE_BUDGET_MS, recordReconcileIssue, resolveReconcileIssue, selectDuePayments, selectPendingPaymentById, type PaymentToReconcile } from "./reconcile";
+import type { PaymentEvent, ReconcileIssueReason, RefundAttemptAction, RefundStatus } from "./shared";
+
+/** 一筆付款補查的結果：套用了閘道的終局結果、閘道端已失效、閘道說還在等待，或沒能確認結果（記為待辦）。 */
+export type ReconcileOutcome =
+  | { outcome: "settled"; paymentStatus: PaymentStatus; orderStatus: OrderStatus }
+  | { outcome: "expired" }
+  | { outcome: "waiting" }
+  | { outcome: "issue"; reason: ReconcileIssueReason };
 
 /** 回傳顧客編號；沒有有效 session 回 null。 */
 export type AuthenticateCustomer = (cookie: string) => Promise<string | null>;
@@ -36,6 +56,7 @@ export function createPaymentService(
   authenticate: AuthenticateCustomer,
   gateway: PaymentGateway | null,
   webOrigin: string,
+  invoices: Pick<InvoiceService, "issueForPayment" | "allowForRefund">,
 ) {
   const db = drizzle(d1);
   const unauthorized: Unauthorized = { ok: false, reason: "unauthorized" };
@@ -50,61 +71,136 @@ export function createPaymentService(
     console.error(JSON.stringify({ event: "payment_gateway_failed", operation, code: error.code, status: error.status }));
   }
 
-  /** 閘道回的金額與商家參照必須與本站記錄一致；不一致記一行 log。 */
-  function gatewayResultMatches(queried: GatewayPayment, payment: { amountTwd: number }, orderId: number): boolean {
-    if (queried.amountTwd === payment.amountTwd && queried.merchantReference === String(orderId)) return true;
+  /** 閘道回的付款 ID、金額與商家參照必須與本站記錄一致；不一致記一行 log。 */
+  function gatewayResultMatches(queried: GatewayPayment, payment: { gatewayPaymentId: string; amountTwd: number }, orderId: number): boolean {
+    if (queried.paymentId === payment.gatewayPaymentId && queried.amountTwd === payment.amountTwd && queried.merchantReference === String(orderId)) return true;
     console.error(JSON.stringify({ event: "payment_gateway_mismatch", orderId, gatewayPaymentId: queried.paymentId }));
     return false;
   }
 
   /**
-   * 付款成功、但訂單沒有因它轉為已付款時的退款（原因見 `refundReasonFor`）。`orderStatus` 是套用的 batch 當下讀到的訂單狀態。
-   * 只會由「搶到事件、且這次呼叫讓付款轉為成功」的那一次呼叫進來，所以事件重送不會重複退款。
-   * 閘道退款在 batch 之外呼叫，結果記在付款上：成功 → refunded，失敗 → refund_failed（連同原因與時間）。
-   * 失敗只記錄與結構化 log，不自動重試，也沒有手動退款的操作；後台訂單的「需要處理」會標出 refund_failed 的付款（閘道退款是冪等的，
-   * 之後要補退款時再呼叫同一個閘道操作是安全的）。
+   * 執行（或重試）一筆退款，首次退款與管理員重試共用；`actor` 是 `system` 或管理員 email，記在每次嘗試上。
+   * 閘道退款以退款紀錄的 `gateway_refund_id` 為冪等鍵，所以重送不會多退；流程（ADR 0007）：
+   * 1. 搶執行權（`claimRefund`）：同張訂單一次最多一筆在送出，且同單有「結果不明」的退款時其他筆不能開始（`refund_blocked`）。
+   * 2. 結果不明（或程序中斷而租約過期）的退款先向閘道查證，不盲目重送：閘道說已成功就記成功；說失敗或從未收過，才確定沒退成，接著送出；查證本身失敗仍是不明。
+   * 3. 送出：成功記成功；閘道明確拒絕記失敗（保留額度、列待辦、後筆可前進）；連不上、逾時、回應異常記不明。
+   * 每次嘗試與狀態在同一個 batch 寫入，成功時退款通知信也同一個 batch（outbox）。
+   * 沒有閘道設定回 `payment_unavailable`，什麼都不改。
    */
-  async function refundUnsettledPayment(payment: { orderId: number; gatewayPaymentId: string }, orderStatus: OrderStatus) {
-    const { orderId, gatewayPaymentId } = payment;
-    const reason = refundReasonFor(orderStatus);
+  async function runRefund(refundId: number, actor: string) {
+    if (!gateway) return fail("payment_unavailable");
+    const refund = await selectRefundToRun(db, refundId);
+    if (!refund) return fail("refund_not_found");
+    const startedAt = clock.now();
+    const action = actionFor(refund, startedAt);
+    if (action === "done") {
+      // 已成功的退款重試：補上先前沒折讓成的（原票當時未開立、折讓失敗），已折讓的不會再送
+      await invoices.allowForRefund(refundId);
+      return ok({ status: "succeeded" as RefundStatus });
+    }
+    if (action === "busy") return fail("refund_in_progress");
+    if (!(await claimRefund(d1, refund, startedAt))) {
+      return fail((await hasOtherUncertainRefund(db, refund)) ? "refund_blocked" : "refund_in_progress");
+    }
+
+    const record = (step: { action: RefundAttemptAction; outcome: "succeeded" | "failed" | "unknown" | "not_found"; code?: string; status: "succeeded" | "failed" | "unknown" | null }) =>
+      recordRefundAttempt(d1, { refundId, claimedAt: startedAt, actor, action: step.action, outcome: step.outcome, code: step.code ?? null, status: step.status }, clock.now());
+    const finish = async (status: "succeeded" | "failed" | "unknown") => {
+      if (status === "succeeded") {
+        await deliverNoticeSafely(db, `refund:${refundId}`, clock.now());
+        // 成功退款折讓：原票已開立才送出，否則保留義務等原票開立（見 `invoices/service.ts`）；折讓出錯不影響退款
+        await invoices.allowForRefund(refundId);
+      }
+      console.log(JSON.stringify({ event: "refund_attempted", refundId, orderId: refund.orderId, actor, status }));
+      return ok({ status: (await selectRefundToRun(db, refundId))?.status ?? status });
+    };
+
+    if (action === "verify") {
+      let found;
+      try {
+        found = await gateway.getRefund(refund.gatewayPaymentId, refund.gatewayRefundId);
+      } catch (error) {
+        logGatewayError("getRefund", error);
+        await record({ action: "verify", outcome: "unknown", code: error instanceof GatewayError ? error.code : undefined, status: "unknown" });
+        return finish("unknown");
+      }
+      if (found && !refundMatches(found, refund)) {
+        await record({ action: "verify", outcome: "unknown", code: "gateway_mismatch", status: "unknown" });
+        return finish("unknown");
+      }
+      if (found?.status === "succeeded") {
+        await record({ action: "verify", outcome: "succeeded", status: "succeeded" });
+        return finish("succeeded");
+      }
+      // 閘道說失敗，或從未收過這個退款 ID：確定款項沒有退回，才接著送出
+      await record({ action: "verify", outcome: found ? "failed" : "not_found", status: null });
+    }
+
+    try {
+      const sent = await gateway.refund({ gatewayPaymentId: refund.gatewayPaymentId, refundId: refund.gatewayRefundId, amountTwd: refund.amountTwd });
+      if (sent.status !== "succeeded" || !refundMatches(sent, refund)) {
+        await record({ action: "send", outcome: "unknown", code: "gateway_mismatch", status: "unknown" });
+        return finish("unknown");
+      }
+      await record({ action: "send", outcome: "succeeded", status: "succeeded" });
+      return finish("succeeded");
+    } catch (error) {
+      logGatewayError("refund", error);
+      const code = error instanceof GatewayError ? error.code : undefined;
+      const explicit = error instanceof GatewayError && isExplicitRefundFailure(error);
+      await record({ action: "send", outcome: explicit ? "failed" : "unknown", code, status: explicit ? "failed" : "unknown" });
+      return finish(explicit ? "failed" : "unknown");
+    }
+  }
+
+  /** 閘道回的退款 ID、付款與金額必須與本地紀錄一致，否則不信任這個回應（結果當作不明）。 */
+  function refundMatches(gatewayRefund: { refundId: string; paymentId: string; amountTwd: number }, refund: RefundToRun): boolean {
+    if (gatewayRefund.refundId === refund.gatewayRefundId && gatewayRefund.paymentId === refund.gatewayPaymentId && gatewayRefund.amountTwd === refund.amountTwd) return true;
+    console.error(JSON.stringify({ event: "refund_gateway_mismatch", refundId: refund.id, orderId: refund.orderId }));
+    return false;
+  }
+
+  /**
+   * 付款成功、但訂單沒有因它轉為已付款時的退款（原因見 `refundReasonFor`）：登記一筆整筆退款（`registerPaymentRefund`，
+   * 一筆付款最多一筆，事件重送與補登記都不會重複），登記了才立刻以 `system` 執行；已經登記過的退款不在這裡重送
+   * （失敗與不明由管理員在退款待辦處理）。
+   * 由搶到事件的那次呼叫進來；事件重送時也會進來，補上「付款結果已套用、但程序在登記退款之前中斷」缺的登記。
+   */
+  async function refundUnsettledPayment(payment: { id: number; orderId: number; gatewayPaymentId: string }, orderStatus: OrderStatus) {
+    const { id, orderId, gatewayPaymentId } = payment;
+    const [paidOrder] = await db.select({ paidBy: orders.paidByPaymentId }).from(orders).where(eq(orders.id, orderId));
+    const reason = refundReasonFor(orderStatus, paidOrder?.paidBy != null);
     if (!reason) {
       console.error(JSON.stringify({ event: "payment_refund_skipped", orderId, gatewayPaymentId, orderStatus }));
       return;
     }
-    let status: "refunded" | "refund_failed" = "refunded";
-    if (!gateway) {
-      status = "refund_failed";
-      console.error(JSON.stringify({ event: "payment_refund_failed", orderId, gatewayPaymentId, reason, code: "payment_unavailable" }));
-    } else {
-      try {
-        await gateway.refund(gatewayPaymentId);
-      } catch (error) {
-        logGatewayError("refund", error);
-        status = "refund_failed";
-        console.error(JSON.stringify({ event: "payment_refund_failed", orderId, gatewayPaymentId, reason }));
-      }
-    }
-    if (!(await recordRefundResult(d1, gatewayPaymentId, { status, reason }, clock.now()))) {
-      // 付款在退款期間已不是 succeeded：結果沒有寫進去，不能記成已退款
-      console.error(JSON.stringify({ event: "payment_refund_unrecorded", orderId, gatewayPaymentId, reason }));
-      return;
-    }
-    if (status === "refunded") console.log(JSON.stringify({ event: "payment_refunded", orderId, gatewayPaymentId, reason }));
+    const refundId = await registerPaymentRefund(d1, id, reason, clock.now());
+    if (refundId === null) return;
+    const registered = await selectRefundToRun(db, refundId);
+    if (registered?.status !== "pending") return;
+    const outcome = await runRefund(refundId, "system");
+    if (!outcome.ok) console.error(JSON.stringify({ event: "payment_refund_not_started", orderId, gatewayPaymentId, refundId, reason: outcome.reason }));
   }
 
   /**
    * 套用付款結果（webhook 與導回查詢共用）：以事件 ID 冪等，重複的事件只套用一次、回同一結果。
+   * 付款結果通知的信件與付款結果同一個 batch 寫入（outbox，見 `contact/notices.ts`）；batch 之後才投遞，投遞出錯只記 log，
+   * 付款不受影響，事件重送時補上缺的投遞。
+   * 付款成功時另在同一 batch 登記模擬發票的開立義務，batch 之後才向發票服務開立（見 `invoices/service.ts`）；事件重送時補開尚未開立的、補上缺的發票通知投遞。
    * 付款成功時的分流在 `applyPaymentEvent`（待付款轉已付款、已逾期重新保留）；沒能讓訂單轉為已付款的成功付款
-   * （重新保留不到、已取消、第二筆成功）由搶到事件的這次呼叫退款。回傳的是退款記錄之後的付款與訂單狀態。
+   * （重新保留不到、已取消、第二筆成功）登記退款並執行（見 `refundUnsettledPayment`）。回傳的是退款之後的付款與訂單狀態。
    */
   async function applyEvent(event: PaymentEvent) {
     const payment = await selectPaymentByGatewayId(db, event.gatewayPaymentId);
     if (!payment) return fail("payment_not_found");
 
-    const { paymentSettled, orderSettled, orderStatus } = await applyPaymentEvent(d1, { ...event, orderId: payment.orderId }, clock.now());
-    if (event.outcome === "succeeded" && paymentSettled && !orderSettled) {
-      await refundUnsettledPayment({ orderId: payment.orderId, gatewayPaymentId: event.gatewayPaymentId }, orderStatus);
+    const { orderSettled, orderStatus } = await applyPaymentEvent(d1, { ...event, orderId: payment.orderId }, clock.now());
+    if (event.outcome === "succeeded" && !orderSettled) {
+      await refundUnsettledPayment({ id: payment.id, orderId: payment.orderId, gatewayPaymentId: event.gatewayPaymentId }, orderStatus);
     }
+    await deliverNoticeSafely(db, `payment:${payment.id}`, clock.now());
+    // 成功收款開立模擬發票：在 batch 與退款之後、交易之外呼叫發票服務；失敗與逾時只留紀錄待補辦，不影響付款結果
+    if (event.outcome === "succeeded") await invoices.issueForPayment(payment.id);
     const current = await selectPaymentAndOrderStatus(db, event.gatewayPaymentId);
     return current ? ok(current) : fail("payment_not_found");
   }
@@ -127,7 +223,7 @@ export function createPaymentService(
     }
     if (!gatewayResultMatches(queried, pending, orderId)) return fail("payment_in_progress");
     if (queried.status === "expired") {
-      await expirePayment(db, pending.id);
+      await expirePayment(db, pending.id, clock.now());
       return null;
     }
     if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
@@ -150,7 +246,7 @@ export function createPaymentService(
     for (const pending of pendings) {
       try {
         await gateway!.cancel(pending.gatewayPaymentId);
-        await expirePayment(db, pending.id);
+        await expirePayment(db, pending.id, clock.now());
       } catch (error) {
         logGatewayError("cancel", error);
         if (!(error instanceof GatewayError && error.status === 409)) return fail("payment_gateway_unavailable");
@@ -171,8 +267,96 @@ export function createPaymentService(
     }
   }
 
+  /**
+   * 補查一筆本地仍是 pending 的付款（Cron 與管理員觸發共用；不依賴顧客返回頁面）：向閘道查證，
+   * 終局結果一律交給 `applyEvent`（與 webhook、導回查詢同一條套用路徑與事件 ID 去重），這裡不另寫第二條。
+   * 查不到、付款 ID／金額／商家參照不符、結果無法套用（成功或失敗卻沒有事件 ID）都不偽造成功，
+   * 只記成待辦（`payment_reconcile_issues`）並記一行 log；付款離開 pending 時待辦由套用的路徑一併解決，閘道說仍在等待則在這裡解決。
+   * `source` 是觸發者（`cron` 或管理員 email），記在待辦上供追溯。呼叫端必須已確認閘道設定存在。
+   */
+  async function reconcileOne(payment: PaymentToReconcile, source: string): Promise<ReconcileOutcome> {
+    const { id, orderId, gatewayPaymentId } = payment;
+    const issue = async (reason: ReconcileIssueReason): Promise<ReconcileOutcome> => {
+      await recordReconcileIssue(d1, id, reason, source, clock.now());
+      console.error(JSON.stringify({ event: "payment_reconcile_issue", paymentId: id, orderId, reason, source }));
+      return { outcome: "issue", reason };
+    };
+    // 查之前先記下補查時間：閘道卡住、出錯或結果不明的付款也要讓位給 Cron 的其他付款
+    await markReconciled(db, id, clock.now());
+
+    let queried;
+    try {
+      queried = await gateway!.getPayment(gatewayPaymentId);
+    } catch (error) {
+      logGatewayError("getPayment", error);
+      return issue("gateway_unavailable");
+    }
+    if (!gatewayResultMatches(queried, payment, orderId)) return issue("gateway_mismatch");
+
+    if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
+      const applied = await applyEvent({ eventId: queried.eventId, gatewayPaymentId, outcome: queried.status });
+      if (!applied.ok) return issue("result_unclear");
+      return { outcome: "settled", ...applied.data };
+    }
+    if (queried.status === "expired") {
+      await expirePayment(db, id, clock.now());
+      return { outcome: "expired" };
+    }
+    if (queried.status === "pending") {
+      // 閘道說還在等待：之前的問題已經不存在（付款離開 pending 時，套用的路徑會自己解決待辦）
+      await resolveReconcileIssue(db, id, clock.now());
+      return { outcome: "waiting" };
+    }
+    return issue("result_unclear");
+  }
+
   return {
     invalidatePendingPayments,
+
+    /**
+     * 管理員重試一筆退款（`refundId` 是本站退款編號），操作者記在嘗試紀錄上；呼叫端（管理 RPC）已驗過 Access 身分。
+     * 明確失敗的直接重送；結果不明的先向閘道查證再決定（見 `runRefund`）；已成功的冪等回成功。
+     */
+    retryRefund(refundId: number, actor: string) {
+      return runRefund(refundId, actor);
+    },
+
+    /**
+     * 管理員補查一筆付款（`paymentId` 是本站付款編號）：只有本地仍是 pending 的付款需要補查，已有結果回 `payment_not_pending`。
+     * 呼叫端（管理 RPC）已驗過 Access 身分，`actor` 是管理員 email。
+     */
+    async reconcilePayment(paymentId: number, actor: string) {
+      if (!gateway) return fail("payment_unavailable");
+      const payment = await selectPendingPaymentById(db, paymentId);
+      if (!payment) return (await paymentExists(db, paymentId)) ? fail("payment_not_pending") : fail("payment_not_found");
+      return ok(await reconcileOne(payment, actor));
+    },
+
+    /**
+     * Cron 入口：補查建立超過寬限時間、本地仍是 pending 的付款（一次有名額上限，見 `selectDuePayments`），冪等。
+     * 付款設定不全時不查（log 一行），回傳這次補查的筆數與各結果的筆數。
+     */
+    async reconcileDuePayments() {
+      const tally = { checked: 0, settled: 0, expired: 0, waiting: 0, issues: 0 };
+      if (!gateway) {
+        console.error(JSON.stringify({ event: "payment_reconcile_skipped", reason: "payment_unavailable" }));
+        return tally;
+      }
+      const startedAt = Date.now();
+      for (const payment of await selectDuePayments(db, clock.now())) {
+        // 閘道慢時不再開始新的一筆：同一次 Cron 後面的訂單逾期與圖片清理不能被補查拖住（沒查到的下次輪替）
+        if (Date.now() - startedAt >= RECONCILE_BUDGET_MS) {
+          console.error(JSON.stringify({ event: "payment_reconcile_budget_exhausted", checked: tally.checked }));
+          break;
+        }
+        const result = await reconcileOne(payment, "cron");
+        tally.checked += 1;
+        if (result.outcome === "issue") tally.issues += 1;
+        else tally[result.outcome === "settled" ? "settled" : result.outcome] += 1;
+      }
+      console.log(JSON.stringify({ event: "payments_reconciled", ...tally }));
+      return tally;
+    },
 
     /**
      * 由 Web Worker 在驗過閘道 webhook 的簽章之後呼叫；App 沒有 HTTP 入口，Service Binding 是唯一的來路，所以這裡沒有顧客身分。
@@ -187,7 +371,7 @@ export function createPaymentService(
      * 顧客付完款被導回時呼叫：向閘道查詢這筆付款的狀態，已有結果就套用（與 webhook 共用同一個動作與事件 ID）。
      * 訂單必須是這位顧客的、付款必須屬於這張訂單；兩種不符對外都不洩漏別人的資料。
      * 閘道回的金額或商家參照與本站不符就拒絕（payment_mismatch）。閘道說已失效（expired）就把本地付款轉 expired；
-     * 其他還沒有結果的狀態（pending、已退款，或成功卻沒有事件 ID）不套用，回目前狀態。
+     * 其他還沒有結果的狀態（pending，或成功卻沒有事件 ID）不套用，回目前狀態。
      */
     async confirmPayment(cookie: unknown, input: unknown) {
       const customerId = await customerOf(cookie);
@@ -210,12 +394,12 @@ export function createPaymentService(
       }
 
       // 閘道回的金額與商家參照必須與本站記錄一致，不一致就不套用（不信任閘道回應與本站訂單對不上的結果）
-      if (!gatewayResultMatches(queried, payment, orderId)) return fail("payment_mismatch");
+      if (!gatewayResultMatches(queried, { ...payment, gatewayPaymentId }, orderId)) return fail("payment_mismatch");
       if ((queried.status === "succeeded" || queried.status === "failed") && queried.eventId) {
         return applyEvent({ eventId: queried.eventId, gatewayPaymentId, outcome: queried.status });
       }
       // 閘道端已失效（顧客沒付、或被取消）：本地不再停在 pending
-      if (queried.status === "expired") await expirePayment(db, payment.id);
+      if (queried.status === "expired") await expirePayment(db, payment.id, clock.now());
       const current = await selectPaymentAndOrderStatus(db, gatewayPaymentId);
       return current ? ok(current) : fail("payment_not_found");
     },

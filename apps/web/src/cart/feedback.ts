@@ -11,12 +11,12 @@ export const SAVE_FAILED_MESSAGE = "購物車的變更未能儲存，請檢查�
  */
 export function addFeedback(
   quantity: number,
-  productId: number,
+  variantId: number,
   add: () => { cart: Cart; saved: boolean },
 ): string {
   if (!isValidQuantity(quantity)) return INVALID_QUANTITY_MESSAGE;
   const { cart, saved } = add();
   if (!saved) return SAVE_FAILED_MESSAGE;
-  const line = cart.lines.find((l) => l.productId === productId);
+  const line = cart.lines.find((l) => l.variantId === variantId);
   return line ? `已加入購物車，目前 ${line.quantity} 件。` : "目前無法加入這件商品，請重新整理後再試。";
 }
