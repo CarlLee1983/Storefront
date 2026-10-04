@@ -13,6 +13,7 @@
     "./catalog-listing": "./src/catalog/listing.ts",
     "./product-images": "./src/product-images.ts",
     "./catalog-types": "./src/catalog/types.ts",
+    "./order-limits": "./src/orders/limits.ts",
     "./orders-input": "./src/orders/input.ts",
     "./order-timeline": "./src/orders/timeline.ts",
     "./shipping-types": "./src/shipping/types.ts"

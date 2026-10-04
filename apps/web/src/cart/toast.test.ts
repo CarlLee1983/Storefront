@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { showCartToast } from "./toast";
+import { clearCartToast, showCartToast } from "./toast";
 
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
@@ -31,4 +31,17 @@ test("the most recent add wins and resets the expiry, including identical feedba
   expect(second.textContent).toBe("第二件");
   vi.advanceTimersByTime(4000);
   expect(second.textContent).toBe("");
+});
+
+test("starting another request cancels an announcement that has not appeared yet", () => {
+  vi.useFakeTimers();
+  const region = { textContent: "" } as HTMLElement;
+  showCartToast(region, "上一筆成功");
+  vi.advanceTimersByTime(10);
+  clearCartToast(region);
+  vi.advanceTimersByTime(6000);
+  expect(region.textContent).toBe("");
+  showCartToast(region, "這一筆失敗");
+  vi.advanceTimersByTime(30);
+  expect(region.textContent).toBe("這一筆失敗");
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addToCart, emptyCart } from "../cart/cart";
-import { applyPriceChanges, describeCheckoutFailure, describeIssue, removeLines, type CheckoutIssue } from "./failure";
+import { applyPriceChanges, describeCheckoutFailure, describeIssue, type CheckoutIssue } from "./failure";
 import { checkoutValidationIssues } from "./validation";
 
 const cart = [
@@ -56,11 +56,7 @@ describe("applyPriceChanges（更新購物車為新價格）", () => {
   });
 });
 
-describe("removeLines", () => {
-  it("移除指定商品，其他不變", () => {
-    expect(removeLines(cart, [1, 3]).lines.map((line) => line.variantId)).toEqual([2]);
-  });
-});
+
 
 describe("describeCheckoutFailure（RPC 失敗結果 → 頁面訊息）", () => {
   it("依 App schema 將多個收件欄位錯誤映射到各欄位", () => {

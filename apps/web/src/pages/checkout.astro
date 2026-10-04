@@ -79,6 +79,8 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     </dl>
     <p>總金額：<strong>NT$ <span id="checkout-total">0</span></strong>（新台幣、含稅，已含運費）</p>
     <p class="checkout-shipping-note">配送範圍限台灣本島。運費依商品的配送類型計算：一般宅配與大型配送各收一次，同類型不按件數另計；大型配送會由物流電話約定配送時間。</p>
+    <p id="checkout-stock-status" role="status"></p>
+    <button type="button" id="stock-retry" class="button-secondary" hidden>重新確認庫存</button>
     <p id="checkout-shipping-error" class="error" role="alert" hidden>目前無法確認運費，請重新整理頁面後再試。</p>
     </section>
 
@@ -142,9 +144,11 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   import { createCartCover } from "../cart/cover";
   import { lineSubtotal, cartTotal, type Cart } from "../cart/cart";
   import { loadCart, storageOf } from "../cart/storage";
+  import { createStockCheck, cartStockIssue, stockIssue, purchaseLimit, MAX_ORDER_LINES } from "../cart/availability";
+  import { changeAvailableQuantity, removeAvailableItem, type PurchaseResult } from "../cart/purchase";
   import { SAVE_FAILED_MESSAGE } from "../cart/feedback";
   import { updateCart } from "../cart/store";
-  import { applyPriceChanges, describeIssue, removeLines, type CheckoutIssue } from "../checkout/failure";
+  import { applyPriceChanges, describeIssue, type CheckoutIssue } from "../checkout/failure";
   import { clearIdempotencyKey, getOrCreateIdempotencyKey, sessionStorageOf } from "../checkout/idempotency";
   import { rememberPlacedOrder } from "../checkout/placed";
   import { bindSavedAddressPicker } from "../checkout/saved-address";
@@ -168,6 +172,8 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   function init() {
   bindSavedAddressPicker(document);
   const form = $<HTMLFormElement>("#checkout-form");
+  const stock = createStockCheck(renderStock);
+  let submitting = false;
   let issues: CheckoutIssue[] = pageData.issues ?? [];
   // 舊的冪等鍵帶著不同內容被拒：丟掉它，下一次送出用新鍵
   if (pageData.resetKey) clearIdempotencyKey(sessionStorageOf(window));
@@ -189,10 +195,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
         remove.type = "button";
         remove.className = "button-secondary";
         remove.textContent = "移除";
-        remove.addEventListener("click", () => {
-          issues = issues.filter((other) => other !== issue);
-          change((current) => removeLines(current, [issue.variantId]));
-        });
+        remove.addEventListener("click", () => { void edit(removeAvailableItem(issue.variantId)); });
         li.appendChild(remove);
       }
       return li;
@@ -217,7 +220,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
       if (fees) $(`#checkout-fee-${type}-amount`).textContent = priceFormat.format(fees[type]);
     }
     $("#checkout-total").textContent = fees ? priceFormat.format(subtotal + fees.totalTwd) : "—";
-    submitButton.disabled = !fees;
+    submitButton.disabled = submitting || !fees || !stock.validFor(cart) || issues.some(issue => issue.kind === "price_changed");
   }
 
   async function refreshQuote(cart: Cart) {
@@ -225,7 +228,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     quote = null;
     $("#checkout-shipping-error").hidden = true;
     renderFees(cart);
-    if (cart.lines.length === 0) return;
+    if (cart.lines.length === 0 || cart.lines.length > MAX_ORDER_LINES) return;
     let fetched: ShippingQuote | null = null;
     try {
       const response = await fetch(shippingQuoteUrl(cart));
@@ -239,6 +242,40 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     renderFees(loadCart(storageOf(window)));
   }
 
+  function renderStock() {
+    const cart = loadCart(storageOf(window));
+    $("#checkout-stock-status").textContent = stock.loading ? "正在確認庫存…" : cartStockIssue(cart, stock.stock);
+    $("#stock-retry").hidden = stock.loading || stock.stock !== null;
+    for (const row of document.querySelectorAll<HTMLElement>("#checkout-lines [data-variant-id]")) {
+      const line = cart.lines.find(line => line.variantId === Number(row.dataset.variantId));
+      if (!line) continue;
+      row.querySelector<HTMLElement>(".line-stock")!.textContent = stock.loading ? "" : stockIssue(line, stock.stock);
+      const available = stock.stock?.get(line.variantId);
+      row.querySelector<HTMLInputElement>("input")!.max = String(available === undefined ? line.quantity : Math.max(line.quantity, purchaseLimit(available)));
+      row.querySelector<HTMLButtonElement>('[data-action="decrease"]')!.disabled = line.quantity <= 1;
+    }
+    renderFees(cart);
+  }
+  $("#stock-retry").addEventListener("click", () => { void stock.refresh(loadCart(storageOf(window))); });
+
+  async function edit(operation: Promise<PurchaseResult>) {
+    const active = document.activeElement as HTMLElement | null;
+    const id = active?.closest<HTMLElement>("[data-variant-id]")?.dataset.variantId;
+    const action = active?.dataset.action;
+    const result = await operation;
+    const keepFocus = document.activeElement === active;
+    const cart = loadCart(storageOf(window));
+    issues = issues.filter(issue => issue.kind === "price_changed" && cart.lines.some(line => line.variantId === issue.variantId));
+    $("#checkout-storage-error").textContent = result.message;
+    $("#checkout-storage-error").hidden = !result.message;
+    render(cart);
+    void stock.refresh(cart);
+    void refreshQuote(cart);
+    if (keepFocus && id && action) {
+      document.querySelector<HTMLElement>(`#checkout-lines [data-variant-id="${id}"] [data-action="${action}"]`)?.focus();
+    }
+  }
+
   function render(cart: Cart) {
     const empty = cart.lines.length === 0;
     $("#checkout-empty").hidden = !empty;
@@ -247,6 +284,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     $("#checkout-lines").replaceChildren(
       ...cart.lines.map((line) => {
         const row = document.createElement("tr");
+        row.dataset.variantId = String(line.variantId);
         const product = cell("", "商品");
         product.className = "summary-product";
         const name = document.createElement("span");
@@ -262,11 +300,39 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
           label.textContent = line.label;
           product.appendChild(label);
         }
-        for (const child of [product, cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`, "單價"), cell(String(line.quantity), "數量"), cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`, "小計")]) row.appendChild(child);
+        const quantity = cell("", "數量");
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "1";
+        input.step = "1";
+        input.value = String(line.quantity);
+        input.dataset.action = "quantity";
+        input.setAttribute("aria-label", `${line.name} 數量`);
+        input.addEventListener("change", () => { void edit(changeAvailableQuantity(line.variantId, Number(input.value))); });
+        const decrease = document.createElement("button");
+        decrease.type = "button";
+        decrease.textContent = "−";
+        decrease.dataset.action = "decrease";
+        decrease.setAttribute("aria-label", `減少${line.name}數量`);
+        decrease.addEventListener("click", () => {
+          const current = loadCart(storageOf(window)).lines.find(l => l.variantId === line.variantId);
+          if (current) void edit(changeAvailableQuantity(line.variantId, current.quantity - 1));
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "移除";
+        remove.dataset.action = "remove";
+        remove.setAttribute("aria-label", `移除${line.name}`);
+        remove.addEventListener("click", () => { void edit(removeAvailableItem(line.variantId)); });
+        const warning = document.createElement("p");
+        warning.className = "line-stock error";
+        for (const element of [decrease, input, remove, warning]) quantity.appendChild(element);
+        for (const child of [product, cell(`NT$ ${priceFormat.format(line.unitPriceTwd)}`, "單價"), quantity, cell(`NT$ ${priceFormat.format(lineSubtotal(line))}`, "小計")]) row.appendChild(child);
         return row;
       }),
     );
     renderIssues(cart);
+    renderStock();
   }
 
   function change(fn: (cart: Cart) => Cart) {
@@ -276,6 +342,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     error.hidden = saved;
     render(cart);
     void refreshQuote(cart);
+    void stock.refresh(cart);
   }
 
   // 更新為新價格：購物車不清空，價格變動的問題消失，顧客確認新總額後再送出
@@ -291,7 +358,7 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
   // 送出前把購物車明細與冪等鍵放進表單；同一次結帳重送沿用 sessionStorage 裡的同一個鍵
   form.addEventListener("submit", (event) => {
     const cart = loadCart(storageOf(window));
-    if (cart.lines.length === 0 || !quote) {
+    if (submitting || cart.lines.length === 0 || !quote || !stock.validFor(cart) || issues.some(issue => issue.kind === "price_changed")) {
       event.preventDefault();
       return;
     }
@@ -308,30 +375,34 @@ const pageData = JSON.stringify({ issues: failure?.issues ?? [], resetKey, place
     form.querySelector<HTMLInputElement>("input[name=lines]")!.value = JSON.stringify(lines);
     form.querySelector<HTMLInputElement>("input[name=idempotencyKey]")!.value = key;
     const submitBtn = $<HTMLButtonElement>("#checkout-submit");
+    submitting = true;
     submitBtn.disabled = true;
     submitBtn.textContent = "訂單成立中，請稍候...";
     submitBtn.classList.add("is-submitting");
   });
-  // 從瀏覽器的上一頁回來時恢復按鈕
-  window.addEventListener("pageshow", () => {
-    const submitBtn = $<HTMLButtonElement>("#checkout-submit");
-    submitBtn.disabled = !quote;
-    submitBtn.textContent = "送出訂單";
-    submitBtn.classList.remove("is-submitting");
-  });
-
-  const initialCart = loadCart(storageOf(window));
-  render(initialCart);
-  void refreshQuote(initialCart);
-  window.addEventListener("storage", () => {
+  const refresh = () => {
     const cart = loadCart(storageOf(window));
     render(cart);
+    void stock.refresh(cart);
     void refreshQuote(cart);
+  };
+  window.addEventListener("pageshow", event => {
+    if (!event.persisted) return;
+    submitting = false;
+    submitButton.textContent = "送出訂單";
+    submitButton.classList.remove("is-submitting");
+    refresh();
   });
+  refresh();
+  window.addEventListener("storage", refresh);
+
   }
 </script>
 
 <style>
+  :global(#checkout-lines input[type="number"]) { width: 4rem; min-height: 44px; margin-inline: .5rem; }
+  :global(#checkout-lines button) { min-width: 44px; min-height: 44px; }
+  :global(#checkout-lines .line-stock) { margin-block: .5rem; }
   .checkout-title { margin: 0 0 var(--space-6); font-size: var(--text-display-page); line-height: 1.1; letter-spacing: -0.02em; }
   #checkout-content:not([hidden]) { display: grid; gap: var(--space-6); }
   .checkout-summary, #checkout-form { min-width: 0; padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-subtle); }

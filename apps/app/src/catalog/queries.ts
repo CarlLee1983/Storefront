@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { categories } from "../categories/schema";
 import { productImages } from "../images/schema";
@@ -328,4 +328,14 @@ export async function selectSitemapProductIds(db: DrizzleD1Database): Promise<nu
     .where(and(eq(products.listed, true), sql`exists (select 1 from product_variants sv where ${activeVariantOfProduct})`))
     .orderBy(asc(products.id));
   return rows.map((row) => row.id);
+}
+
+/** 只公開仍可販售的變體；缺少的 ID 不透露下架／停賣的管理資訊。 */
+export async function selectAvailability(db: DrizzleD1Database, variantIds: number[]) {
+  if (variantIds.length === 0) return [];
+  return db.select({
+    variantId: productVariants.id,
+    available: sql<number>`MAX(0, ${availableExpr(sql`${productVariants.onHand}`, sql`${productVariants.id}`)})`.mapWith(Number),
+  }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId))
+    .where(and(inArray(productVariants.id, variantIds), eq(products.listed, true), isNull(productVariants.discontinuedAt)));
 }

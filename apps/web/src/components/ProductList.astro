@@ -63,16 +63,19 @@ const Heading = `h${headingLevel}` as "h2" | "h3";
 
 <script>
   import { parseCartCover } from "../cart/cover";
-  import { showCartToast } from "../cart/toast";
-  import { addToCart } from "../cart/cart";
-  import { addFeedback } from "../cart/feedback";
-  import { storageOf } from "../cart/storage";
-  import { updateCart } from "../cart/store";
+  import { clearCartToast, showCartToast } from "../cart/toast";
+  import { addAvailableItem } from "../cart/purchase";
 
   // 商品資料來自頁面上的 data 屬性（伺服器端渲染時放入），加入當下的單價就是顧客看到的單價
   for (const form of document.querySelectorAll<HTMLFormElement>("form.add-to-cart")) {
-    form.addEventListener("submit", (event) => {
+    let pending = false;
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (pending) return;
+      pending = true;
+      const button = form.querySelector<HTMLButtonElement>("button")!;
+      button.setAttribute("aria-disabled", "true");
+      clearCartToast(form.querySelector<HTMLElement>(".cart-status")!);
       const item = {
         variantId: Number(form.dataset.variantId),
         productId: Number(form.dataset.productId),
@@ -81,9 +84,10 @@ const Heading = `h${headingLevel}` as "h2" | "h3";
         cover: parseCartCover(JSON.parse(form.dataset.cover ?? "null")),
       };
       const quantity = Number(new FormData(form).get("quantity"));
-      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.variantId, () =>
-        updateCart(storageOf(window), window, (current) => addToCart(current, item, quantity)),
-      ));
+      const result = await addAvailableItem(item, quantity);
+      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, result.message);
+      pending = false;
+      button.setAttribute("aria-disabled", "false");
     });
   }
 </script>

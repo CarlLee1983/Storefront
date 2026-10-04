@@ -28,7 +28,7 @@ async function assertNoOverflowAndAxe(page: Page, width: number) {
 async function placePaidOrder(page: Page, productId: number, name: string): Promise<string> {
   await page.goto(`/products/${productId}`);
   await page.getByRole("region", { name: "商品資訊" }).getByRole("button", { name: "加入購物車", exact: true }).click();
-  await expect(page.locator("#cart-count")).not.toHaveText("0");
+  await expect(page.locator("#cart-count")).toHaveText("1");
   await page.goto("/checkout");
   await page.getByLabel("收件人姓名").fill(name);
   await page.getByLabel("收件人電話").fill("0912345678");

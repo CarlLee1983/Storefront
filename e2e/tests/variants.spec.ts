@@ -139,14 +139,13 @@ test("停賣的變體不再出現在商品頁與價格範圍，已在購物車�
     await expect(page.getByRole("listitem").filter({ hasText: TABLE })).toContainText("NT$ 9,000 – NT$ 12,000");
 
     await page.goto("/checkout");
-    await page.getByLabel("收件人姓名").fill("變體測試");
-    await page.getByLabel("收件人電話").fill("0912345678");
-    await page.getByLabel("收件地址").fill("台北市中正區測試地址");
-    await page.getByLabel(/我確認配送地點位於台灣本島/).check();
-    await page.getByRole("button", { name: "送出訂單" }).click();
-    await expect(page.locator("#checkout-issues")).toContainText("已停賣，請從購物車移除");
-    await page.locator("#checkout-issues").getByRole("button", { name: "移除" }).click();
+    const line = page.locator("#checkout-lines tr").filter({ hasText: "180 公分" });
+    await expect(line).toContainText("目前無法購買，請移除這件商品。");
+    await expect(page.getByRole("button", { name: "送出訂單" })).toBeDisabled();
     await expect(page.locator("#checkout-issues li")).toHaveCount(0);
+    await line.getByRole("button", { name: `移除${TABLE}` }).click();
+    await expect(page.locator("#checkout-issues li")).toHaveCount(0);
+    await expect(page.locator("#cart-count")).toHaveText("0");
   } finally {
     await post(admin.request, `/admin/products/${tableId}`, { intent: "resume-variant", variantId: String(variantIds[2]) });
   }

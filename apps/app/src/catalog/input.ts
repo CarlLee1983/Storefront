@@ -1,3 +1,4 @@
+import { MAX_ORDER_LINES } from "../orders/limits";
 import { z } from "zod";
 import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "../categories/slug";
 import { wholeNumber } from "../shared/input";
@@ -16,3 +17,8 @@ export const listProductsInput = z.object({
 });
 
 export type ListProductsInput = z.output<typeof listProductsInput>;
+
+/** 公開可售快照：限制每次查詢成本，不包含管理庫存資料。 */
+export const availabilityInput = z.object({
+  variantIds: z.array(wholeNumber("商品變體編號").positive()).max(MAX_ORDER_LINES),
+});
