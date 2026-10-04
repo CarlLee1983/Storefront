@@ -90,7 +90,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await seedListedProductsInCategory(admin.context(), CATEGORY.name, FILLERS);
 
   // 2. 管理員新增商品、選分類、上傳多張圖片、補貨、標原價後上架並標為精選
-  await admin.goto("/admin");
+  await admin.goto("/admin/products");
   await admin.getByRole("link", { name: "新增商品", exact: true }).click();
   await expect(admin).toHaveURL(`${BASE_URL}/admin/products/new`);
   await admin.getByLabel("名稱", { exact: true }).fill(PRODUCT.name);
@@ -344,7 +344,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await expect(orderRow).toContainText("已付款");
   await orderRow.getByRole("link", { name: `#${orderId}` }).click();
 
-  await expect(admin).toHaveURL(`${BASE_URL}/admin/orders/${orderId}`);
+  await expect(admin).toHaveURL(`${BASE_URL}/admin/orders/${orderId}?returnTo=${encodeURIComponent(`/admin/orders?orderId=${orderId}`)}`);
   await admin.getByLabel("物流單號（可留空）").fill(TRACKING_NUMBER);
   await admin.getByRole("button", { name: "確認交運這一批" }).click();
   await expect(admin.getByRole("status")).toHaveText("已記錄這一批出貨。");

@@ -358,7 +358,9 @@ bun run e2e
 
 所有後台頁面使用 `AdminLayout.astro`。64rem 以上採固定左側導覽，分為商品與庫存、訂單與售後、款項與憑證、設定與通知四組，共 12 個文字入口；較窄視窗以「選單」開啟原生 dialog 抽屜，沿用同一份導覽資料。導覽過高時可捲動，抽屜支援鍵盤、Escape 與關閉後焦點返回；開啟中切至桌機寬度會關閉抽屜並將焦點移至側欄。
 
-導覽以 `aria-current` 標示所在區域；商品新增／編輯、分類編輯與訂單明細另有返回所屬列表的麵包屑。品牌仍回到商品管理 `/admin`，另有「前往前台」連結；保留 `noindex`，不顯示前台頁尾。訂單首頁與商品列表搬移（#131）、返回時保留搜尋／篩選／分頁（#132、#133）屬於後續工作。
+導覽以 `aria-current` 標示所在區域；商品新增／編輯、分類編輯與訂單明細另有返回所屬列表的麵包屑。品牌與舊根入口 `/admin` 前往訂單管理 `/admin/orders`；商品列表為 `/admin/products`，商品新增與編輯深層網址維持不變。另有「前往前台」連結；保留 `noindex`，不顯示前台頁尾。
+
+從商品列表進入編輯後，麵包屑、取消、返回及儲存會保留搜尋、狀態、分類與頁碼；訂單列表進入明細後，返回會保留訂單編號、顧客 email、狀態、日期區間與分頁游標。編輯頁的變體操作、訂單明細的提交後轉址也保留來源條件及原有操作提示。狀態由連結攜帶，不依賴瀏覽歷史；返回目的地限所屬列表，直接開啟或不合法來源均返回預設列表。#131–#133 的驗證與畫面見[驗收紀錄](docs/acceptance/131-133-admin-navigation.md)。
 
 共用後台樣式集中在 `apps/web/src/styles/admin.css`，以 `.admin-shell` 限定作用範圍並沿用前台設計 token。欄位上限 40rem、篩選選單上限 15rem，輸入框與選單等高，動作列有固定間距，連結與控制項至少 44px。篩選列按可用內容寬度換行。前台的全域表單與表格規則維持原樣。`e2e/tests/admin-shell.spec.ts` 保留 375／1280、已付款訂單、403／404 與 axe 驗證；`admin-navigation.spec.ts` 涵蓋全部入口、麵包屑、抽屜鍵盤操作、短視窗及 1023／1024 切換。seed 的後台辨識在窄視窗會開啟抽屜核對目前功能，完成或拒絕後都關閉抽屜。
 
@@ -385,7 +387,7 @@ bun run seed preview                    # https://storefront-preview.gravito.dev
 
 - 目標只接受 `local`（且網址必須是 localhost / 127.0.0.1）與 `preview`；`production` 或其他值在開瀏覽器之前就拒絕，不會有任何寫入。寫入前也會確認對方真的是本站的商品管理頁，避免本機埠被其他專案的 dev server 佔用時寫錯地方。
 - 本機：先執行 `bun run admin:dev-token`（缺少時 seed 直接停止）並重新啟動伺服器。seed 會把 `apps/web/.dev.vars` 的 `ACCESS_DEV_JWT` 當成 `Cf-Access-Jwt-Assertion` header 帶上，所以 `bun run dev` 與 `bun run preview`（正式建置，不讀 `ACCESS_DEV_JWT`）都能用。
-- preview：會開一個有畫面的 Chrome，由 owner 手動登入 Cloudflare Access，回到 `/admin` 後 seed 自動接手（最多等 15 分鐘）。不使用 service token，因為 App 驗管理員時要求 email claim（#51）。Chrome 設定檔存在 `.wrangler/seed-chrome-preview/`，保留登入狀態，重跑時通常不必再登入。
+- preview：會開一個有畫面的 Chrome，由 owner 手動登入 Cloudflare Access，回到 `/admin/products` 後 seed 自動接手（最多等 15 分鐘）。不使用 service token，因為 App 驗管理員時要求 email claim（#51）。Chrome 設定檔存在 `.wrangler/seed-chrome-preview/`，保留登入狀態，重跑時通常不必再登入。
 - 重跑時，已存在的示範商品會對齊清單：說明、售價、原價、分類與精選改回清單的值，被下架的會重新上架；在後台手動改過的示範商品會被蓋掉。庫存例外，只往上補到清單的在庫數，已經比清單多的不會調降。
 
 ## 部署

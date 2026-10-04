@@ -2,6 +2,7 @@
 import { env } from "cloudflare:workers";
 import { DELIVERY_TYPE_LABELS, DELIVERY_TYPES } from "@storefront/app/shipping-types";
 import { readAccessJwt } from "../../../admin/access-jwt";
+import { readAdminListReturn, withListReturn } from "../../../admin/list-return";
 import { describeFailure, type Failure } from "../../../admin/failure";
 import { parseProductId, productUpdateFormToInput } from "../../../admin/product-form";
 import { dispatchVariantForm, type VariantFormDispatch } from "../../../admin/variant-form";
@@ -13,6 +14,7 @@ export const prerender = false;
 // 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const id = parseProductId(Astro.params.id);
+const listReturn = readAdminListReturn(Astro.url.searchParams.get("returnTo"), "products");
 let failure: Failure | undefined;
 let submitted: Record<string, string> = {};
 let unauthorized = false;
@@ -41,7 +43,7 @@ if (id !== null && Astro.request.method === "POST") {
       failure = describeFailure({ reason: "invalid_input" }, "操作失敗，請稍後再試");
     } else {
       const result = await callVariantRpc(dispatch);
-      if (result.ok) return Astro.redirect(`/admin/products/${id}?saved=variants#variants-heading`, 303);
+      if (result.ok) return Astro.redirect(withListReturn(`/admin/products/${id}?saved=variants#variants-heading`, listReturn), 303);
       if (result.reason === "unauthorized") unauthorized = true;
       else {
         failure = describeFailure(result, "操作失敗，請稍後再試");
@@ -50,7 +52,11 @@ if (id !== null && Astro.request.method === "POST") {
     }
   } else {
     const result = await env.APP.updateProduct(jwt, productUpdateFormToInput(form, id));
-    if (result.ok) return Astro.redirect("/admin?saved=updated", 303);
+    if (result.ok) {
+      const savedList = new URL(listReturn, Astro.url);
+      savedList.searchParams.set("saved", "updated");
+      return Astro.redirect(`${savedList.pathname}${savedList.search}`, 303);
+    }
     if (result.reason === "unauthorized") unauthorized = true;
     else failure = describeFailure(result, "儲存商品失敗，請稍後再試");
   }
@@ -74,7 +80,7 @@ const values = {
 };
 ---
 
-<AdminLayout title="編輯商品">
+<AdminLayout title="編輯商品" listReturn={listReturn}>
   {
     Astro.response.status === 403 ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
@@ -146,7 +152,7 @@ const values = {
             <p><small>商品必須有分類才能上架。</small></p>
             <div class="admin-actions">
               <button type="submit" class="button-primary">儲存變更</button>
-              <a href="/admin">取消</a>
+              <a href={listReturn}>取消</a>
             </div>
           </form>
         </div>
@@ -258,7 +264,7 @@ const values = {
           <p id="image-status" role="status" aria-live="polite"></p>
           <p id="image-error" class="error" role="alert" hidden></p>
           <button type="button" id="gallery-refresh" disabled>重新載入商品圖片</button>
-          <p><a href="/admin">回商品管理</a></p>
+          <p><a href={listReturn}>回商品管理</a></p>
         </section>
       </>
     )

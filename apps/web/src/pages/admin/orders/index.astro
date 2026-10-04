@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { describeFailure } from "../../../admin/failure";
 import { readCursor, readOrderSearch, searchQuery, searchToInput } from "../../../admin/order-search";
+import { adminListHref, withListReturn } from "../../../admin/list-return";
 import OrderStatus from "../../../orders/OrderStatus.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
@@ -21,6 +22,7 @@ const fieldErrors = (name: string) => (!orders.ok && orders.reason === "invalid_
 const exportHref = `/admin/orders/export${searchQuery(search) && `?${searchQuery(search)}`}`;
 const nextHref = orders.ok && orders.data.nextBeforeId !== null ? `/admin/orders?${searchQuery(search, orders.data.nextBeforeId)}` : undefined;
 const firstHref = `/admin/orders${searchQuery(search) && `?${searchQuery(search)}`}`;
+const listReturn = adminListHref("orders", Astro.url.searchParams);
 const priceFormat = new Intl.NumberFormat("zh-TW");
 ---
 
@@ -82,7 +84,7 @@ const priceFormat = new Intl.NumberFormat("zh-TW");
               <tbody>
                 {orders.data.items.map((order) => (
                   <tr>
-                    <td data-label="訂單"><a href={`/admin/orders/${order.id}`}>#{order.id}</a></td>
+                    <td data-label="訂單"><a href={withListReturn(`/admin/orders/${order.id}`, listReturn)}>#{order.id}</a></td>
                     <td data-label="商品"><ul class="order-products">{order.lines.map(line => <li><span class="admin-order-cover"><OrderCover cover={line.cover} name={line.productName} /></span><span>{line.productName}{line.variantLabel && `（${line.variantLabel}）`} × {line.quantity}</span></li>)}</ul></td>
                     <td data-label="顧客" class="admin-order-email"><span>{order.customerEmail.split(/(?=[@.])/).map(part => <>{part}<wbr /></>)}</span></td>
                     <td data-label="成立時間">{formatDateTime(order.createdAt)}</td>

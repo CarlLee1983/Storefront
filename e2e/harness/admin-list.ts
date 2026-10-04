@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 /** 開啟以名稱關鍵字篩選的後台商品清單：清單有分頁（每頁 15 筆），新建的商品不一定在第一頁。 */
 export async function gotoProductList(admin: Page, name: string) {
-  return admin.goto(`/admin?q=${encodeURIComponent(name)}`);
+  return admin.goto(`/admin/products?q=${encodeURIComponent(name)}`);
 }
 
 /** 讀出（可帶篩選條件的）後台商品清單所有分頁的 HTML。 */
@@ -10,7 +10,7 @@ export async function fetchProductListHtml(admin: APIRequestContext, query: Reco
   let html = "";
   for (let page = 1; page <= 20; page++) {
     const params = new URLSearchParams({ ...query, page: String(page) });
-    const part = await (await admin.get(`/admin?${params}`, { maxRetries: 3 })).text();
+    const part = await (await admin.get(`/admin/products?${params}`, { maxRetries: 3 })).text();
     html += part;
     if (!part.includes(`page=${page + 1}`)) break;
   }

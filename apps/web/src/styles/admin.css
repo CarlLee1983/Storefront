@@ -755,6 +755,10 @@
   font-weight: 600;
   border-color: var(--color-primary);
 }
+@media (max-width: 47.999rem) {
+  .admin-shell .pagination-controls,
+  .admin-shell .pagination-pages { flex-wrap: wrap; min-width: 0; }
+}
 @media (min-width: 48rem) {
   .admin-shell .admin-products th, .admin-shell .admin-products td { padding-inline: var(--space-2); }
 }

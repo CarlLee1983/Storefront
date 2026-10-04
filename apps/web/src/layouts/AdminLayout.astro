@@ -2,13 +2,14 @@
 import "../styles/global.css";
 import "../styles/admin.css";
 import AdminNavigation from "../components/AdminNavigation.astro";
+import { readAdminListReturn } from "../admin/list-return";
 
-interface Props { title: string }
-const { title } = Astro.props;
+interface Props { title: string; listReturn?: string }
+const { title, listReturn } = Astro.props;
 const path = Astro.url.pathname.replace(/\/+$/, "");
 const groups = [
   { label: "商品與庫存", links: [
-    { href: "/admin", label: "商品管理" },
+    { href: "/admin/products", label: "商品管理" },
     { href: "/admin/categories", label: "分類管理" },
     { href: "/admin/stock-movements", label: "庫存流水" },
     { href: "/admin/low-stock", label: "低庫存提醒" },
@@ -29,9 +30,14 @@ const groups = [
   ] },
 ];
 const current = groups.flatMap(group => group.links).find(link =>
-  path === link.href || (link.href === "/admin" ? path.startsWith("/admin/products/") : path.startsWith(`${link.href}/`))
+  path === link.href || path.startsWith(`${link.href}/`)
 );
 const showBreadcrumb = current && /^\/admin\/(products|categories|orders)\/[^/]+$/.test(path);
+const breadcrumbHref = current?.href === "/admin/products"
+  ? readAdminListReturn(listReturn ?? null, "products")
+  : current?.href === "/admin/orders"
+    ? readAdminListReturn(listReturn ?? null, "orders")
+    : current?.href;
 ---
 
 <!doctype html>
@@ -79,7 +85,7 @@ const showBreadcrumb = current && /^\/admin\/(products|categories|orders)\/[^/]+
       {showBreadcrumb && (
         <nav aria-label="麵包屑" class="admin-breadcrumb">
           <ol>
-            <li><a href={current.href}>{current.label}</a></li>
+            <li><a href={breadcrumbHref}>{current.label}</a></li>
             <li><span aria-hidden="true">/</span><span aria-current="page">{title}</span></li>
           </ol>
         </nav>

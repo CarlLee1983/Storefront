@@ -58,7 +58,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await admin.goto(`/admin/products/${tableId}`);
       await admin.getByLabel("配送類型").selectOption({ label: "大型配送" });
       await admin.getByRole("button", { name: "儲存變更" }).click();
-      await expect(admin).toHaveURL(/\/admin\?saved=updated/);
+      await expect(admin).toHaveURL(/\/admin\/products\?saved=updated/);
 
       // 步驟 1：顧客結帳 9,700（9,000 + 100 + 600），全部保留；付款後轉已付款保留，實體不變
       for (const [productId, quantity] of [[lampId, 3], [tableId, 1]] as const) {

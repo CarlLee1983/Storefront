@@ -35,8 +35,8 @@ export async function openAdmin(page: Page, path: string) {
 
 /** 寫入前確認對方真的是本站後台：本機埠可能被其他專案的 dev server 佔用。 */
 export async function assertStorefrontAdmin(page: Page, expectedBaseUrl: string) {
-  const response = await openAdmin(page, "/admin");
-  const expected = new URL("/admin", expectedBaseUrl);
+  const response = await openAdmin(page, "/admin/products");
+  const expected = new URL("/admin/products", expectedBaseUrl);
   const actual = new URL(page.url());
   const create = page.getByRole("main").getByRole("link", { name: "新增商品", exact: true });
   if (!response?.ok() || actual.origin !== expected.origin || actual.pathname !== expected.pathname
@@ -49,7 +49,7 @@ export async function assertStorefrontAdmin(page: Page, expectedBaseUrl: string)
     if (await openMenu.isVisible()) await openMenu.click();
     const current = page.getByRole("navigation", { name: "後台導覽" }).getByRole("link", { name: "商品管理", exact: true });
     if (!(await current.isVisible()) || await current.getAttribute("aria-current") !== "page"
-      || await current.getAttribute("href") !== "/admin") {
+      || await current.getAttribute("href") !== "/admin/products") {
       throw new Error(`${page.url()} 不是 Storefront 的商品管理頁，停止 seed。`);
     }
   } finally {
@@ -79,7 +79,7 @@ async function readTable(page: Page, tableLabel: string, linkPrefix: string): Pr
     if (!table) return [];
     const headers = [...table.querySelectorAll("thead th")].map((th) => th.textContent?.trim() ?? "");
     return [...table.querySelectorAll("tbody tr")].map((tr) => ({
-      id: tr.querySelector(`a[href^="${linkPrefix}"]`)?.getAttribute("href")?.split("/").pop() ?? "",
+      id: tr.querySelector(`a[href^="${linkPrefix}"]`)?.getAttribute("href")?.split("/").pop()?.split("?")[0] ?? "",
       cells: Object.fromEntries(headers.map((header, index) => [header, tr.children[index]?.textContent?.trim() ?? ""])),
       hasImage: tr.querySelector("img") !== null,
     }));
@@ -120,7 +120,7 @@ export async function uploadCategoryImage(page: Page, categoryId: string, file: 
 }
 
 export async function listProducts(page: Page): Promise<AdminProduct[]> {
-  await openAdmin(page, "/admin");
+  await openAdmin(page, "/admin/products");
   return (await readTable(page, "管理資料表", "/admin/products/")).map((row) => {
     const name = requireCell(row, "名稱");
     const onHand = Number(requireCell(row, "在庫數"));
@@ -194,7 +194,7 @@ function productRow(page: Page, name: string) {
 
 /** 庫存只能以增減量調整，並須填寫原因（寫進庫存流水）。 */
 export async function adjustStock(page: Page, name: string, delta: number, reason = "示範資料補貨") {
-  await openAdmin(page, "/admin");
+  await openAdmin(page, "/admin/products");
   const row = productRow(page, name);
   await row.getByLabel(`${name}的庫存增減量`).fill(delta > 0 ? `+${delta}` : String(delta));
   await row.getByLabel(`${name}的庫存調整原因`).fill(reason);
@@ -202,12 +202,12 @@ export async function adjustStock(page: Page, name: string, delta: number, reaso
 }
 
 export async function setFeatured(page: Page, name: string, featured: boolean) {
-  await openAdmin(page, "/admin");
+  await openAdmin(page, "/admin/products");
   const label = featured ? "標為精選" : "取消精選";
   await submitAndExpect(page, productRow(page, name).getByRole("button", { name: `${label}：${name}` }), featured ? "已標為精選商品。" : "已取消精選。");
 }
 
 export async function relist(page: Page, name: string) {
-  await openAdmin(page, "/admin");
+  await openAdmin(page, "/admin/products");
   await submitAndExpect(page, productRow(page, name).getByRole("button", { name: "重新上架", exact: true }), "已重新上架商品。");
 }

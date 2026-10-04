@@ -9,6 +9,7 @@ import OrderTimeline from "../../../orders/OrderTimeline.astro";
 import ShipmentList from "../../../orders/ShipmentList.astro";
 import OrderCover from "../../../orders/OrderCover.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readAdminListReturn, withListReturn } from "../../../admin/list-return";
 import { decideFormToInput, describeDecideFailure, describeDecideOutcome } from "../../../admin/cancellation-form";
 import { cancellationStatusLabel, cancellableQuantity } from "../../../orders/cancellation";
 import { describeReturnFailure, describeReturnOutcome, inspectionFormToInput, receiptFormToInput } from "../../../admin/return-form";
@@ -25,6 +26,7 @@ export const prerender = false;
 // 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const orderId = parseOrderId(Astro.params.id);
+const listReturn = readAdminListReturn(Astro.url.searchParams.get("returnTo"), "orders");
 let failure: ReturnType<typeof describeShipFailure> | undefined;
 let submittedEvent: { shipmentId: number; eventKey: string } | undefined;
 let eventFailure: ReturnType<typeof describeShipmentEventFailure> | undefined;
@@ -45,28 +47,28 @@ if (orderId !== null && Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   if (form.get("intent") === "retry-invoice") {
     const result = await env.APP.retryInvoice(jwt, { invoiceId: Number(toText(form.get("invoiceId"))) });
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?invoice=${result.data.status}#invoices`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?invoice=${result.data.status}#invoices`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else invoiceFailure = describeInvoiceFailure(result);
   } else if (form.get("intent") === "resend-invoice") {
     const result = await env.APP.resendInvoice(jwt, { invoiceId: Number(toText(form.get("invoiceId"))) });
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?resend=${result.data.delivered ? "delivered" : "failed"}#invoices`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?resend=${result.data.delivered ? "delivered" : "failed"}#invoices`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else invoiceFailure = describeInvoiceFailure(result);
   } else if (form.get("intent") === "retry-allowance") {
     const result = await env.APP.retryAllowance(jwt, { refundId: Number(toText(form.get("refundId"))) });
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?allowance=${result.data.status}#invoices`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?allowance=${result.data.status}#invoices`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else invoiceFailure = describeAllowanceFailure(result);
   } else if (form.get("intent") === "resend-allowance") {
     const result = await env.APP.resendAllowance(jwt, { refundId: Number(toText(form.get("refundId"))) });
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?resend-allowance=${result.data.delivered ? "delivered" : "failed"}#invoices`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?resend-allowance=${result.data.delivered ? "delivered" : "failed"}#invoices`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else invoiceFailure = describeAllowanceFailure(result);
   } else if (form.get("intent") === "add-note") {
     const input = noteFormToInput(form, orderId);
     const result = await env.APP.addOrderNote(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=note#notes`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=note#notes`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else {
       noteFailure = describeNoteFailure(result);
@@ -76,32 +78,32 @@ if (orderId !== null && Astro.request.method === "POST") {
     const result = await env.APP.decideCancellation(jwt, decideFormToInput(form));
     if (result.ok) {
       const saved = result.data.decision === "approved" ? "cancellation-approved" : "cancellation-rejected";
-      return Astro.redirect(`/admin/orders/${orderId}?saved=${saved}&refund=${result.data.refund?.status ?? "none"}`, 303);
+      return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=${saved}&refund=${result.data.refund?.status ?? "none"}`, listReturn), 303);
     }
     if (result.reason === "unauthorized") unauthorized = true;
     else decideFailure = describeDecideFailure(result);
   } else if (form.get("intent") === "decide-return") {
     const input = decideFormToInput(form);
     const result = await env.APP.decideReturn(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=${result.data.decision === "approved" ? "return-approved" : "return-rejected"}#returns`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=${result.data.decision === "approved" ? "return-approved" : "return-rejected"}#returns`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
   } else if (form.get("intent") === "record-return-receipt") {
     const input = receiptFormToInput(form);
     const result = await env.APP.recordReturnReceipt(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=${result.data.status === "received" ? "return-received" : "return-not-received"}#returns`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=${result.data.status === "received" ? "return-received" : "return-not-received"}#returns`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
   } else if (form.get("intent") === "record-return-inspection") {
     const input = inspectionFormToInput(form);
     const result = await env.APP.recordReturnInspection(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=return-inspected&refund=${result.data.refund?.status ?? "none"}#returns`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=return-inspected&refund=${result.data.refund?.status ?? "none"}#returns`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else returnFailure = { ...describeReturnFailure(result), requestId: input.requestId };
   } else if (form.get("intent") === "confirm-loss") {
     const input = lossFormToInput(form);
     const result = await env.APP.confirmShipmentLoss(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=loss-confirmed&refund=${result.data.refund?.status ?? "none"}#losses`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=loss-confirmed&refund=${result.data.refund?.status ?? "none"}#losses`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else {
       lossFailure = describeLossFailure(result);
@@ -110,7 +112,7 @@ if (orderId !== null && Astro.request.method === "POST") {
   } else if (form.get("intent") === "declare-return") {
     const input = declareReturnFormToInput(form);
     const result = await env.APP.declareShipmentReturn(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=return-declared#shipment-returns`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=return-declared#shipment-returns`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else {
       shipmentReturnFailure = describeShipmentReturnFailure(result);
@@ -119,19 +121,19 @@ if (orderId !== null && Astro.request.method === "POST") {
   } else if (form.get("intent") === "record-shipment-return-receipt") {
     const input = shipmentReturnReceiptFormToInput(form);
     const result = await env.APP.recordShipmentReturnReceipt(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=${result.data.status === "received" ? "shipment-return-received" : "shipment-return-not-received"}#shipment-returns`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=${result.data.status === "received" ? "shipment-return-received" : "shipment-return-not-received"}#shipment-returns`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else shipmentReturnFailure = { ...describeShipmentReturnFailure(result), returnId: input.returnId };
   } else if (form.get("intent") === "record-shipment-return-inspection") {
     const input = shipmentReturnInspectionFormToInput(form);
     const result = await env.APP.recordShipmentReturnInspection(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=shipment-return-inspected&refund=${result.data.refund?.status ?? "none"}#shipment-returns`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=shipment-return-inspected&refund=${result.data.refund?.status ?? "none"}#shipment-returns`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else shipmentReturnFailure = { ...describeShipmentReturnFailure(result), returnId: input.returnId };
   } else if (form.get("intent") === "shipment-event") {
     const input = shipmentEventFormToInput(form);
     const result = await env.APP.recordShipmentEvent(jwt, input);
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=event`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=event`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else {
       eventFailure = describeShipmentEventFailure(result);
@@ -141,7 +143,7 @@ if (orderId !== null && Astro.request.method === "POST") {
     // 交運一批：訂單已不能交運（例如另一位管理員剛出完）會顯示原因與最新狀態
     submitted = formToRecord(form);
     const result = await env.APP.shipOrder(jwt, shipFormToInput(form, orderId));
-    if (result.ok) return Astro.redirect(`/admin/orders/${orderId}?saved=shipped`, 303);
+    if (result.ok) return Astro.redirect(withListReturn(`/admin/orders/${orderId}?saved=shipped`, listReturn), 303);
     if (result.reason === "unauthorized") unauthorized = true;
     else failure = describeShipFailure(result);
   }
@@ -169,12 +171,12 @@ const canShip = (order?.status === "paid" || order?.status === "partially_shippe
 const fieldErrors = (name: string) => failure?.fields[name] ?? [];
 ---
 
-<AdminLayout title={order ? `訂單 #${order.id}` : "訂單"}>
+<AdminLayout title={order ? `訂單 #${order.id}` : "訂單"} listReturn={listReturn}>
   {
     view === "forbidden" ? (
       <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
     ) : view === "not_found" || !order ? (
-      <p class="error" role="alert">找不到這張訂單。<a href="/admin/orders">回訂單管理</a></p>
+      <p class="error" role="alert">找不到這張訂單。<a href={listReturn}>回訂單管理</a></p>
     ) : (
       <>
         {shipped && <p role="status">已記錄這一批出貨。</p>}
@@ -239,7 +241,10 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
           }
           {!canShip && failure && <p class="error" role="alert">{failure.message}</p>}
         </div>
-        <OrderTimeline timeline={order.timeline} />
+        <OrderTimeline timeline={{
+          ...order.timeline,
+          todos: order.timeline.todos.map(todo => ({ ...todo, href: withListReturn(todo.href, listReturn) })),
+        }} />
         <h2 id="shipments">出貨批次</h2>
         {order.shipments.length === 0 ? <p>還沒有出貨批次。</p> : <ShipmentList shipments={order.shipments} admin submittedEvent={submittedEvent} submittedLoss={submittedLoss} submittedReturn={submittedReturn} />}
         <div class="table-scroll admin-order-lines" tabindex="0" role="region" aria-label="訂單明細資料表"><table>
@@ -670,7 +675,7 @@ const fieldErrors = (name: string) => failure?.fields[name] ?? [];
             </div>
           </div>
         </div>
-        <p><a href="/admin/orders" class="admin-actions">← 返回訂單管理</a></p>
+        <p><a href={listReturn} class="admin-actions">← 返回訂單管理</a></p>
       </>
     )
   }

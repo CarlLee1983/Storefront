@@ -4,7 +4,7 @@ import { BASE_URL } from "../harness/constants";
 import { analyzeWhenSettled } from "../harness/axe";
 
 const groups = [
-  { label: "商品與庫存", links: [["商品管理", "/admin"], ["分類管理", "/admin/categories"], ["庫存流水", "/admin/stock-movements"], ["低庫存提醒", "/admin/low-stock"]] },
+  { label: "商品與庫存", links: [["商品管理", "/admin/products"], ["分類管理", "/admin/categories"], ["庫存流水", "/admin/stock-movements"], ["低庫存提醒", "/admin/low-stock"]] },
   { label: "訂單與售後", links: [["訂單管理", "/admin/orders"], ["取消審核", "/admin/cancellations"], ["退貨處理", "/admin/returns"]] },
   { label: "款項與憑證", links: [["付款補查", "/admin/payments"], ["退款待辦", "/admin/refunds"], ["發票待辦", "/admin/invoices"]] },
   { label: "設定與通知", links: [["運費設定", "/admin/shipping"], ["信件投遞", "/admin/mail"]] },
@@ -14,7 +14,7 @@ test("桌機分組導覽可找到全部功能且不遮擋內容", async ({ brows
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport: { width: 1280, height: 900 } });
   try {
     const page = await context.newPage();
-    await page.goto("/admin");
+    await page.goto("/admin/products");
     const nav = page.getByRole("navigation", { name: "後台導覽" });
     await expect(nav.getByRole("heading")).toHaveText(groups.map(group => group.label));
     await expect(nav.getByRole("link")).toHaveCount(12);
@@ -42,8 +42,8 @@ test("直接開啟深層頁面可由麵包屑返回所屬列表", async ({ brows
   try {
     const page = await context.newPage();
     for (const [path, parent, href, title] of [
-      ["/admin/products/new", "商品管理", "/admin", "新增商品"],
-      ["/admin/products/999999999", "商品管理", "/admin", "編輯商品"],
+      ["/admin/products/new", "商品管理", "/admin/products", "新增商品"],
+      ["/admin/products/999999999", "商品管理", "/admin/products", "編輯商品"],
       ["/admin/categories/999999999", "分類管理", "/admin/categories", "修改分類"],
       ["/admin/orders/999999999", "訂單管理", "/admin/orders", "訂單"],
     ] as const) {
@@ -64,7 +64,7 @@ test("手機抽屜可用鍵盤開關並到達所有功能", async ({ browser }) 
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport: { width: 375, height: 667 } });
   try {
     const page = await context.newPage();
-    await page.goto("/admin");
+    await page.goto("/admin/products");
     const open = page.getByRole("button", { name: "開啟後台選單" });
     const drawer = page.getByRole("dialog", { name: "後台選單" });
     await expect(open).toBeVisible();
@@ -140,7 +140,7 @@ test("短視窗及版型切換仍能操作導覽與內容", async ({ browser }, 
     await expect(page.getByRole("main")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
     await nav.getByRole("link", { name: "商品管理", exact: true }).click();
-    await expect(page).toHaveURL(`${BASE_URL}/admin`);
+    await expect(page).toHaveURL(`${BASE_URL}/admin/products`);
 
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 900 });
@@ -161,6 +161,21 @@ test("短視窗及版型切換仍能操作導覽與內容", async ({ browser }, 
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     }
+  } finally {
+    await context.close();
+  }
+});
+
+test("後台根入口與品牌進入訂單管理", async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
+  try {
+    const page = await context.newPage();
+    await page.goto("/admin");
+    await expect(page).toHaveURL(`${BASE_URL}/admin/orders`);
+    await expect(page.getByRole("heading", { level: 1, name: "訂單管理" })).toBeVisible();
+    await page.goto("/admin/products");
+    await page.getByRole("banner").getByRole("link", { name: "管理後台 Still Life" }).click();
+    await expect(page).toHaveURL(`${BASE_URL}/admin/orders`);
   } finally {
     await context.close();
   }

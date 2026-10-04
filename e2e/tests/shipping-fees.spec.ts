@@ -54,7 +54,7 @@ for (const viewport of VIEWPORTS) {
       await expect(admin.getByLabel("配送類型")).toHaveValue("standard");
       await admin.getByLabel("配送類型").selectOption({ label: "大型配送" });
       await admin.getByRole("button", { name: "儲存變更" }).click();
-      await expect(admin).toHaveURL(/\/admin\?saved=updated/);
+      await expect(admin).toHaveURL(/\/admin\/products\?saved=updated/);
       await admin.goto(`/admin/products/${tableId}`);
       await expect(admin.getByLabel("配送類型")).toHaveValue("large");
       // 圖庫腳本載入前上傳按鈕是停用的（停用狀態的對比不在此檢查範圍）：等它就緒再掃描

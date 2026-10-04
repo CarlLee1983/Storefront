@@ -42,7 +42,7 @@ async function post(request: APIRequestContext, path: string, form: Record<strin
  * （多半發生在請求送達前）；只對這種網路層錯誤重試（maxRetries），不重試 HTTP 回應。只有冪等請求可以這樣做，所以 `post()` 不重試。
  */
 export async function unlistProduct(request: APIRequestContext, id: number | string) {
-  return request.post("/admin", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
+  return request.post("/admin/products", { form: { intent: "unlist", id: String(id) }, headers: { origin: BASE_URL }, maxRedirects: 0, maxRetries: 3 });
 }
 
 /** 以管理後台的表單與上傳端點（不開瀏覽器頁面）快速建立分類與上架商品，回傳商品編號，供大量資料的 E2E 使用。 */
@@ -65,7 +65,7 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
   const html = await fetchProductListHtml(admin);
   // 商品編號用在編輯頁與圖片上傳，庫存調整則以預設變體為單位（清單每列的庫存表單帶著 variantId）
   const rows = products.map(({ name }) => {
-    const match = new RegExp(`<a href="/admin/products/(\\d+)"[^>]*>${name}</a>[\\s\\S]*?name="variantId" value="(\\d+)"`).exec(html);
+    const match = new RegExp(`<a href="/admin/products/(\\d+)(?:\\?[^"#]*)?"[^>]*>${name}</a>[\\s\\S]*?name="variantId" value="(\\d+)"`).exec(html);
     if (!match) throw new Error(`後台清單找不到剛建立的商品：${name}`);
     return { id: match[1]!, variantId: match[2]! };
   });
@@ -90,11 +90,11 @@ export async function seedListedProductsInCategory(adminContext: BrowserContext,
       },
     });
     expect(upload.status(), `上傳 ${name} 的封面`).toBe(201);
-    if (stock > 0) await post(admin, "/admin", { intent: "adjust-stock", variantId: rows[index]!.variantId, delta: `+${stock}`, reason: "E2E 補貨" });
+    if (stock > 0) await post(admin, "/admin/products", { intent: "adjust-stock", variantId: rows[index]!.variantId, delta: `+${stock}`, reason: "E2E 補貨" });
   }));
 
   // 依序上架：上架時間才會跟著名稱順序遞增
-  for (const id of ids) await post(admin, "/admin", { intent: "relist", id });
+  for (const id of ids) await post(admin, "/admin/products", { intent: "relist", id });
   return ids.map(Number);
 }
 
@@ -110,7 +110,7 @@ export async function defaultVariantIds(request: APIRequestContext, productIds: 
 
 /** 依序把商品標為精選（走後台清單的表單，不開瀏覽器頁面）；精選時間跟著傳入順序遞增。 */
 export async function featureProducts(admin: APIRequestContext, ids: number[]) {
-  for (const id of ids) await post(admin, "/admin", { intent: "feature", id: String(id) });
+  for (const id of ids) await post(admin, "/admin/products", { intent: "feature", id: String(id) });
 }
 
 /**
@@ -119,8 +119,8 @@ export async function featureProducts(admin: APIRequestContext, ids: number[]) {
  */
 export async function unlistProductsByPrefix(admin: APIRequestContext, prefix: string) {
   const html = await fetchProductListHtml(admin, { q: prefix, status: "listed" });
-  const ids = html.split("<tr").filter((row) => new RegExp(`<a href="/admin/products/\\d+"[^>]*>${prefix}[^<]*</a>`).test(row) && row.includes("上架中"))
-    .map((row) => /href="\/admin\/products\/(\d+)"/.exec(row)?.[1]).filter((id): id is string => id !== undefined);
+  const ids = html.split("<tr").filter((row) => new RegExp(`<a href="/admin/products/\\d+(?:\\?[^"#]*)?"[^>]*>${prefix}[^<]*</a>`).test(row) && row.includes("上架中"))
+    .map((row) => /href="\/admin\/products\/(\d+)(?:\?[^"#]*)?"/.exec(row)?.[1]).filter((id): id is string => id !== undefined);
   // 依序下架：wrangler 的 ProxyWorker 偶爾回 500（Network connection lost）；下架是冪等的，所以重試到 303
   for (const id of ids) {
     await expect.poll(async () => (await unlistProduct(admin, id)).status(), { message: `下架商品 ${id}`, timeout: 20_000 }).toBe(303);
