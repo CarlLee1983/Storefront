@@ -81,9 +81,9 @@ test("四品項、長 email 與多筆付款在後台列表和明細完整可見"
       for (const cover of layout.covers) { expect(cover.width).toBeGreaterThanOrEqual(40); expect(cover.width).toBeLessThanOrEqual(48); expect(cover.height).toBe(44); expect(cover.sameLine).toBe(true); }
       await assertLayout(admin, width);
       if (width === 1280) {
-        const filter = (await admin.getByLabel("訂單狀態").boundingBox())!;
+        const filter = (await admin.getByLabel("成立日期（迄）").boundingBox())!;
         const button = (await admin.getByRole("button", { name: "查找", exact: true }).boundingBox())!;
-        // 欄位上方有標籤，所以以底緣對齊判斷「查找」與欄位在同一排
+        // 篩選欄位可因側欄換行；查找按鈕接在最後一個欄位後並底緣對齊。
         expect(button.y + button.height).toBe(filter.y + filter.height);
       }
       await testInfo.attach(`orders-list-${width}`, { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });

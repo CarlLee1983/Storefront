@@ -26,10 +26,13 @@ for (const width of [375, 1280]) {
       const page = await context.newPage();
       expect((await page.goto("/admin"))?.status()).toBe(200);
       await expect(page.getByLabel("分類名稱")).toHaveCount(0);
+      if (width === 375) await page.getByRole("button", { name: "開啟後台選單" }).click();
       const categoryNav = page.getByRole("navigation", { name: "後台導覽" }).getByRole("link", { name: "分類管理" });
       await categoryNav.click();
       await expect(page).toHaveURL(`${BASE_URL}/admin/categories`);
+      if (width === 375) await page.getByRole("button", { name: "開啟後台選單" }).click();
       await expect(categoryNav).toHaveAttribute("aria-current", "page");
+      if (width === 375) await page.keyboard.press("Escape");
       await expect(page.getByRole("heading", { name: "新增分類" })).toBeVisible();
       await assertNoOverflow(page, width);
       await assertControlSizes(page);

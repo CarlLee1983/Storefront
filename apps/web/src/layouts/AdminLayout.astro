@@ -1,25 +1,37 @@
 ---
 import "../styles/global.css";
 import "../styles/admin.css";
+import AdminNavigation from "../components/AdminNavigation.astro";
 
 interface Props { title: string }
 const { title } = Astro.props;
-const path = Astro.url.pathname;
-const section = path.startsWith("/admin/categories") ? "categories" : path.startsWith("/admin/orders") ? "orders" : path.startsWith("/admin/payments") ? "payments" : path.startsWith("/admin/cancellations") ? "cancellations" : path.startsWith("/admin/returns") ? "returns" : path.startsWith("/admin/refunds") ? "refunds" : path.startsWith("/admin/invoices") ? "invoices" : path.startsWith("/admin/mail") ? "mail" : path.startsWith("/admin/shipping") ? "shipping" : path.startsWith("/admin/stock-movements") ? "stock" : path.startsWith("/admin/low-stock") ? "low-stock" : "products";
-const links = [
-  { section: "products", href: "/admin", label: "商品管理" },
-  { section: "categories", href: "/admin/categories", label: "分類管理" },
-  { section: "orders", href: "/admin/orders", label: "訂單管理" },
-  { section: "stock", href: "/admin/stock-movements", label: "庫存流水" },
-  { section: "low-stock", href: "/admin/low-stock", label: "低庫存提醒" },
-  { section: "shipping", href: "/admin/shipping", label: "運費設定" },
-  { section: "payments", href: "/admin/payments", label: "付款補查" },
-  { section: "cancellations", href: "/admin/cancellations", label: "取消審核" },
-  { section: "returns", href: "/admin/returns", label: "退貨處理" },
-  { section: "refunds", href: "/admin/refunds", label: "退款待辦" },
-  { section: "invoices", href: "/admin/invoices", label: "發票待辦" },
-  { section: "mail", href: "/admin/mail", label: "信件投遞" },
+const path = Astro.url.pathname.replace(/\/+$/, "");
+const groups = [
+  { label: "商品與庫存", links: [
+    { href: "/admin", label: "商品管理" },
+    { href: "/admin/categories", label: "分類管理" },
+    { href: "/admin/stock-movements", label: "庫存流水" },
+    { href: "/admin/low-stock", label: "低庫存提醒" },
+  ] },
+  { label: "訂單與售後", links: [
+    { href: "/admin/orders", label: "訂單管理" },
+    { href: "/admin/cancellations", label: "取消審核" },
+    { href: "/admin/returns", label: "退貨處理" },
+  ] },
+  { label: "款項與憑證", links: [
+    { href: "/admin/payments", label: "付款補查" },
+    { href: "/admin/refunds", label: "退款待辦" },
+    { href: "/admin/invoices", label: "發票待辦" },
+  ] },
+  { label: "設定與通知", links: [
+    { href: "/admin/shipping", label: "運費設定" },
+    { href: "/admin/mail", label: "信件投遞" },
+  ] },
 ];
+const current = groups.flatMap(group => group.links).find(link =>
+  path === link.href || (link.href === "/admin" ? path.startsWith("/admin/products/") : path.startsWith(`${link.href}/`))
+);
+const showBreadcrumb = current && /^\/admin\/(products|categories|orders)\/[^/]+$/.test(path);
 ---
 
 <!doctype html>
@@ -39,18 +51,10 @@ const links = [
           Still Life
         </a>
       </div>
-      <nav aria-label="後台導覽" class="admin-nav">
-        {links.map(link => (
-          <a
-            href={link.href}
-            class:list={["admin-nav-link", { "is-active": link.section === section }]}
-            aria-current={link.section === section ? "page" : undefined}
-          >
-            {link.label}
-          </a>
-        ))}
-      </nav>
       <div class="admin-header-actions">
+        <button type="button" class="admin-menu-button" id="admin-menu-open" aria-label="開啟後台選單" aria-haspopup="dialog" aria-controls="admin-menu" aria-expanded="false">
+          選單
+        </button>
         <a href="/" class="admin-storefront-link" target="_blank" rel="noopener noreferrer">
           <span>前往前台</span>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -61,7 +65,25 @@ const links = [
         </a>
       </div>
     </header>
+    <aside class="admin-sidebar">
+      <AdminNavigation groups={groups} currentHref={current?.href} idPrefix="desktop" />
+    </aside>
+    <dialog class="admin-menu" id="admin-menu" aria-labelledby="admin-menu-title">
+      <div class="admin-menu-header">
+        <p id="admin-menu-title">後台選單</p>
+        <button type="button" id="admin-menu-close" aria-label="關閉後台選單" autofocus>關閉</button>
+      </div>
+      <AdminNavigation groups={groups} currentHref={current?.href} idPrefix="mobile" />
+    </dialog>
     <main id="main-content" tabindex="-1">
+      {showBreadcrumb && (
+        <nav aria-label="麵包屑" class="admin-breadcrumb">
+          <ol>
+            <li><a href={current.href}>{current.label}</a></li>
+            <li><span aria-hidden="true">/</span><span aria-current="page">{title}</span></li>
+          </ol>
+        </nav>
+      )}
       <div class="admin-page-header">
         <h1>{title}</h1>
       </div>
@@ -69,3 +91,31 @@ const links = [
     </main>
   </body>
 </html>
+
+<script>
+  const openButton = document.querySelector<HTMLButtonElement>("#admin-menu-open")!;
+  const menu = document.querySelector<HTMLDialogElement>("#admin-menu")!;
+  const desktop = window.matchMedia("(min-width: 64rem)");
+
+  openButton.addEventListener("click", () => {
+    menu.showModal();
+    openButton.setAttribute("aria-expanded", "true");
+  });
+  document.querySelector("#admin-menu-close")!.addEventListener("click", () => menu.close());
+  menu.addEventListener("close", () => {
+    openButton.setAttribute("aria-expanded", "false");
+    if (!desktop.matches) openButton.focus();
+  });
+  menu.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest("a")) menu.close();
+  });
+  // 旋轉裝置或放大視窗後解除原生 modal，避免桌機內容仍被設為 inert。
+  desktop.addEventListener("change", () => {
+    if (desktop.matches && menu.open) {
+      menu.close();
+      const link = document.querySelector<HTMLAnchorElement>(".admin-sidebar a[aria-current='page']")
+        ?? document.querySelector<HTMLAnchorElement>(".admin-sidebar a");
+      link?.focus();
+    }
+  });
+</script>
