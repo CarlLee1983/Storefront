@@ -57,7 +57,7 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
   // 特價與商品列表是全域狀態：用完下架，不影響其他 spec
-  try { for (const id of [tableId, mugId, adminProducts.手機.id, adminProducts.桌機.id]) await post(admin.request, "/admin", { intent: "unlist", id: String(id) }); }
+  try { for (const id of [tableId, mugId, adminProducts.手機.id, adminProducts.桌機.id]) await post(admin.request, "/admin/products", { intent: "unlist", id: String(id) }); }
   finally { await admin.close(); }
 });
 

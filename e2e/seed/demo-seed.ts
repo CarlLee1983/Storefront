@@ -77,9 +77,9 @@ async function openPreviewContext(target: SeedTarget): Promise<BrowserContext> {
 }
 
 async function waitForAccessLogin(page: Page, target: SeedTarget) {
-  await page.goto("/admin");
+  await page.goto("/admin/products");
   console.log(`請在開啟的 Chrome 完成 Cloudflare Access 登入（最多等 ${LOGIN_TIMEOUT_MS / 60_000} 分鐘），登入後 seed 會自動接手。`);
-  await page.waitForURL((url) => url.origin === target.baseUrl && url.pathname === "/admin", { timeout: LOGIN_TIMEOUT_MS });
+  await page.waitForURL((url) => url.origin === target.baseUrl && url.pathname === "/admin/products", { timeout: LOGIN_TIMEOUT_MS });
   console.log("已登入後台，開始寫入示範資料。");
 }
 

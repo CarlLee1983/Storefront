@@ -58,7 +58,7 @@ for (const width of [375, 1280]) {
       await admin.goto(`/admin/products/${ids[0]}`);
       const categoryId = await admin.getByLabel("分類", { exact: true }).inputValue();
       await assertShell(admin, "商品管理", width);
-      await expect(admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "商品管理" })).toHaveAttribute("href", "/admin");
+      await expect(admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "商品管理" })).toHaveAttribute("href", "/admin/products");
       await assertEditForm(admin, width);
       expect((await admin.getByLabel("分類", { exact: true }).boundingBox())!.height).toBe((await admin.getByLabel("名稱", { exact: true }).boundingBox())!.height);
       await testInfo.attach(`product-edit-${width}`, { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
@@ -66,7 +66,7 @@ for (const width of [375, 1280]) {
       await assertShell(admin, "分類管理", width);
       await expect(admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "分類管理" })).toHaveAttribute("href", "/admin/categories");
       await assertEditForm(admin, width);
-      for (const [path, current] of [["/admin", "商品管理"], ["/admin/categories", "分類管理"], ["/admin/orders", "訂單管理"]] as const) {
+      for (const [path, current] of [["/admin/products", "商品管理"], ["/admin/categories", "分類管理"], ["/admin/orders", "訂單管理"]] as const) {
         await admin.goto(path);
         await assertShell(admin, current, width);
       }
@@ -110,7 +110,7 @@ for (const width of [375, 1280]) {
         await assertShell(admin, current, width);
       }
       await admin.setExtraHTTPHeaders({ "Cf-Access-Jwt-Assertion": "invalid" });
-      for (const [path, current] of [["/admin", "商品管理"], ["/admin/categories", "分類管理"], ["/admin/orders", "訂單管理"]] as const) {
+      for (const [path, current] of [["/admin/products", "商品管理"], ["/admin/categories", "分類管理"], ["/admin/orders", "訂單管理"]] as const) {
         expect((await admin.goto(path))?.status()).toBe(403);
         await assertShell(admin, current, width);
       }

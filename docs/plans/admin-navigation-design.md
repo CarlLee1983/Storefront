@@ -8,7 +8,7 @@
 
 截至 2026-10-04，[T1 #130](https://github.com/CarlLee1983/Storefront/issues/130) 已由 [PR #134](https://github.com/CarlLee1983/Storefront/pull/134) 合併，完成分組導覽、響應式框架與深層頁面麵包屑；測試與畫面見[驗收紀錄](../acceptance/130-admin-navigation.md)。
 
-父規格 #129 尚未全部完成：後台首頁與商品列表搬移由 [T2 #131](https://github.com/CarlLee1983/Storefront/issues/131) 追蹤，商品與訂單返回條件分別由 [T3 #132](https://github.com/CarlLee1983/Storefront/issues/132)、[T4 #133](https://github.com/CarlLee1983/Storefront/issues/133) 追蹤，目前皆未結案。商品列表仍在 `/admin`；T1 的麵包屑尚未保留來源列表條件。
+後台首頁與商品列表搬移由 [T2 #131](https://github.com/CarlLee1983/Storefront/issues/131) 追蹤，商品與訂單返回條件分別由 [T3 #132](https://github.com/CarlLee1983/Storefront/issues/132)、[T4 #133](https://github.com/CarlLee1983/Storefront/issues/133) 追蹤。本機已完成 `/admin` 前往訂單、商品列表 `/admin/products` 與跨頁返回條件，typecheck、coverage、161 項完整 E2E 及獨立審查均通過；結果見[驗收紀錄](../acceptance/131-133-admin-navigation.md)。交付透過 PR 審查，尚未部署。
 
 ## 已確認決策
 

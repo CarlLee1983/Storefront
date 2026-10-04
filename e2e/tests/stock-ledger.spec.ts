@@ -31,7 +31,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
     try {
       // 商品列表分頁且依編號排序，其他 spec 的商品會把這件擠到後面頁：直接送出與表單相同的 POST
       const [variantId] = await defaultVariantIds(adminContext.request, [productId]);
-      const adjusted = await adminContext.request.post("/admin", { form: { intent: "adjust-stock", variantId: String(variantId), delta: "-1", reason: "盤損測試" }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      const adjusted = await adminContext.request.post("/admin/products", { form: { intent: "adjust-stock", variantId: String(variantId), delta: "-1", reason: "盤損測試" }, headers: { origin: BASE_URL }, maxRedirects: 0 });
       expect(adjusted.status()).toBe(303);
 
       await page.goto(`/products/${productId}`);

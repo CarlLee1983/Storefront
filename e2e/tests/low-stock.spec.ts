@@ -37,7 +37,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       // 補貨後可售超過門檻，提醒同步消失；補貨與盤損可由流水對回
       const [variantId] = await defaultVariantIds(adminContext.request, [productId]);
-      const adjusted = await adminContext.request.post("/admin", { form: { intent: "adjust-stock", variantId: String(variantId), delta: "+10", reason: "低庫存補貨" }, headers: { origin: BASE_URL }, maxRedirects: 0 });
+      const adjusted = await adminContext.request.post("/admin/products", { form: { intent: "adjust-stock", variantId: String(variantId), delta: "+10", reason: "低庫存補貨" }, headers: { origin: BASE_URL }, maxRedirects: 0 });
       expect(adjusted.status()).toBe(303);
       await admin.goto("/admin/low-stock");
       await expect(admin.getByRole("row").filter({ hasText: name })).toHaveCount(0);

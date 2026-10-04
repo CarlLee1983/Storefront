@@ -2,6 +2,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
 import { featureProducts, seedListedProducts, unlistProductsByPrefix } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
+import { writeFixture } from "../harness/customer-fixture";
 import { loadCatalog } from "../seed/catalog";
 import { gotoProductList } from "../harness/admin-list";
 import { analyzeWhenSettled } from "../harness/axe";
@@ -45,12 +46,12 @@ test("桌機商品表格容納 32 件商品，操作與庫存錯誤維持可用�
     await admin.goto(`/admin/products/${ids.get(LONG_NAME)}`);
     await admin.locator('textarea[name="description"]').fill("這段商品說明刻意寫得很長，商品清單只需要決策欄位，不應讓說明文字撐高每一列。".repeat(4));
     await admin.getByRole("button", { name: "儲存變更", exact: true }).click();
-    await expect(admin).toHaveURL(/\/admin\?saved=updated/);
+    await expect(admin).toHaveURL(/\/admin\/products\?saved=updated/);
     const saleProduct = catalog.products.find(product => product.compareAtPriceTwd !== null)!;
     await admin.goto(`/admin/products/${ids.get(saleProduct.name)}`);
     await admin.getByLabel("原價（選填）").fill(String(saleProduct.compareAtPriceTwd));
     await admin.getByRole("button", { name: "儲存變更", exact: true }).click();
-    await expect(admin).toHaveURL(/\/admin\?saved=updated/);
+    await expect(admin).toHaveURL(/\/admin\/products\?saved=updated/);
 
     const table = admin.getByRole("region", { name: "管理資料表" });
     // 清單每頁 15 筆：32 件商品分成 15、15、2 三頁，並有分頁導覽
@@ -60,7 +61,8 @@ test("桌機商品表格容納 32 件商品，操作與庫存錯誤維持可用�
     const firstPage = await table.evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
     expect(firstPage.scrollWidth, `第 1 頁（15 列）width=${firstPage.width} scrollWidth=${firstPage.scrollWidth}`).toBeLessThanOrEqual(firstPage.width);
     await expect(admin.getByRole("navigation", { name: "商品列表分頁" })).toBeVisible();
-    await admin.goto(`/admin?q=${encodeURIComponent(PREFIX)}&page=3`);
+    await admin.getByRole("navigation", { name: "商品列表分頁" }).getByRole("link", { name: "3", exact: true }).click();
+    await expect(admin).toHaveURL(`${BASE_URL}/admin/products?q=${encodeURIComponent(PREFIX)}&page=3`);
     await expect(table.locator("tbody tr")).toHaveCount(2);
 
     const saleName = `${PREFIX}${saleProduct.name}`;
@@ -216,13 +218,13 @@ test("清單操作成功後保留搜尋、狀態篩選與頁碼", async ({ brows
   try {
     await seedListedProducts(context, { slug: "admin-preserve", name: "保留篩選分類", description: "清單操作保留篩選" },
       Array.from({ length: 17 }, (_, index) => ({ name: `${PRESERVE}${String(index).padStart(2, "0")}`, priceTwd: 100, stock: 1 })));
-    const url = `/admin?q=${encodeURIComponent(PRESERVE)}&status=listed&page=2`;
+    const url = `/admin/products?q=${encodeURIComponent(PRESERVE)}&status=listed&page=2`;
     await admin.goto(url);
     const table = admin.getByRole("region", { name: "管理資料表" });
     await expect(table.locator("tbody tr")).toHaveCount(2);
     const expectPreserved = async (saved: string) => {
       const current = new URL(admin.url());
-      expect(current.pathname).toBe("/admin");
+      expect(current.pathname).toBe("/admin/products");
       expect(Object.fromEntries(current.searchParams)).toEqual({ q: PRESERVE, status: "listed", page: "2", saved });
     };
     // 下架第 2 頁的一件：回到同一份清單（仍是第 2 頁），訊息顯示在上方
@@ -240,5 +242,43 @@ test("清單操作成功後保留搜尋、狀態篩選與頁碼", async ({ brows
   } finally {
     await unlistProductsByPrefix(context.request, PRESERVE);
     await context.close();
+  }
+});
+
+test("手機上八頁以上商品分頁仍可完整操作", async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport: { width: 375, height: 900 } });
+  const admin = await context.newPage();
+  const prefix = `分頁版型${crypto.randomUUID()}`;
+  try {
+    writeFixture(`WITH RECURSIVE numbers(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM numbers WHERE n < 105)
+      INSERT INTO products (name, description, listed) SELECT '${prefix}-' || n, '行動版分頁測試', 0 FROM numbers;
+      INSERT INTO product_variants (product_id, is_default, price_twd)
+      SELECT id, 1, 100 FROM products WHERE name LIKE '${prefix}-%';`);
+    await admin.goto(`/admin/products?q=${encodeURIComponent(prefix)}&status=unlisted`);
+    const pagination = admin.getByRole("navigation", { name: "商品列表分頁" });
+    const pages = pagination.getByRole("link", { name: /^\d+$/ });
+    const pageCount = await pages.count();
+    expect(pageCount).toBeGreaterThanOrEqual(8);
+    for (const link of await pages.all()) {
+      const box = (await link.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    await pagination.scrollIntoViewIfNeeded();
+    await admin.screenshot({ path: "/tmp/storefront-admin-pagination-375.png" });
+    await pages.last().click();
+    await expect(admin).toHaveURL(`${BASE_URL}/admin/products?q=${encodeURIComponent(prefix)}&status=unlisted&page=${pageCount}`);
+    const rows = admin.getByRole("region", { name: "管理資料表" }).locator("tbody tr");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().getByRole("link", { name: `${prefix}-105` })).toBeVisible();
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  } finally {
+    try {
+      writeFixture(`DELETE FROM product_variants WHERE product_id IN (SELECT id FROM products WHERE name LIKE '${prefix}-%');
+        DELETE FROM products WHERE name LIKE '${prefix}-%';`);
+    } finally {
+      await context.close();
+    }
   }
 });

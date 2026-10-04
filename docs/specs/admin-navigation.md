@@ -2,7 +2,7 @@
 
 本文件保留 [#129](https://github.com/CarlLee1983/Storefront/issues/129) 已確認的完整交付規格；Problem Statement 描述設計訪談時的問題，不代表所有問題目前仍未處理。原始決策見[設計紀錄](../plans/admin-navigation-design.md)。
 
-截至 2026-10-04：T1 分組導覽與響應式框架已由 [PR #134](https://github.com/CarlLee1983/Storefront/pull/134) 合併，測試與畫面見[驗收紀錄](../acceptance/130-admin-navigation.md)。[T2 #131](https://github.com/CarlLee1983/Storefront/issues/131) 首頁與商品列表搬移、[T3 #132](https://github.com/CarlLee1983/Storefront/issues/132) 商品返回條件、[T4 #133](https://github.com/CarlLee1983/Storefront/issues/133) 訂單返回條件仍未結案；父規格尚未全部完成。
+截至 2026-10-04：T1 分組導覽與響應式框架已由 [PR #134](https://github.com/CarlLee1983/Storefront/pull/134) 合併，測試與畫面見[驗收紀錄](../acceptance/130-admin-navigation.md)。[T2 #131](https://github.com/CarlLee1983/Storefront/issues/131) 首頁與商品列表搬移、[T3 #132](https://github.com/CarlLee1983/Storefront/issues/132) 商品返回條件、[T4 #133](https://github.com/CarlLee1983/Storefront/issues/133) 訂單返回條件已於本機完成，typecheck、coverage、161 項完整 E2E 及獨立審查均通過；結果見[後續驗收紀錄](../acceptance/131-133-admin-navigation.md)。交付透過 PR 審查，尚未部署。
 
 ## Problem Statement
 

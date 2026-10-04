@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { adminAccessHeaders } from "../harness/admin-access";
+import { gotoOrderList } from "../harness/admin-list";
 import { seedListedProducts } from "../harness/admin-seed";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer, writeFixture } from "../harness/customer-fixture";
@@ -84,13 +85,27 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await expect(timeline.getByRole("link")).toHaveCount(0);
       await assertNoOverflowAndAxe(page, viewport.width);
 
-      await admin.goto(`/admin/orders/${orderId}`);
+      await gotoOrderList(admin, orderId);
+      const listUrl = admin.url();
+      const list = admin.getByRole("region", { name: "管理資料表" });
+      await expect(admin.getByLabel("訂單編號")).toHaveValue(orderId);
+      await expect(list.getByRole("link", { name: `#${orderId}` })).toHaveCount(1);
+      await list.getByRole("link", { name: `#${orderId}` }).click();
       const adminTimeline = admin.getByRole("region", { name: "進度與時間線" });
       await expect(adminTimeline.getByRole("list", { name: "目前同時成立的進度" })).toContainText("發票待補");
       await adminTimeline.getByRole("link", { name: /發票待補辦/ }).click();
-      await expect(admin).toHaveURL(new RegExp(`/admin/orders/${orderId}#invoices$`));
+      expect(new URL(admin.url()).searchParams.get("returnTo")).toBe(`/admin/orders?orderId=${orderId}`);
+      await expect(admin).toHaveURL(new RegExp(`/admin/orders/${orderId}\\?returnTo=.*#invoices$`));
       await expect(admin.locator("#invoices")).toBeVisible();
       await assertNoOverflowAndAxe(admin, viewport.width);
+      await admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "訂單管理" }).click();
+      await expect(admin).toHaveURL(listUrl);
+      await expect(admin.getByLabel("訂單編號")).toHaveValue(orderId);
+      await expect(admin.getByRole("region", { name: "管理資料表" }).getByRole("link", { name: `#${orderId}` })).toHaveCount(1);
+
+      await admin.goto(`/admin/orders/${orderId}`);
+      await admin.getByRole("region", { name: "進度與時間線" }).getByRole("link", { name: /發票待補辦/ }).click();
+      await expect(admin).toHaveURL(`${BASE_URL}/admin/orders/${orderId}#invoices`);
     } finally {
       await adminContext.close();
       await customerContext.close();

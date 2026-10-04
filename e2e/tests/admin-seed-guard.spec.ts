@@ -22,7 +22,7 @@ for (const width of [375, 1280]) {
       const context = await browser.newContext({ baseURL: BASE_URL, viewport });
       try {
         const page = await context.newPage();
-        await page.route(`${BASE_URL}/admin`, route => route.fulfill({
+        await page.route(`${BASE_URL}/admin/products`, route => route.fulfill({
           status: 200,
           contentType: "text/html",
           body: "<!doctype html><html><body><main><h1>商品管理</h1><p>Other application</p></main></body></html>",
@@ -37,11 +37,11 @@ for (const width of [375, 1280]) {
       const context = await browser.newContext({ baseURL: BASE_URL, viewport });
       try {
         const page = await context.newPage();
-        await page.route(`${BASE_URL}/admin`, route => route.fulfill({ status: 302, headers: { location: "/admin/orders" } }));
+        await page.route(`${BASE_URL}/admin/products`, route => route.fulfill({ status: 302, headers: { location: "/admin/orders" } }));
         await page.route(`${BASE_URL}/admin/orders`, route => route.fulfill({
           status: 200,
           contentType: "text/html",
-          body: '<!doctype html><html><body><main><h1>商品管理</h1><nav aria-label="後台導覽"><a href="/admin" aria-current="page">商品管理</a></nav><a href="/admin/products/new">新增商品</a></main></body></html>',
+          body: '<!doctype html><html><body><main><h1>商品管理</h1><nav aria-label="後台導覽"><a href="/admin/products" aria-current="page">商品管理</a></nav><a href="/admin/products/new">新增商品</a></main></body></html>',
         }));
         await expect(assertStorefrontAdmin(page, BASE_URL)).rejects.toThrow();
       } finally {
@@ -53,7 +53,7 @@ for (const width of [375, 1280]) {
       const context = await browser.newContext({ baseURL: BASE_URL, viewport });
       try {
         const page = await context.newPage();
-        await page.route(`${BASE_URL}/admin`, route => route.fulfill({
+        await page.route(`${BASE_URL}/admin/products`, route => route.fulfill({
           status: 200,
           contentType: "text/html",
           body: `<!doctype html><html><body>

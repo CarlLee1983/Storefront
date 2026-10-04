@@ -24,7 +24,7 @@ for (const width of [375, 1280]) {
     const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders(), viewport: { width, height: 900 } });
     try {
       const page = await context.newPage();
-      expect((await page.goto("/admin"))?.status()).toBe(200);
+      expect((await page.goto("/admin/products"))?.status()).toBe(200);
       await expect(page.getByLabel("分類名稱")).toHaveCount(0);
       if (width === 375) await page.getByRole("button", { name: "開啟後台選單" }).click();
       const categoryNav = page.getByRole("navigation", { name: "後台導覽" }).getByRole("link", { name: "分類管理" });
@@ -100,7 +100,7 @@ test("分類建立驗證保留輸入；未知動作與舊商品清單不能建�
     for (const [path, submitted] of [
       ["/admin/categories", { ...form, intent: "unknown" }],
       ["/admin/categories", { categoryName: "缺少動作", categoryDescription: "說明", categorySlug: `${slug}-missing` }],
-      ["/admin", { ...form, categoryName: "舊頁不應建立" }],
+      ["/admin/products", { ...form, categoryName: "舊頁不應建立" }],
     ] as const) {
       expect((await post(path, submitted)).status(), path).toBe(400);
     }
