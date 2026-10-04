@@ -12,3 +12,6 @@ coverage/
 # Playwright 的輸出（報告與失敗時的 trace）
 e2e/playwright-report/
 e2e/test-results/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
