@@ -1,7 +1,9 @@
 import { parseCartCover, type CartCover } from "./cover";
 
-/** 單筆數量上限；超過時夾到上限（不拒絕），避免顧客連按或手誤而失去整次加入。 */
-export const MAX_QUANTITY = 99;
+import { MAX_LINE_QUANTITY } from "@storefront/app/order-limits";
+
+/** 單筆數量上限；超過時整次拒絕。 */
+export const MAX_QUANTITY = MAX_LINE_QUANTITY;
 
 /** 目前的序列化格式版本；格式變動時遞增，舊版內容視為空購物車。2：購物車改以商品變體為單位。 */
 export const CART_VERSION = 2;
@@ -36,7 +38,7 @@ function isPositiveInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 1;
 }
 
-/** 數量是否為可加入購物車的正整數（是否超過上限另由夾值處理）。 */
+/** 數量是否為可加入購物車的正整數（上限另由購買判斷處理）。 */
 export const isValidQuantity = isPositiveInteger;
 
 /** 商品資料合格：編號與單價都是正的 safe integer（App 規定售價為正整數元）。 */
@@ -44,35 +46,31 @@ function isValidItem(item: CartItem): boolean {
   return isPositiveInteger(item.variantId) && isPositiveInteger(item.productId) && isPositiveInteger(item.unitPriceTwd);
 }
 
-/** 夾在 1 到 MAX_QUANTITY 之間；加入與改數量時數量已驗證為正整數，下限是給加減按鈕用的。 */
-export function clampQuantity(quantity: number): number {
-  return Math.min(Math.max(quantity, 1), MAX_QUANTITY);
-}
-
 /**
  * 加入購物車。同一商品變體已在車內時合併成同一筆：數量相加，
  * 名稱與單價以最新這次加入時看到的為準（覆蓋舊值），筆的位置不變。
- * 商品資料不合格或數量不是正整數就拒絕（回傳原購物車）；合併後超過 MAX_QUANTITY 夾到上限。
+ * 商品資料不合格或數量不是正整數就拒絕（回傳原購物車）；合併後超過可售數量或 MAX_QUANTITY 時整次拒絕。
  */
-export function addToCart(cart: Cart, item: CartItem, quantity: number): Cart {
-  if (!isPositiveInteger(quantity) || !isValidItem(item)) return cart;
+export function addToCart(cart: Cart, item: CartItem, quantity: number, available = MAX_QUANTITY): Cart {
+  if (!Number.isSafeInteger(available) || available < 0 || !isPositiveInteger(quantity) || !isValidItem(item)) return cart;
   const existing = cart.lines.find((line) => line.variantId === item.variantId);
-  if (!existing) return { ...cart, lines: [...cart.lines, { ...item, quantity: clampQuantity(quantity) }] };
+  if (quantity > Math.min(available, MAX_QUANTITY) - (existing?.quantity ?? 0)) return cart;
+  if (!existing) return { ...cart, lines: [...cart.lines, { ...item, quantity }] };
   return {
     ...cart,
     lines: cart.lines.map((line) =>
-      line === existing ? { ...item, quantity: clampQuantity(existing.quantity + quantity) } : line,
+      line === existing ? { ...item, quantity: existing.quantity + quantity } : line,
     ),
   };
 }
 
-/** 改數量：數量不是正整數或車內沒有該商品變體就回傳原購物車；超過上限夾到上限。移除請用 removeFromCart。 */
+/** 改數量：數量不是正整數或車內沒有該商品變體就回傳原購物車；超過上限拒絕。移除請用 removeFromCart。 */
 export function setQuantity(cart: Cart, variantId: number, quantity: number): Cart {
-  if (!isPositiveInteger(quantity) || !cart.lines.some((line) => line.variantId === variantId)) return cart;
+  if (!isPositiveInteger(quantity) || quantity > MAX_QUANTITY || !cart.lines.some((line) => line.variantId === variantId)) return cart;
   return {
     ...cart,
     lines: cart.lines.map((line) =>
-      line.variantId === variantId ? { ...line, quantity: clampQuantity(quantity) } : line,
+      line.variantId === variantId ? { ...line, quantity } : line,
     ),
   };
 }

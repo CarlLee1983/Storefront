@@ -46,10 +46,17 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext({ baseURL: BASE_URL, extraHTTPHeaders: adminAccessHeaders() });
   try {
     const admin = await context.newPage();
-    await createCategory(admin, CATEGORY);
-    await expect(admin.getByRole("status")).toHaveText("已建立分類。");
-    await createListedProduct(admin, MAIN.name, MAIN.priceTwd);
-    await createListedProduct(admin, OTHER.name, OTHER.priceTwd);
+    await admin.goto("/admin/categories");
+    if (!(await admin.getByRole("row", { name: new RegExp(CATEGORY.slug) }).count())) {
+      await createCategory(admin, CATEGORY);
+      await expect(admin.getByRole("status")).toHaveText("已建立分類。");
+    }
+    for (const product of [MAIN, OTHER]) {
+      await gotoProductList(admin, product.name);
+      if (!(await admin.getByRole("row", { name: new RegExp(product.name) }).count())) {
+        await createListedProduct(admin, product.name, product.priceTwd);
+      }
+    }
   } finally { await context.close(); }
 });
 
@@ -87,16 +94,21 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   const increase = information.getByRole("button", { name: "增加數量" });
   await increase.focus();
   await page.keyboard.press("Enter");
+  await expect(quantity).toHaveValue("2");
+  await expect(increase).toBeEnabled();
+  await increase.focus();
   await page.keyboard.press("Enter");
   await expect(quantity).toHaveValue("3");
   await information.getByRole("button", { name: "減少數量" }).focus();
   await page.keyboard.press("Space");
   await expect(quantity).toHaveValue("2");
-  await quantity.fill("99");
-  await increase.focus();
-  await page.keyboard.press("Enter");
-  await expect(quantity).toHaveValue("99");
+  await quantity.fill("10");
+  await quantity.blur();
+  await expect(quantity).toHaveValue("10");
+  await expect(increase).toBeDisabled();
   await quantity.fill("2");
+  await quantity.blur();
+  await expect(increase).toBeEnabled();
   await increase.focus();
   await page.keyboard.press("Tab");
   const add = information.getByRole("button", { name: "加入購物車", exact: true });

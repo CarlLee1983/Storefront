@@ -73,6 +73,14 @@ Storefront 自己的決策記錄在 `docs/adr/`；工作項目以 issue #1 為�
 - 部署順序沿用先 migration、再 App、再 Web。舊 App 搭配新 migration 仍可運作（欄位都有預設），但新 App 的結帳要求 `seenShippingTwd`，所以舊 Web 的結帳頁在新 App 上會被拒（回 `invalid_input`），Web 與 App 應壓短窗口一起部署。回復：先停止寫入，再執行 `wrangler d1 execute <DB> --file apps/app/rollback/0019_shipping_fees.down.sql`；已有訂單收過運費、或有大型配送的變體／明細時守門檢查讓回復失敗（總額含運費卻會失去拆分），須先確認可以捨棄。回復前須一併回復 Web 與 App；順序是 0019 → 0018 → …。
 - 測試見 `apps/app/test/shipping-fees.test.ts`（計費、快照、金額一致、權限、輸入驗證）、`shipping-migration.test.ts`；Web 的試算與表單轉換在 `apps/web/src/checkout/shipping.test.ts`；手機與桌機操作由 `e2e/tests/shipping-fees.spec.ts`（混合結帳與後台）與 `shipping-rates.spec.ts`（調整費率不改舊單、非管理員 403；費率是全域狀態，獨立成最後執行的 project）驗證。
 
+## 前台購買數量限制
+
+商品明細、列表快速加入、購物車與結帳均以商品變體的可售數量限制總數，同時保留每筆 99 件、每張訂單 20 種變體的既有上限。重複加入超量時整次拒絕；已在購物車的數量因庫存下降而超量時保留原數量、提示可購買數量並阻擋結帳。結帳頁可直接減量或移除，保留目前收件表單並重算運費與總額。
+
+- `GET /api/availability?variants=1,2` 透過 App `getAvailability` 查詢公開可售快照，單次最多 20 個變體、回應 `Cache-Control: no-store`；超過 20 種的舊購物車分批查詢並提示訂單上限。不回傳在庫、不可售或保留明細，缺少的變體表示目前無法購買。
+- 加入、增加數量、進入購物車／結帳與瀏覽器上一頁恢復時重新確認；不持續輪詢。查詢失敗有獨立提示與重試，暫停增加及結帳，減量與移除仍可用。購物車不是庫存保留，最終下單仍由既有原子檢查決定。
+- 不新增套件、資料庫遷移或購物車版本。部署沿用 App → Web 順序，新 Web 需有 `getAvailability` 的 App；回復先 Web 再 App。未部署到 preview 或 production。設計與驗收見 [修正方案](docs/plans/frontend-stock-limits-design.md) 及 [驗收紀錄](docs/acceptance/frontend-stock-limits.md)。
+
 ## 庫存保留與庫存流水
 
 依 [ADR 0006](docs/adr/0006-physical-stock-deducted-on-dispatch.md)：可售 = 在庫數 − 不可售 − 待付款保留 − 已付款待出貨保留（不可售是在庫中待檢與損壞的退貨，由 #117 加入、另列不是另一份庫存，物流退回入倉（#120）沿用；`product_variants.unavailable`，算式只在 `apps/app/src/catalog/stock.ts`），保留由訂單狀態推導（待付款、已付款與部分出貨訂單中「尚未交運」的明細數量，即明細數量減各批已交運數量與已核准取消的數量，沒有另外的保留表）。

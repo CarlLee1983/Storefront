@@ -3,12 +3,17 @@ let active: HTMLElement | undefined;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 let announcement: ReturnType<typeof setTimeout> | undefined;
 
-export function showCartToast(region: HTMLElement, message: string): void {
+export function clearCartToast(region: HTMLElement): void {
   clearTimeout(expiry);
   clearTimeout(announcement);
   if (active) active.textContent = "";
-  active = region;
+  active = undefined;
   region.textContent = "";
+}
+
+export function showCartToast(region: HTMLElement, message: string): void {
+  clearCartToast(region);
+  active = region;
   // A separate update also announces repeated identical messages at the quantity cap.
   announcement = setTimeout(() => {
     region.textContent = message;

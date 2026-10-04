@@ -61,11 +61,14 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       await expect(admin).toHaveURL(/\/admin\/products\?saved=updated/);
 
       // 步驟 1：顧客結帳 9,700（9,000 + 100 + 600），全部保留；付款後轉已付款保留，實體不變
+      let expectedCount = 0;
       for (const [productId, quantity] of [[lampId, 3], [tableId, 1]] as const) {
         await page.goto(`/products/${productId}`);
         const info = page.getByRole("region", { name: "商品資訊" });
-        for (let count = 0; count < quantity; count += 1) await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-        await expect(page.locator("#cart-count")).not.toHaveText("0");
+        for (let count = 0; count < quantity; count += 1) {
+          await info.getByRole("button", { name: "加入購物車", exact: true }).click();
+          await expect(page.locator("#cart-count")).toHaveText(String(++expectedCount));
+        }
       }
       await page.goto("/checkout");
       await expect(page.locator("#checkout-fee-standard-amount")).toHaveText("100");

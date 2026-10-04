@@ -43,8 +43,10 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
     try {
       await page.goto(`/products/${lampId}`);
       const info = page.getByRole("region", { name: "商品資訊" });
-      for (let count = 0; count < 3; count += 1) await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-      await expect(page.locator("#cart-count")).not.toHaveText("0");
+      for (let count = 0; count < 3; count += 1) {
+        await info.getByRole("button", { name: "加入購物車", exact: true }).click();
+        await expect(page.locator("#cart-count")).toHaveText(String(count + 1));
+      }
       await page.goto("/checkout");
       await page.getByLabel("收件人姓名").fill("取消王");
       await page.getByLabel("收件人電話").fill("0912345678");

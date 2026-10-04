@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CART_VERSION, MAX_QUANTITY, addToCart, clampQuantity, cartCount, cartTotal, deserializeCart, emptyCart, lineSubtotal, removeFromCart, serializeCart, setQuantity } from "./cart";
+import { CART_VERSION, MAX_QUANTITY, addToCart, cartCount, cartTotal, deserializeCart, emptyCart, lineSubtotal, removeFromCart, serializeCart, setQuantity } from "./cart";
 
 const mug = { variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320 };
 
@@ -39,10 +39,17 @@ describe("addToCart", () => {
     expect(before.lines[0]?.quantity).toBe(1);
   });
 
-  it("單筆數量超過上限時夾到上限（含合併後超過）", () => {
-    expect(addToCart(emptyCart, mug, 500).lines[0]?.quantity).toBe(MAX_QUANTITY);
-    const cart = addToCart(addToCart(emptyCart, mug, 90), mug, 20);
-    expect(cart.lines[0]?.quantity).toBe(MAX_QUANTITY);
+  it("超過可售數量時整次拒絕，包括重複加入", () => {
+    expect(addToCart(emptyCart, mug, 5, 4)).toBe(emptyCart);
+    const before = addToCart(emptyCart, mug, 3);
+    expect(addToCart(before, { ...mug, unitPriceTwd: 999 }, 2, 4)).toBe(before);
+    expect(addToCart(before, mug, 1, 4).lines[0]?.quantity).toBe(4);
+  });
+
+  it("超過通用上限同樣整次拒絕", () => {
+    expect(addToCart(emptyCart, mug, 500)).toBe(emptyCart);
+    const before = addToCart(emptyCart, mug, 98);
+    expect(addToCart(before, mug, 2, 100)).toBe(before);
   });
 
   it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])("數量 %s 不是正整數：拒絕，購物車不變", (quantity) => {
@@ -62,8 +69,8 @@ describe("setQuantity", () => {
     ]);
   });
 
-  it("超過上限夾到上限", () => {
-    expect(setQuantity(twoLines, 1, 1000).lines[0]?.quantity).toBe(MAX_QUANTITY);
+  it("超過上限拒絕", () => {
+    expect(setQuantity(twoLines, 1, 1000)).toBe(twoLines);
   });
 
   it.each([0, -3, 2.5, Number.NaN])("數量 %s 不是正整數：拒絕，購物車不變", (quantity) => {
@@ -151,15 +158,6 @@ describe("serializeCart / deserializeCart", () => {
   it("多餘的欄位被丟棄，只留已知欄位", () => {
     const raw = JSON.stringify({ version: CART_VERSION, lines: [{ ...line, evil: "x" }] });
     expect(deserializeCart(raw).lines).toEqual([line]);
-  });
-});
-
-describe("clampQuantity", () => {
-  it("夾在 1 到上限之間，給加減按鈕共用", () => {
-    expect(clampQuantity(0)).toBe(1);
-    expect(clampQuantity(-3)).toBe(1);
-    expect(clampQuantity(5)).toBe(5);
-    expect(clampQuantity(MAX_QUANTITY + 1)).toBe(MAX_QUANTITY);
   });
 });
 

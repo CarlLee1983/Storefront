@@ -1,4 +1,4 @@
-import { removeFromCart, type Cart, type CartLine } from "../cart/cart";
+import { type Cart, type CartLine } from "../cart/cart";
 
 type CheckoutResult = Awaited<ReturnType<Env["APP"]["checkout"]>>;
 
@@ -41,10 +41,6 @@ export function applyPriceChanges(cart: Cart, issues: readonly CheckoutIssue[]):
       return price === undefined ? line : { ...line, unitPriceTwd: price };
     }),
   };
-}
-
-export function removeLines(cart: Cart, variantIds: readonly number[]): Cart {
-  return variantIds.reduce(removeFromCart, cart);
 }
 
 export interface CheckoutFailure {

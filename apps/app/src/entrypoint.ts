@@ -168,6 +168,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   }
 
   // 顧客 RPC：第一個參數是瀏覽器的 cookie，由 App 自行驗 session，不信任呼叫端的任何身分聲明。
+  getAvailability(input: unknown) {
+    return this.#catalog().getAvailability(input);
+  }
+
   getShippingQuote(input: unknown) {
     return this.#catalog().getShippingQuote(input);
   }

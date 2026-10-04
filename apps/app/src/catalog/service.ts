@@ -5,14 +5,19 @@ import { parseInput } from "../shared/input";
 import { shippingQuoteInput } from "../shipping/input";
 import { selectShippingRates, selectVariantDeliveryTypes } from "../shipping/queries";
 import { fail, ok } from "../shared/result";
-import { listProductsInput } from "./input";
-import { existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts, selectSitemapProductIds } from "./queries";
+import { availabilityInput, listProductsInput } from "./input";
+import { selectAvailability, existsProductOnSale, selectFeaturedProducts, selectListedProduct, selectListedProducts, selectSitemapProductIds } from "./queries";
 
 /** 前台讀取，不需登入。 */
 export function createCatalogService(d1: D1Database) {
   const db = drizzle(d1);
 
   return {
+    async getAvailability(input: unknown) {
+      const parsed = parseInput(availabilityInput, input);
+      if (!parsed.ok) return parsed;
+      return ok({ variants: await selectAvailability(db, parsed.data.variantIds) });
+    },
     async getProduct(input: unknown) {
       if (typeof input !== "object" || input === null || !("id" in input) ||
         typeof input.id !== "number" || !Number.isSafeInteger(input.id) || input.id <= 0) return fail("not_found");

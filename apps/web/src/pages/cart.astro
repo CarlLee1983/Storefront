@@ -31,7 +31,9 @@ export const prerender = false;
       </dl>
       <p class="cart-total"><span>商品合計</span><strong>NT$ <span id="cart-total">0</span></strong></p>
       <p class="cart-currency">金額為新台幣、含稅，未含運費；運費於結帳時依配送類型計算（配送範圍限台灣本島）。</p>
-      <a class="checkout-link" href="/checkout">前往結帳</a>
+      <p id="cart-stock-status" role="status"></p>
+      <button type="button" id="stock-retry" class="button-secondary" hidden>重新確認庫存</button>
+      <a class="checkout-link" href="/checkout" aria-disabled="true">前往結帳</a>
       <p class="cart-note">單價為加入購物車當時所見的價格；結帳時若價格已變動，會先請你確認。</p>
     </aside>
   </div>
@@ -40,15 +42,37 @@ export const prerender = false;
 
 <script>
   import { createCartCover } from "../cart/cover";
-  import { cartTotal, clampQuantity, lineSubtotal, removeFromCart, setQuantity, type Cart, type CartLine } from "../cart/cart";
+  import { cartTotal, lineSubtotal, type Cart, type CartLine } from "../cart/cart";
   import { loadCart, storageOf } from "../cart/storage";
-  import { SAVE_FAILED_MESSAGE } from "../cart/feedback";
-  import { updateCart } from "../cart/store";
+  import { createStockCheck, cartStockIssue, stockIssue, purchaseLimit } from "../cart/availability";
+  import { changeAvailableQuantity, removeAvailableItem, type PurchaseResult } from "../cart/purchase";
 
   const priceFormat = new Intl.NumberFormat("zh-TW");
   const money = (amount: number) => `NT$ ${priceFormat.format(amount)}`;
   const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
   const content = $("#cart-content");
+  const stock = createStockCheck(renderStock);
+  const checkoutLink = $<HTMLAnchorElement>(".checkout-link");
+  const retry = $<HTMLButtonElement>("#stock-retry");
+  function renderStock() {
+    const cart = loadCart(storageOf(window));
+    const issue = stock.loading ? "正在確認庫存…" : cartStockIssue(cart, stock.stock);
+    $("#cart-stock-status").textContent = issue;
+    retry.hidden = stock.loading || stock.stock !== null;
+    checkoutLink.setAttribute("aria-disabled", String(!stock.validFor(cart)));
+    for (const row of document.querySelectorAll<HTMLElement>("#cart-lines [data-variant-id]")) {
+      const line = cart.lines.find(line => line.variantId === Number(row.dataset.variantId));
+      if (!line) continue;
+      row.querySelector<HTMLElement>(".line-stock")!.textContent = stock.loading ? "" : stockIssue(line, stock.stock);
+      const available = stock.stock?.get(line.variantId);
+      const input = row.querySelector<HTMLInputElement>("input")!;
+      input.max = String(available === undefined ? line.quantity : Math.max(line.quantity, purchaseLimit(available)));
+      row.querySelector<HTMLButtonElement>('[data-step="1"]')!.disabled = !stock.loading && (available === undefined || line.quantity >= purchaseLimit(available));
+      row.querySelector<HTMLButtonElement>('[data-step="-1"]')!.disabled = line.quantity <= 1;
+    }
+  }
+  retry.addEventListener("click", () => { void stock.refresh(loadCart(storageOf(window))); });
+  checkoutLink.addEventListener("click", event => { if (!stock.validFor(loadCart(storageOf(window)))) event.preventDefault(); });
   const stepperTemplate = $<HTMLTemplateElement>("#stepper-template");
 
   function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -74,26 +98,24 @@ export const prerender = false;
     const input = stepper.querySelector<HTMLInputElement>("input")!;
     input.value = String(line.quantity);
     input.setAttribute("aria-label", `${line.name} 數量`);
-    input.addEventListener("change", () => change((c) => setQuantity(c, line.variantId, Number(input.value)), input));
-    // 以最新的購物車內容加減；已在下限或上限時數量不變
-    const stepBy = (delta: number) => (cart: Cart) => {
-      const current = cart.lines.find((l) => l.variantId === line.variantId);
-      return current ? setQuantity(cart, line.variantId, clampQuantity(current.quantity + delta)) : cart;
-    };
+    input.addEventListener("change", () => { void change(changeAvailableQuantity(line.variantId, Number(input.value)), input); });
     for (const button of stepper.querySelectorAll<HTMLButtonElement>("[data-step]")) {
       const delta = Number(button.dataset.step);
       button.setAttribute("aria-label", `${delta < 0 ? "減少" : "增加"}${line.name}數量`);
-      button.addEventListener("click", () => change(stepBy(delta)));
+      button.addEventListener("click", () => {
+        const current = loadCart(storageOf(window)).lines.find(l => l.variantId === line.variantId);
+        if (current) void change(changeAvailableQuantity(line.variantId, current.quantity + delta));
+      });
     }
     const remove = make("button", "line-remove button-secondary", "移除");
     remove.type = "button";
     remove.dataset.action = "remove";
     remove.setAttribute("aria-label", `移除${line.name}`);
-    remove.addEventListener("click", () => change((c) => removeFromCart(c, line.variantId)));
+    remove.addEventListener("click", () => { void change(removeAvailableItem(line.variantId)); });
     const actions = make("div", "line-actions");
     actions.replaceChildren(stepper, remove);
     const main = make("div", "line-main");
-    main.replaceChildren(make("span", "line-name", line.name), ...(line.label ? [make("p", "line-variant", line.label)] : []), make("p", "line-price", `單價 ${money(line.unitPriceTwd)}`), actions);
+    main.replaceChildren(make("span", "line-name", line.name), ...(line.label ? [make("p", "line-variant", line.label)] : []), make("p", "line-price", `單價 ${money(line.unitPriceTwd)}`), actions, make("p", "line-stock error"));
     const subtotal = make("p", "line-subtotal");
     subtotal.replaceChildren(...subtotalText(line));
     item.replaceChildren(cover, main, subtotal);
@@ -111,21 +133,25 @@ export const prerender = false;
     content.hidden = cart.lines.length === 0;
     renderTotals(cart);
     $("#cart-lines").replaceChildren(...cart.lines.map(renderLine));
+    renderStock();
   }
 
   // 無效數量（如清空輸入框）會被 setQuantity 拒絕、購物車不變；照樣重畫，輸入框就還原成實際數量
-  function change(fn: (cart: Cart) => Cart, quantityInput?: HTMLInputElement) {
+  async function change(operation: Promise<PurchaseResult>, quantityInput?: HTMLInputElement) {
     const focused = document.activeElement as HTMLElement | null;
     const row = focused?.closest<HTMLLIElement>("li[data-variant-id]");
     const previousIndex = row ? Array.from(row.parentElement!.children).indexOf(row) : -1;
     const variantId = row?.dataset.variantId;
     const action = focused?.dataset.action;
-    const { cart, saved } = updateCart(storageOf(window), window, fn);
+    const result = await operation;
+    const cart = loadCart(storageOf(window));
+    const keepFocus = document.activeElement === focused;
     const error = $("#cart-error");
-    error.textContent = saved ? "" : SAVE_FAILED_MESSAGE;
-    error.hidden = saved;
+    error.textContent = result.message;
+    error.hidden = !result.message;
+    void stock.refresh(cart);
     // Keep the edited input in the DOM so Tab/Shift+Tab retain their native focus order.
-    if (quantityInput) {
+    if (quantityInput?.isConnected) {
       const editedRow = quantityInput.closest<HTMLLIElement>("li")!;
       const line = cart.lines.find(line => String(line.variantId) === editedRow.dataset.variantId);
       if (line) {
@@ -136,7 +162,7 @@ export const prerender = false;
       }
     }
     render(cart);
-    if (variantId && action) {
+    if (keepFocus && variantId && action) {
       const next = document.querySelector<HTMLElement>(`li[data-variant-id="${variantId}"] [data-action="${action}"]`)
         ?? document.querySelectorAll<HTMLElement>(`#cart-lines [data-action="${action}"]`)[Math.min(previousIndex, cart.lines.length - 1)]
         ?? document.querySelector<HTMLElement>("#cart-empty a");
@@ -144,13 +170,19 @@ export const prerender = false;
     }
   }
 
-  const refresh = () => render(loadCart(storageOf(window)));
+  const refresh = () => {
+    const cart = loadCart(storageOf(window));
+    render(cart);
+    void stock.refresh(cart);
+  };
   refresh();
   // 其他分頁改動了購物車時，本頁跟著更新
   window.addEventListener("storage", refresh);
+  window.addEventListener("pageshow", event => { if (event.persisted) refresh(); });
 </script>
 
 <style>
+  .checkout-link[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
   .cart-title { margin: 0 0 var(--space-6); font-size: var(--text-display-page); line-height: 1.1; letter-spacing: -0.02em; }
   .cart-layout { display: grid; gap: var(--space-6); }
   .cart-layout[hidden] { display: none; }

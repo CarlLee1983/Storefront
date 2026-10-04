@@ -80,8 +80,9 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
         </div>}
         {selected && <form class="buy-form" id="buy-form" data-variant-id={selected.id}>
           <label for="buy-quantity">數量</label>
-          <QuantityStepper id="buy-quantity" max={MAX_QUANTITY} decreaseLabel="減少數量" increaseLabel="增加數量" />
+          <QuantityStepper id="buy-quantity" max={Math.min(MAX_QUANTITY, selected.available)} decreaseLabel="減少數量" increaseLabel="增加數量" />
           <button type="submit" class="buy-button" disabled={selected.available <= 0}>{selected.available > 0 ? "加入購物車" : "目前無法購買"}{selected.available > 0 && <span aria-hidden="true"> →</span>}</button>
+          <button type="button" id="stock-retry" class="button-secondary" hidden>重新確認庫存</button>
           <CartToast />
         </form>}
         {variantsData && <script is:inline type="application/json" id="product-variants" set:html={variantsData} />}
@@ -98,11 +99,12 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
   import type { ProductImage } from "@storefront/app/product-images";
   import type { VariantDetail } from "@storefront/app/catalog-types";
   import { parseCartCover } from "../../cart/cover";
-  import { showCartToast } from "../../cart/toast";
-  import { addToCart, clampQuantity } from "../../cart/cart";
-  import { addFeedback } from "../../cart/feedback";
-  import { storageOf } from "../../cart/storage";
-  import { updateCart } from "../../cart/store";
+  import { clearCartToast, showCartToast } from "../../cart/toast";
+  import { MAX_QUANTITY } from "../../cart/cart";
+  import { fetchAvailability, remainingToAdd, STOCK_ERROR } from "../../cart/availability";
+  import { addAvailableItem } from "../../cart/purchase";
+  import { loadCart, storageOf } from "../../cart/storage";
+  import { CART_CHANGED_EVENT } from "../../cart/store";
   import { describeAvailability, findVariant, initialVariant, optionChoices, selectOption, variantLabel } from "../../catalog/variant-picker";
   import { saleDisplay } from "../../sale/price";
 
@@ -121,6 +123,45 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
     const gallery = document.querySelector<HTMLElement>(".gallery");
     // 伺服器端已依網址選定變體（form 帶著它的編號），客戶端從同一個起點接手
     let current = variants.find((variant) => variant.id === Number(form.dataset.variantId)) ?? initialVariant(variants)!;
+
+    form.noValidate = true;
+    let busy = false;
+    let known = true;
+    let unavailable = false;
+    let request = 0;
+    const retry = form.querySelector<HTMLButtonElement>("#stock-retry")!;
+    const status = form.querySelector<HTMLElement>(".cart-status")!;
+    const remaining = () => remainingToAdd(loadCart(storageOf(window)), current.id, current.available);
+    function renderLimits() {
+      const limit = remaining();
+      input.max = String(limit);
+      input.disabled = known && limit === 0;
+      buyBtn.disabled = !known || limit === 0;
+      buyBtn.setAttribute("aria-disabled", String(busy || !known || limit === 0));
+      buyBtn.setAttribute("aria-busy", String(busy));
+      for (const button of form!.querySelectorAll<HTMLButtonElement>("[data-step]")) {
+        button.disabled = Number(button.dataset.step) > 0 ? busy || !known || Number(input.value) >= limit : Number(input.value) <= 1;
+      }
+      retry.hidden = known && limit > 0;
+    }
+    async function refreshStock() {
+      const id = current.id;
+      const ownRequest = ++request;
+      busy = true;
+      renderLimits();
+      const stock = await fetchAvailability([id]);
+      if (ownRequest !== request || current.id !== id) return false;
+      busy = false;
+      known = stock !== null;
+      if (stock) {
+        unavailable = !stock.has(id);
+        current.available = stock.get(id) ?? 0;
+      }
+      else showCartToast(status, STOCK_ERROR);
+      render();
+      return known;
+    }
+    retry.addEventListener("click", () => { void refreshStock(); });
 
     // 圖庫跳到變體指定的那一張；沒有指定就維持目前顯示
     function showVariantImage() {
@@ -142,12 +183,13 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
       badge.setAttribute("aria-hidden", "true");
       tag.replaceChildren(badge, Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: sale ? `省 ${sale.percent}%` : "" }));
       if (summary) summary.textContent = current.optionValues.length > 0 ? `已選：${variantLabel(current)}` : "";
-      availability.textContent = describeAvailability(current.available);
-      availability.classList.toggle("is-low-stock", current.available > 0 && current.available <= 5);
+      availability.textContent = !known ? STOCK_ERROR : unavailable ? "目前無法購買" : describeAvailability(current.available);
+      availability.classList.toggle("is-low-stock", known && current.available > 0 && current.available <= 5);
       form!.dataset.variantId = String(current.id);
       buyBtn.disabled = current.available <= 0;
       buyBtn.textContent = current.available > 0 ? "加入購物車" : "目前無法購買";
       if (current.available > 0) buyBtn.insertAdjacentHTML("beforeend", '<span aria-hidden="true"> →</span>');
+      renderLimits();
       picker?.querySelectorAll<HTMLFieldSetElement>("fieldset").forEach((group) => {
         const dimension = Number(group.dataset.dimension);
         const choices = optionChoices(variants, current.optionValues, dimension);
@@ -163,38 +205,59 @@ const jsonLd = productData ? serializeJsonLd(productData) : "";
       const dimension = Number(radio.closest<HTMLElement>("fieldset")?.dataset.dimension);
       const next = findVariant(variants, selectOption(variants, current.optionValues, dimension, radio.value));
       if (next) current = next;
+      input.value = "1";
+      known = true;
+      unavailable = false;
       render();
       showVariantImage();
+      void refreshStock();
     });
 
     // 初始選取的變體若指定了圖片，等圖庫的腳本掛好事件後再跳過去
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", showVariantImage);
     else showVariantImage();
 
-    // 加減按鈕只在 1 到上限之間調整；輸入框內容無效（空白、小數）時從 1 起算
     for (const button of form.querySelectorAll<HTMLButtonElement>("[data-step]")) {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
+        const id = current.id;
         const value = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 1;
-        input.value = String(clampQuantity(value + Number(button.dataset.step)));
+        const delta = Number(button.dataset.step);
+        if (delta > 0 && !(await refreshStock())) return;
+        if (id !== current.id) return;
+        input.value = String(Math.max(1, Math.min(value + delta, delta > 0 ? remaining() : MAX_QUANTITY)));
+        renderLimits();
       });
     }
-    form.addEventListener("submit", event => {
+    input.addEventListener("change", renderLimits);
+    form.addEventListener("submit", async event => {
       event.preventDefault();
-      if (current.available <= 0) return;
+      if (busy) return;
+      clearCartToast(status);
+      const id = current.id;
       const coverImage = images.find((image) => image.id === current.imageId) ?? images[0] ?? null;
       const label = variantLabel(current);
-      const item = { variantId: current.id, productId: data.productId, name: data.name, ...(label ? { label } : {}), unitPriceTwd: current.priceTwd, cover: parseCartCover(coverImage) };
-      const quantity = Number(new FormData(form).get("quantity"));
-      showCartToast(form.querySelector<HTMLElement>(".cart-status")!, addFeedback(quantity, item.variantId, () =>
-        updateCart(storageOf(window), window, existing => addToCart(existing, item, quantity))));
-
-      buyBtn.innerHTML = '已加入購物車 <span aria-hidden="true">✓</span>';
-      buyBtn.classList.add("is-added");
-      window.setTimeout(() => {
-        buyBtn.classList.remove("is-added");
-        render();
-      }, 1500);
+      const item = { variantId: id, productId: data.productId, name: data.name, ...(label ? { label } : {}), unitPriceTwd: current.priceTwd, cover: parseCartCover(coverImage) };
+      const quantity = Number(input.value);
+      busy = true;
+      renderLimits();
+      const result = await addAvailableItem(item, quantity);
+      if (current.id !== id) return;
+      busy = false;
+      if (result.availability !== undefined) {
+        known = result.availability !== null;
+        if (result.availability) {
+          unavailable = !result.availability.has(id);
+          current.available = result.availability.get(id) ?? 0;
+        }
+      }
+      showCartToast(status, result.message);
+      render();
     });
+    renderLimits();
+    window.addEventListener(CART_CHANGED_EVENT, renderLimits);
+    window.addEventListener("storage", renderLimits);
+    window.addEventListener("pageshow", event => { if (event.persisted) void refreshStock(); });
+
   }
 </script>
 <style>
