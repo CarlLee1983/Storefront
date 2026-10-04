@@ -1,0 +1,25 @@
+---
+interface Props {
+  groups: { label: string; links: { href: string; label: string }[] }[];
+  currentHref?: string;
+  idPrefix: string;
+}
+const { groups, currentHref, idPrefix } = Astro.props;
+---
+
+<nav aria-label="後台導覽" class="admin-nav">
+  {groups.map((group, index) => (
+    <div class="admin-nav-group">
+      <h2 id={`${idPrefix}-group-${index}`}>{group.label}</h2>
+      <ul aria-labelledby={`${idPrefix}-group-${index}`}>
+        {group.links.map(link => (
+          <li>
+            <a href={link.href} class="admin-nav-link" aria-current={link.href === currentHref ? "page" : undefined}>
+              {link.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ))}
+</nav>

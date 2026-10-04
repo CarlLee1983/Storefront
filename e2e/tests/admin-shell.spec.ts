@@ -7,9 +7,6 @@ import { analyzeWhenSettled } from "../harness/axe";
 
 async function assertShell(page: Page, current: string, width: number) {
   const header = page.getByRole("banner");
-  const nav = header.getByRole("navigation", { name: "後台導覽" });
-  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
-  await expect(nav.getByRole("link", { name: current, exact: true })).toHaveAttribute("aria-current", "page");
   await expect(header.getByRole("link", { name: "管理後台 Still Life", exact: true })).toHaveAttribute("href", "/admin");
   await expect(header.getByRole("link", { name: "前往前台", exact: true })).toHaveAttribute("href", "/");
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
@@ -19,11 +16,16 @@ async function assertShell(page: Page, current: string, width: number) {
   await page.keyboard.press("Enter");
   await expect(page.getByRole("main")).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  const centers = await header.locator("a").evaluateAll(links => links.map(link => {
-    const box = link.getBoundingClientRect();
-    return box.top + box.height / 2;
-  }));
-  expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(1);
+  const open = page.getByRole("button", { name: "開啟後台選單" });
+  if (await open.isVisible()) await open.click();
+  const nav = page.getByRole("navigation", { name: "後台導覽" });
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+  await expect(nav.getByRole("link", { name: current, exact: true })).toHaveAttribute("aria-current", "page");
+  if (await page.getByRole("dialog", { name: "後台選單" }).isVisible()) {
+    expect((await analyzeWhenSettled(page)).violations).toEqual([]);
+    await page.getByRole("button", { name: "關閉後台選單" }).click();
+    await expect(open).toBeFocused();
+  }
   for (const control of await page.locator('a, button, input:not([type="hidden"]), textarea, select').all()) {
     const box = await control.boundingBox();
     if (!box) continue;
@@ -56,11 +58,13 @@ for (const width of [375, 1280]) {
       await admin.goto(`/admin/products/${ids[0]}`);
       const categoryId = await admin.getByLabel("分類", { exact: true }).inputValue();
       await assertShell(admin, "商品管理", width);
+      await expect(admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "商品管理" })).toHaveAttribute("href", "/admin");
       await assertEditForm(admin, width);
       expect((await admin.getByLabel("分類", { exact: true }).boundingBox())!.height).toBe((await admin.getByLabel("名稱", { exact: true }).boundingBox())!.height);
       await testInfo.attach(`product-edit-${width}`, { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
       await admin.goto(`/admin/categories/${categoryId}`);
       await assertShell(admin, "分類管理", width);
+      await expect(admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "分類管理" })).toHaveAttribute("href", "/admin/categories");
       await assertEditForm(admin, width);
       for (const [path, current] of [["/admin", "商品管理"], ["/admin/categories", "分類管理"], ["/admin/orders", "訂單管理"]] as const) {
         await admin.goto(path);
@@ -70,10 +74,11 @@ for (const width of [375, 1280]) {
       const button = (await admin.getByRole("button", { name: "查找", exact: true }).boundingBox())!;
       expect(filter.width).toBeLessThanOrEqual(240);
       expect(filter.height).toBe(button.height);
-      // 查找表單有多個欄位且欄位上方有標籤：桌機同一排（底緣對齊、按鈕在欄位右側），手機允許換行
+      // 側欄縮小內容寬度，篩選欄位可換行；桌機動作仍接在最後一個日期欄位右側。
       if (width === 1280) {
-        expect(button.y + button.height).toBe(filter.y + filter.height);
-        expect(button.x - (filter.x + filter.width)).toBeGreaterThanOrEqual(8);
+        const lastFilter = (await admin.getByLabel("成立日期（迄）").boundingBox())!;
+        expect(button.y + button.height).toBe(lastFilter.y + lastFilter.height);
+        expect(button.x - (lastFilter.x + lastFilter.width)).toBeGreaterThanOrEqual(8);
       }
 
       await page.context().addCookies([memberSessionCookie()]);
@@ -95,6 +100,7 @@ for (const width of [375, 1280]) {
       await expect(page.getByText("訂單狀態：已付款")).toBeVisible();
       await admin.goto(`/admin${orderPath}`);
       await assertShell(admin, "訂單管理", width);
+      await expect(admin.getByRole("navigation", { name: "麵包屑" }).getByRole("link", { name: "訂單管理" })).toHaveAttribute("href", "/admin/orders");
       expect((await admin.getByLabel("物流單號（可留空）").boundingBox())!.width).toBeLessThanOrEqual(640);
       await testInfo.attach(`order-detail-${width}`, { body: await admin.screenshot({ fullPage: true }), contentType: "image/png" });
       await admin.goto("/admin/orders");

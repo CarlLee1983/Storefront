@@ -1,8 +1,25 @@
 /* Admin overrides share storefront tokens without changing storefront form/table rules. */
 .admin-shell {
+  --admin-header-height: 4.75rem;
+  --admin-sidebar-width: 14rem;
   background: var(--color-bg);
 }
-.admin-shell main, .admin-shell .site-header { width: min(100%, 92rem); }
+.admin-shell .site-header { width: 100%; height: var(--admin-header-height); }
+.admin-shell main {
+  width: min(calc(100% - var(--admin-sidebar-width)), 92rem);
+  margin-left: var(--admin-sidebar-width);
+  margin-right: auto;
+}
+.admin-shell .admin-sidebar {
+  position: fixed;
+  inset: var(--admin-header-height) auto 0 0;
+  width: var(--admin-sidebar-width);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-6) var(--space-4);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
 .admin-shell .admin-header {
   display: flex;
   align-items: center;
@@ -41,43 +58,66 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-.admin-shell .admin-nav {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  /* 全域 .site-header nav 會換行；後台導覽連結多，要維持單排並橫向捲動 */
-  flex-wrap: nowrap;
-  overflow-x: auto;
+.admin-shell .admin-nav { display: grid; gap: var(--space-6); }
+.admin-shell .admin-nav-group h2 {
+  margin: 0 0 var(--space-2);
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-muted);
 }
+.admin-shell .admin-nav-group ul { list-style: none; margin: 0; padding: 0; }
+.admin-shell .admin-nav-group li { margin: 0; }
 .admin-shell .admin-nav-link {
-  flex-shrink: 0;
-  white-space: nowrap;
+  display: flex;
+  width: 100%;
   font-size: var(--text-sm);
   font-weight: 500;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--color-muted);
+  color: var(--color-text);
   text-decoration: none;
-  transition: all var(--duration-fast) ease;
 }
-.admin-shell .admin-nav-link:hover {
-  color: var(--color-text);
-  background: var(--color-panel);
-}
-.admin-shell .admin-nav-link.is-active,
+.admin-shell .admin-nav-link:hover { background: var(--color-panel); }
 .admin-shell .admin-nav-link[aria-current="page"] {
-  color: var(--color-text);
   background: var(--color-panel);
   font-weight: 600;
-  border: 1px solid var(--color-border);
-  box-shadow: 0 1px 2px rgba(28, 27, 26, 0.03);
+  border-color: var(--color-border);
 }
 .admin-shell .admin-header-actions {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
+  gap: var(--space-2);
+}
+.admin-shell .admin-menu-button { display: none; }
+.admin-shell .admin-menu {
+  width: min(22rem, calc(100% - 1rem));
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: var(--space-4);
+  border: 0;
+  border-right: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface);
+  overscroll-behavior: contain;
+}
+.admin-shell .admin-menu::backdrop { background: rgba(28, 27, 26, 0.4); }
+.admin-shell:has(.admin-menu[open]) { overflow: hidden; }
+.admin-shell .admin-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.admin-shell .admin-menu-header p { margin: 0; font-weight: 700; }
+@media (max-width: 63.999rem) {
+  .admin-shell .admin-sidebar { display: none; }
+  .admin-shell main { width: min(100%, 92rem); margin-inline: auto; }
+  .admin-shell .admin-menu-button { display: inline-flex; }
 }
 .admin-shell .admin-storefront-link {
   display: inline-flex;
@@ -100,7 +140,7 @@
 }
 @media (max-width: 35.999rem) {
   .admin-shell .admin-header { gap: var(--space-2); padding-inline: var(--space-4); }
-  /* 窄螢幕只留圖示（連結名稱仍由隱藏文字提供），把橫向空間讓給導覽 */
+  /* 保留連結名稱，把窄螢幕空間留給品牌與選單按鈕。 */
   .admin-shell .admin-storefront-link { padding: 0; justify-content: center; }
   .admin-shell .admin-storefront-link span {
     position: absolute;
@@ -119,6 +159,18 @@
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
+.admin-shell .admin-breadcrumb { margin-bottom: var(--space-3); font-size: var(--text-sm); }
+.admin-shell .admin-breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-shell .admin-breadcrumb li { display: flex; align-items: center; gap: var(--space-2); }
+.admin-shell .admin-breadcrumb [aria-current] { color: var(--color-muted); }
 .admin-shell .admin-page-header h1 {
   margin: 0;
   font-size: var(--text-xl);
@@ -613,6 +665,10 @@
   .admin-shell .admin-products td.col-name { width: 16rem; min-width: 10rem; }
 }
 .admin-shell .admin-products td.col-actions { width: auto; min-width: 18rem; white-space: normal; }
+@media (min-width: 64rem) {
+  /* 側欄佔用水平空間時，讓操作換行並保留其點擊尺寸。 */
+  .admin-shell .admin-products td.col-actions { min-width: 11rem; }
+}
 /* 編輯與上下架在上排，庫存調整獨佔下排 */
 .admin-shell .admin-products .admin-actions .inline-stock-adjust { flex: 1 0 100%; justify-content: flex-end; }
 .admin-shell .admin-products .admin-actions, .admin-shell .admin-products .admin-actions form {

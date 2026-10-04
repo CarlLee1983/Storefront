@@ -38,15 +38,23 @@ export async function assertStorefrontAdmin(page: Page, expectedBaseUrl: string)
   const response = await openAdmin(page, "/admin");
   const expected = new URL("/admin", expectedBaseUrl);
   const actual = new URL(page.url());
-  const navigation = page.getByRole("navigation", { name: "後台導覽" });
-  const current = navigation.getByRole("link", { name: "商品管理", exact: true });
   const create = page.getByRole("main").getByRole("link", { name: "新增商品", exact: true });
   if (!response?.ok() || actual.origin !== expected.origin || actual.pathname !== expected.pathname
     || !(await page.getByRole("heading", { level: 1, name: "商品管理", exact: true }).isVisible())
-    || !(await current.isVisible()) || await current.getAttribute("aria-current") !== "page"
-    || await current.getAttribute("href") !== "/admin"
     || !(await create.isVisible()) || await create.getAttribute("href") !== "/admin/products/new") {
     throw new Error(`${page.url()} 不是 Storefront 的商品管理頁，停止 seed。`);
+  }
+  const openMenu = page.getByRole("button", { name: "開啟後台選單", exact: true });
+  try {
+    if (await openMenu.isVisible()) await openMenu.click();
+    const current = page.getByRole("navigation", { name: "後台導覽" }).getByRole("link", { name: "商品管理", exact: true });
+    if (!(await current.isVisible()) || await current.getAttribute("aria-current") !== "page"
+      || await current.getAttribute("href") !== "/admin") {
+      throw new Error(`${page.url()} 不是 Storefront 的商品管理頁，停止 seed。`);
+    }
+  } finally {
+    const closeMenu = page.getByRole("dialog", { name: "後台選單" }).getByRole("button", { name: "關閉後台選單", exact: true });
+    if (await closeMenu.isVisible()) await closeMenu.click();
   }
 }
 

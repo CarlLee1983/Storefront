@@ -16,7 +16,9 @@ for (const width of [375, 1280]) {
       await createLink.click();
       await expect(page).toHaveURL(`${BASE_URL}/admin/products/new`);
       await expect(page.getByRole("heading", { name: "新增商品" })).toBeVisible();
+      if (width === 375) await page.getByRole("button", { name: "開啟後台選單" }).click();
       await expect(page.getByRole("navigation", { name: "後台導覽" }).getByRole("link", { name: "商品管理" })).toHaveAttribute("aria-current", "page");
+      if (width === 375) await page.keyboard.press("Escape");
       await expect(page.getByRole("link", { name: "取消", exact: true })).toHaveAttribute("href", "/admin");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect((await analyzeWhenSettled(page)).violations).toEqual([]);
