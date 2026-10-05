@@ -72,6 +72,29 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await expect(thumbs.first()).toBeFocused();
     await page.keyboard.press("Enter");
     // Touch input exercises native horizontal scrolling and CSS scroll-snap.
+    await track.evaluate(element => {
+      let startLeft = 0;
+      let touchStarted = false;
+      let touchEnded = false;
+      let scrolledDuringTouch = false;
+      element.addEventListener("touchstart", () => {
+        startLeft = element.scrollLeft;
+        touchStarted = true;
+        element.addEventListener("touchend", () => {
+          scrolledDuringTouch ||= element.scrollLeft > startLeft + 2;
+          touchEnded = true;
+        }, { once: true });
+      }, { once: true });
+      element.addEventListener("scroll", () => {
+        if (touchStarted && !touchEnded && element.scrollLeft > startLeft + 2) scrolledDuringTouch = true;
+      });
+      // An earlier keyboard scrollend must not finish this touch gesture.
+      element.addEventListener("scrollend", () => {
+        const width = element.clientWidth;
+        if (touchEnded && scrolledDuringTouch && width > 0 && Math.abs(element.scrollLeft - width) < 2)
+          element.dataset.touchScrollEnded = "true";
+      });
+    });
     const box = (await track.boundingBox())!;
     const session = await page.context().newCDPSession(page);
     const y = box.y + box.height / 2;
@@ -80,7 +103,8 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await session.detach();
     await expect(thumbs.first()).not.toHaveAttribute("aria-current", "true");
-    // 等原生觸控捲動停在圖片邊界，再測下一個獨立的圖片按鈕操作。
+    // 等觸控慣性與 scroll-snap 結束，再測下一個獨立的圖片按鈕操作。
+    await expect(track).toHaveAttribute("data-touch-scroll-ended", "true");
     await expect.poll(() => track.evaluate(element =>
       Math.abs(element.scrollLeft - Math.round(element.scrollLeft / element.clientWidth) * element.clientWidth))).toBeLessThan(2);
     await thumbs.nth(1).click();
