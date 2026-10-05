@@ -78,6 +78,7 @@ test("管理員拒絕不高於售價的原價，設定合法原價後顧客在�
   await page.setViewportSize({ width: 1280, height: 900 });
   // 分類列表：特價商品的售價、劃線原價（帶螢幕閱讀器文字「原價」）與折扣標籤；一般商品沒有
   await page.goto(`/categories/${CATEGORY.slug}`);
+  await expect(page.getByText("分類共 2 件商品")).toBeVisible();
   const saleCard = card(page, SALE.name);
   await expect(saleCard).toContainText("NT$ 320");
   await expect(saleCard.locator("s")).toHaveText(/原價\s*NT\$\s*450/);
@@ -90,6 +91,8 @@ test("管理員拒絕不高於售價的原價，設定合法原價後顧客在�
   await expect(page).toHaveURL(/\?sale=1$/);
   await expect(page.getByRole("checkbox", { name: "只看特價" })).toBeChecked();
   await expect(page.locator(".product-card")).toHaveCount(1);
+  await expect(page.getByText("分類共 2 件商品")).toBeVisible();
+  await expect(page.getByText("符合條件 1 件，已顯示 1 件")).toBeVisible();
   await expect(saleCard).toBeVisible();
 
   // 導覽列出現「特價」，在 /sale 時標示目前頁；/sale 不顯示「只看特價」開關
