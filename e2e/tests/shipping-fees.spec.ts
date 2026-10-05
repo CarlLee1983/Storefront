@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { addVariantQuantityFromDetail } from "../harness/cart";
 
 const VIEWPORTS = [{ name: "手機", width: 375, height: 812 }, { name: "桌機", width: 1280, height: 900 }] as const;
 
@@ -22,12 +23,7 @@ async function customerPage(browser: Browser, token: string, viewport: { width: 
 
 async function addToCart(page: Page, productId: number, quantity: number, expectedLines: number) {
   await page.goto(`/products/${productId}`);
-  const info = page.getByRole("region", { name: "商品資訊" });
-  for (let count = 0; count < quantity; count += 1) {
-    await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-    await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
-    await expect(page.locator("#cart-count")).toHaveText(String(expectedLines));
-  }
+  await addVariantQuantityFromDetail(page, quantity, expectedLines);
 }
 
 async function fillShipping(page: Page) {

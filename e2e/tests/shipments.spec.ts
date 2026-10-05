@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { addVariantQuantityFromDetail } from "../harness/cart";
 
 async function assertLayout(page: Page, width: number) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth), "page overflow").toBeLessThanOrEqual(width);
@@ -37,12 +38,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       for (const [productId, quantity] of [[lampId, 2], [tableId, 1]] as const) {
         expectedCount += 1;
         await page.goto(`/products/${productId}`);
-        const info = page.getByRole("region", { name: "商品資訊" });
-        for (let count = 0; count < quantity; count += 1) {
-          await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-          await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
-          await expect(page.locator("#cart-count")).toHaveText(String(expectedCount));
-        }
+        await addVariantQuantityFromDetail(page, quantity, expectedCount);
       }
       await page.goto("/checkout");
       await page.getByLabel("收件人姓名").fill("分批王");
