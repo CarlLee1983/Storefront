@@ -3,6 +3,7 @@ import { adminAccessHeaders } from "../harness/admin-access";
 import { seedListedProducts, unlistProduct } from "../harness/admin-seed";
 import { gotoProductList } from "../harness/admin-list";
 import { analyzeWhenSettled } from "../harness/axe";
+import { addVariantQuantityFromDetail } from "../harness/cart";
 import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
@@ -65,12 +66,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       for (const [productId, quantity] of [[lampId, 3], [tableId, 1]] as const) {
         expectedCount += 1;
         await page.goto(`/products/${productId}`);
-        const info = page.getByRole("region", { name: "商品資訊" });
-        for (let count = 0; count < quantity; count += 1) {
-          await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-          await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
-          await expect(page.locator("#cart-count")).toHaveText(String(expectedCount));
-        }
+        await addVariantQuantityFromDetail(page, quantity, expectedCount);
       }
       await page.goto("/checkout");
       await expect(page.locator("#checkout-fee-standard-amount")).toHaveText("100");
