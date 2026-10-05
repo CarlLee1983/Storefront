@@ -262,9 +262,14 @@ export function insertLossConfirmedNotice(lossId: number | SQL): SQL {
   `;
 }
 
-/** 物流退回的商品與數量一段文字（以 `shipment_returns` 為外層列，別名 `sr`）：退回的數量，加上尋回的遺失品。 */
-const shipmentReturnItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || (item.quantity + item.found_lost_quantity), '、')
+/** 物流退回登記的商品與數量（以 `shipment_returns` 為外層列，別名 `sr`）。 */
+const shipmentReturnDeclaredItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || (item.quantity + item.found_lost_quantity), '、')
   FROM shipment_return_items item JOIN order_lines line ON line.id = item.order_line_id WHERE item.return_id = sr.id)`;
+
+/** 物流退回實收並檢查的商品與數量；未收到的明細不列在完成通知。 */
+const shipmentReturnReceivedItemsText = sql`(SELECT group_concat(line.product_name || CASE WHEN line.variant_label <> '' THEN '（' || line.variant_label || '）' ELSE '' END || ' × ' || (item.received_quantity + item.received_found_lost_quantity), '、')
+  FROM shipment_return_items item JOIN order_lines line ON line.id = item.order_line_id
+  WHERE item.return_id = sr.id AND item.received_quantity + item.received_found_lost_quantity > 0)`;
 
 /**
  * 物流退回登記通知：一案一封，事件鍵 `shipment_return:<物流退回編號>:declared`，與登記同一個 batch 寫入。
@@ -274,7 +279,7 @@ export function insertShipmentReturnDeclaredNotice(returnId: number | SQL): SQL 
   return sql`
     INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
     SELECT orders.customer_id, 'shipment_return_declared', '訂單 #' || orders.id || ' 有商品被物流退回倉庫',
-      '訂單 #' || orders.id || ' 有商品因配送異常被物流退回倉庫：' || ${shipmentReturnItemsText} || '。' ||
+      '訂單 #' || orders.id || ' 有商品因配送異常被物流退回倉庫：' || ${shipmentReturnDeclaredItemsText} || '。' ||
       CASE WHEN EXISTS (SELECT 1 FROM shipment_return_items WHERE return_id = sr.id AND quantity > 0)
         THEN '商品實際收到並檢查後會退款，退款金額與進度會另行通知；'
         ELSE '這些是先前確認遺失並已退款的商品，入倉後不會再退款；' END ||
@@ -294,7 +299,7 @@ export function insertShipmentReturnCompletedNotice(returnId: number | SQL): SQL
   return sql`
     INSERT INTO mail_messages (customer_id, kind, subject, body, event_key, created_at)
     SELECT orders.customer_id, 'shipment_return_completed', '訂單 #' || orders.id || ' 被物流退回的商品已收到並檢查完成',
-      '訂單 #' || orders.id || ' 被物流退回的商品已收到並檢查完成：' || ${shipmentReturnItemsText} || '。' ||
+      '訂單 #' || orders.id || ' 被物流退回的商品已收到並檢查完成：' || ${shipmentReturnReceivedItemsText} || '。' ||
       CASE WHEN sr.goods_twd + sr.standard_shipping_twd + sr.large_shipping_twd = 0 THEN '這些商品沒有需要退款的金額。'
         ELSE '應退款 NT$' || (sr.goods_twd + sr.standard_shipping_twd + sr.large_shipping_twd) || '（商品款 NT$' || sr.goods_twd || '、運費 NT$' || (sr.standard_shipping_twd + sr.large_shipping_twd) || '），' ||
           CASE WHEN EXISTS (SELECT 1 FROM refunds WHERE refunds.shipment_return_id = sr.id)

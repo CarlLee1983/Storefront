@@ -82,7 +82,9 @@ describe("物流退回：入倉、不可售與退款", () => {
     expect(order.lines.find((line) => line.id === tableLine.id)).toMatchObject({ shipmentReturnedQuantity: 1, returnedQuantity: 0, lostQuantity: 0 });
     expect(await app.getMyOrder(cookie, { orderId })).toMatchObject({ ok: true, data: { shipmentReturns: [{ shipmentId: table, status: "completed", refund: { amountTwd: 6600 } }] } });
     expect((await mailOf(cookie)).map((message) => message.kind)).toEqual(expect.arrayContaining(["shipment_return_declared", "shipment_return_completed", "refund_succeeded"]));
+    expect(await bodyOf(cookie, "shipment_return_declared")).toContain("餐桌 × 1");
     expect(await bodyOf(cookie, "shipment_return_completed")).toContain("退款完成會另行通知");
+    expect(await bodyOf(cookie, "shipment_return_completed")).toContain("餐桌 × 1");
   });
 
   it("損壞品：照樣退款，損壞數量留在不可售；待檢時不能報廢，檢查後才能報廢", async () => {
@@ -116,7 +118,7 @@ describe("物流退回：入倉、不可售與退款", () => {
   });
 
   it("部分收回：只退實際收到的數量，沒收到的釋出", async () => {
-    const { orderId, mugLine, mugA } = await shippedInBatches();
+    const { cookie, orderId, mugLine, mugA } = await shippedInBatches();
     const returnId = await declareReturnOk(mugA, [{ orderLineId: mugLine.id, quantity: 2 }]);
 
     await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 1 }]);
@@ -125,6 +127,27 @@ describe("物流退回：入倉、不可售與退款", () => {
     await inspectShipmentReturn(returnId, [{ orderLineId: mugLine.id, sellableQuantity: 1, damagedQuantity: 0 }]);
 
     expect(splitOf(await refundsOf(orderId))).toEqual([["shipment_return", 320, 100]]);
+    expect(await bodyOf(cookie, "shipment_return_declared")).toContain("馬克杯 × 2");
+    const completed = await bodyOf(cookie, "shipment_return_completed");
+    expect(completed).toContain("馬克杯 × 1");
+    expect(completed).not.toContain("馬克杯 × 2");
+  });
+
+  it("完成通知不把同案中未收到的明細列為已收檢", async () => {
+    const { cookie, orderId, mugLine, tableLine } = await paidMixedOrder();
+    const shipmentId = await shipItems(orderId, [{ orderLineId: mugLine.id, quantity: 1 }, { orderLineId: tableLine.id, quantity: 1 }], true);
+    const returnId = await declareReturnOk(shipmentId, [{ orderLineId: mugLine.id, quantity: 1 }, { orderLineId: tableLine.id, quantity: 1 }]);
+
+    await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 1 }, { orderLineId: tableLine.id, receivedQuantity: 0 }]);
+    await inspectShipmentReturn(returnId, [{ orderLineId: mugLine.id, sellableQuantity: 1, damagedQuantity: 0 }, { orderLineId: tableLine.id, sellableQuantity: 0, damagedQuantity: 0 }]);
+
+    const declared = await bodyOf(cookie, "shipment_return_declared");
+    expect(declared).toContain("馬克杯 × 1");
+    expect(declared).toContain("餐桌 × 1");
+    const completed = await bodyOf(cookie, "shipment_return_completed");
+    expect(completed).toContain("馬克杯 × 1");
+    expect(completed).not.toContain("餐桌");
+    expect(completed).not.toContain("× 0");
   });
 
   it("商品款按原實付單價（改價不影響）", async () => {
@@ -249,6 +272,7 @@ describe("物流退回：已遺失的貨被尋回", () => {
     expect(order.lines.find((line) => line.id === tableLine.id)).toMatchObject({ lostQuantity: 1, shipmentReturnedQuantity: 0 });
     expect(await app.listRefundsToHandle(await mintAccessJwt())).toMatchObject({ ok: true, data: { unregisteredShipmentReturns: [] } });
     expect(await bodyOf(cookie, "shipment_return_completed")).toContain("沒有需要退款的金額");
+    expect(await bodyOf(cookie, "shipment_return_completed")).toContain("餐桌 × 1");
     // 已遺失的數量仍不可再退貨
     expect(await requestReturn(cookie, orderId, [{ orderLineId: tableLine.id, quantity: 1 }])).toEqual({ ok: false, reason: "return_quantity_exceeded" });
   });
@@ -267,7 +291,7 @@ describe("物流退回：已遺失的貨被尋回", () => {
   });
 
   it("同一案同時含新退回與尋回的遺失品：只退新退回的數量，兩種都入庫", async () => {
-    const { orderId, mugVariantId, mugLine, mugA } = await shippedInBatches();
+    const { cookie, orderId, mugVariantId, mugLine, mugA } = await shippedInBatches();
     // mugA 2 件：1 件遺失（已退款 320 + 運費 100），另 1 件這次一起被退回
     await confirmLossOk(mugA, [{ orderLineId: mugLine.id, quantity: 1 }]);
     const before = await stockDetail(mugVariantId);
@@ -279,6 +303,8 @@ describe("物流退回：已遺失的貨被尋回", () => {
     expect(inspected).toMatchObject({ ok: true });
     expect(await stockDetail(mugVariantId)).toMatchObject({ onHand: before.onHand + 2, unavailable: before.unavailable });
     expect(splitOf(await refundsOf(orderId))).toEqual([["loss", 320, 100], ["shipment_return", 320, 0]]);
+    expect(await bodyOf(cookie, "shipment_return_declared")).toContain("馬克杯 × 2");
+    expect(await bodyOf(cookie, "shipment_return_completed")).toContain("馬克杯 × 2");
   });
 });
 
