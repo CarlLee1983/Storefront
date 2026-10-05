@@ -194,7 +194,7 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
 
   // 4. 分類頁：排序、載入更多、重新整理還原、只看有貨、只看特價
   await expect(page.getByRole("heading", { level: 1, name: CATEGORY.name })).toBeVisible();
-  await expect(page.getByText(`共 ${FILLERS.length + 1} 件商品`)).toBeVisible();
+  await expect(page.getByText(`分類共 ${FILLERS.length + 1} 件商品`)).toBeVisible();
   await expect(cards(page).first()).toContainText(PRODUCT.name);
   await sortLink(page, "價格高到低").click();
   await expect(page).toHaveURL(/\?sort=price-desc$/);
@@ -209,11 +209,13 @@ test("主流程：管理員建立分類、上架補貨、標原價與精選 → 
   await expectSaleCard(productCard(page));
   await page.getByRole("checkbox", { name: "只看有貨" }).click();
   await expect(page).toHaveURL(/\?sort=price-desc&instock=1$/);
-  await expect(page.getByText(`已顯示 ${IN_STOCK_COUNT} / ${IN_STOCK_COUNT} 件`)).toBeVisible();
+  await expect(page.getByText(`符合條件 ${IN_STOCK_COUNT} 件，已顯示 ${IN_STOCK_COUNT} 件`)).toBeVisible();
   await expect(page.getByText("已售完")).toHaveCount(0);
   await page.getByRole("checkbox", { name: "只看特價" }).click();
   await expect(page).toHaveURL(/\?sort=price-desc&instock=1&sale=1$/);
   await expect(cards(page)).toHaveCount(1);
+  await expect(page.getByText(`分類共 ${FILLERS.length + 1} 件商品`)).toBeVisible();
+  await expect(page.getByText("符合條件 1 件，已顯示 1 件")).toBeVisible();
   await expectSaleCard(productCard(page));
   await page.reload();
   await expect(page.getByRole("checkbox", { name: "只看有貨" })).toBeChecked();
