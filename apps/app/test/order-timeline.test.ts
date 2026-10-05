@@ -313,6 +313,58 @@ describe("遲到付款（ADR 0001）", () => {
   });
 });
 
+describe("物流退回時間線包含尋回遺失品", () => {
+  it("純尋回品：登記時兩種視角顯示 1 件、尚未收到沒有收回事件，實收後顯示 1 件", async () => {
+    const { cookie, orderId, tableLine } = await paidMixedOrder();
+    const batch = await shipItems(orderId, [{ orderLineId: tableLine.id, quantity: 1 }], true);
+    await confirmLossOk(batch, [{ orderLineId: tableLine.id, quantity: 1 }]);
+    const returnId = await declareReturnOk(batch, [{ orderLineId: tableLine.id, quantity: 0, foundLostQuantity: 1 }]);
+
+    for (const view of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_declared" && event.refId === returnId)).toMatchObject([{ quantity: 1 }]);
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_received" && event.refId === returnId)).toEqual([]);
+    }
+
+    expect(await receiveShipmentReturn(returnId, [{ orderLineId: tableLine.id, receivedQuantity: 0, receivedFoundLostQuantity: 1 }])).toMatchObject({ ok: true });
+
+    for (const view of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_declared" && event.refId === returnId)).toMatchObject([{ quantity: 1 }]);
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_received" && event.refId === returnId)).toMatchObject([{ quantity: 1 }]);
+      expect(view.refunds.filter((refund) => refund.reason === "shipment_return")).toEqual([]);
+    }
+  });
+
+  it("一般退回與尋回品混合且部分收到：登記 3 件，兩種各收到 1 件", async () => {
+    const { cookie, orderId, mugLine } = await paidMixedOrder();
+    const batch = await shipItems(orderId, [{ orderLineId: mugLine.id, quantity: 3 }]);
+    await confirmLossOk(batch, [{ orderLineId: mugLine.id, quantity: 1 }]);
+    const returnId = await declareReturnOk(batch, [{ orderLineId: mugLine.id, quantity: 2, foundLostQuantity: 1 }]);
+
+    expect(await receiveShipmentReturn(returnId, [{ orderLineId: mugLine.id, receivedQuantity: 1, receivedFoundLostQuantity: 1 }])).toMatchObject({ ok: true });
+
+    for (const view of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_declared" && event.refId === returnId)).toMatchObject([{ quantity: 3 }]);
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_received" && event.refId === returnId)).toMatchObject([{ quantity: 2 }]);
+      expect(view.refunds.filter((refund) => refund.reason === "shipment_return")).toEqual([]);
+    }
+  });
+
+  it("登記的尋回品一件都沒收到：登記事件仍是 1 件，收到事件是 0 件", async () => {
+    const { cookie, orderId, tableLine } = await paidMixedOrder();
+    const batch = await shipItems(orderId, [{ orderLineId: tableLine.id, quantity: 1 }], true);
+    await confirmLossOk(batch, [{ orderLineId: tableLine.id, quantity: 1 }]);
+    const returnId = await declareReturnOk(batch, [{ orderLineId: tableLine.id, quantity: 0, foundLostQuantity: 1 }]);
+
+    expect(await receiveShipmentReturn(returnId, [{ orderLineId: tableLine.id, receivedQuantity: 0, receivedFoundLostQuantity: 0 }])).toMatchObject({ ok: true, data: { status: "not_received" } });
+
+    for (const view of [await adminOrder(orderId), await orderOf(cookie, orderId)]) {
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_declared" && event.refId === returnId)).toMatchObject([{ quantity: 1 }]);
+      expect(view.timeline.events.filter((event) => event.kind === "shipment_return_received" && event.refId === returnId)).toMatchObject([{ quantity: 0 }]);
+      expect(view.refunds.filter((refund) => refund.reason === "shipment_return")).toEqual([]);
+    }
+  });
+});
+
 describe("混合情境同源對帳", () => {
   it("遺失、物流退回、自助退貨完成與取消待審並存：進度與事件數量金額等於各域紀錄", async () => {
     const { orderId, cookie, mugLine, tableLine } = await paidMixedOrder();

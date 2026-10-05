@@ -210,8 +210,8 @@ function collectEvents(source: TimelineSource, admin: boolean): TimelineEvent[] 
   }
   for (const loss of source.losses) add("loss_confirmed", loss.id, loss.confirmedAt, { quantity: sum(loss.items, (item) => item.quantity), actor: loss.actor });
   for (const sentBack of source.shipmentReturns) {
-    add("shipment_return_declared", sentBack.id, sentBack.declaredAt, { quantity: sum(sentBack.items, (item) => item.quantity), actor: sentBack.actor });
-    add("shipment_return_received", sentBack.id, sentBack.receivedAt, { quantity: sum(sentBack.items, (item) => item.receivedQuantity ?? 0), actor: sentBack.receivedBy });
+    add("shipment_return_declared", sentBack.id, sentBack.declaredAt, { quantity: sum(sentBack.items, (item) => item.quantity + item.foundLostQuantity), actor: sentBack.actor });
+    add("shipment_return_received", sentBack.id, sentBack.receivedAt, { quantity: sum(sentBack.items, (item) => (item.receivedQuantity ?? 0) + (item.receivedFoundLostQuantity ?? 0)), actor: sentBack.receivedBy });
     add("shipment_return_inspected", sentBack.id, sentBack.inspectedAt, { quantity: sum(sentBack.items, (item) => (item.sellableQuantity ?? 0) + (item.damagedQuantity ?? 0)), actor: sentBack.inspectedBy });
   }
   for (const refund of source.refunds) {
