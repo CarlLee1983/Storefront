@@ -73,9 +73,27 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await page.keyboard.press("Enter");
     // Touch input exercises native horizontal scrolling and CSS scroll-snap.
     await track.evaluate(element => {
+      let startLeft = 0;
+      let touchStarted = false;
+      let touchEnded = false;
+      let scrolledDuringTouch = false;
       element.addEventListener("touchstart", () => {
-        element.addEventListener("scrollend", () => { element.dataset.touchScrollEnded = "true"; }, { once: true });
+        startLeft = element.scrollLeft;
+        touchStarted = true;
+        element.addEventListener("touchend", () => {
+          scrolledDuringTouch ||= element.scrollLeft > startLeft + 2;
+          touchEnded = true;
+        }, { once: true });
       }, { once: true });
+      element.addEventListener("scroll", () => {
+        if (touchStarted && !touchEnded && element.scrollLeft > startLeft + 2) scrolledDuringTouch = true;
+      });
+      // An earlier keyboard scrollend must not finish this touch gesture.
+      element.addEventListener("scrollend", () => {
+        const width = element.clientWidth;
+        if (touchEnded && scrolledDuringTouch && width > 0 && Math.abs(element.scrollLeft - width) < 2)
+          element.dataset.touchScrollEnded = "true";
+      });
     });
     const box = (await track.boundingBox())!;
     const session = await page.context().newCDPSession(page);
