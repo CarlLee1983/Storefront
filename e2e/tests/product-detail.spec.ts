@@ -126,7 +126,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await add.focus(); await page.keyboard.press("Enter");
     await expect(page.locator(".buy-form .cart-status")).toHaveText("已加入購物車，目前 2 件。");
     await expect(add).toBeFocused();
-    await expect(page.locator("#cart-count")).toHaveText("2");
+    await expect(page.locator("#cart-count")).toHaveText("1");
     await expect(page.locator("#cart-count")).toHaveClass("count-bump");
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.keyboard.press("Enter");
@@ -135,7 +135,7 @@ test("public detail gallery, keyboard and swipe, shared cart feedback, sold-out 
     await page.setViewportSize({ width: 1440, height: 1000 });
     expect((await analyzeWhenSettled(page)).violations).toEqual([]);
     await testInfo.attach("product-detail-desktop-toast", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await expect(page.locator("#cart-count")).toHaveText("4");
+    await expect(page.locator("#cart-count")).toHaveText("1");
     await page.locator(".header-cart-link").click();
     await expect(page.getByRole("img", { name: name, exact: true })).toHaveAttribute("src", coverSrc!);
     await page.goBack();

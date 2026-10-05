@@ -20,12 +20,13 @@ async function customerPage(browser: Browser, token: string, viewport: { width: 
   return { context, page: await context.newPage() };
 }
 
-async function addToCart(page: Page, productId: number, quantity: number, expectedTotal: number) {
+async function addToCart(page: Page, productId: number, quantity: number, expectedLines: number) {
   await page.goto(`/products/${productId}`);
   const info = page.getByRole("region", { name: "商品資訊" });
   for (let count = 0; count < quantity; count += 1) {
     await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-    await expect(page.locator("#cart-count")).toHaveText(String(expectedTotal - quantity + count + 1));
+    await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
+    await expect(page.locator("#cart-count")).toHaveText(String(expectedLines));
   }
 }
 
@@ -65,8 +66,8 @@ for (const viewport of VIEWPORTS) {
       await assertLayout(admin, viewport.width);
 
       // 混合結帳：一般宅配與大型配送各收一次，燈具三件不按件加收
-      await addToCart(page, lampId, 3, 3);
-      await addToCart(page, tableId, 1, 4);
+      await addToCart(page, lampId, 3, 1);
+      await addToCart(page, tableId, 1, 2);
       await page.goto("/checkout");
       await expect(page.locator("#checkout-total")).toHaveText("9,700");
       await expect(page.locator("#checkout-fee-standard")).toContainText("一般宅配運費");
@@ -103,7 +104,7 @@ for (const viewport of VIEWPORTS) {
       await assertLayout(admin, viewport.width);
 
       // 只買一般宅配：同類多件只收一次，沒有大型運費列
-      await addToCart(page, lampId, 2, 2);
+      await addToCart(page, lampId, 2, 1);
       await page.goto("/checkout");
       await expect(page.locator("#checkout-total")).toHaveText("2,100");
       await expect(page.locator("#checkout-fee-large")).toBeHidden();

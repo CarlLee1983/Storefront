@@ -45,7 +45,8 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
       const info = page.getByRole("region", { name: "商品資訊" });
       for (let count = 0; count < 3; count += 1) {
         await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-        await expect(page.locator("#cart-count")).toHaveText(String(count + 1));
+        await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
+        await expect(page.locator("#cart-count")).toHaveText("1");
       }
       await page.goto("/checkout");
       await page.getByLabel("收件人姓名").fill("取消王");

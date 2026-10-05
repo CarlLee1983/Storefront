@@ -92,17 +92,18 @@ describe("removeFromCart", () => {
   });
 });
 
-describe("小計、總額與件數", () => {
+describe("小計、總額與購物車筆數", () => {
   it("小計是加入時單價 × 數量", () => {
     expect(lineSubtotal({ variantId: 1, productId: 1, name: "馬克杯", unitPriceTwd: 320, quantity: 3 })).toBe(960);
   });
 
-  it("總額是各筆小計加總；件數是各筆數量加總", () => {
+  it("總額是各筆小計加總；購物車數字只算不同商品變體的筆數", () => {
     expect(cartTotal(twoLines)).toBe(2 * 320 + 80);
-    expect(cartCount(twoLines)).toBe(3);
+    expect(cartCount(addToCart(emptyCart, mug, 3))).toBe(1);
+    expect(cartCount(twoLines)).toBe(2);
   });
 
-  it("空購物車：總額與件數為 0", () => {
+  it("空購物車：總額與筆數為 0", () => {
     expect(cartTotal(emptyCart)).toBe(0);
     expect(cartCount(emptyCart)).toBe(0);
   });

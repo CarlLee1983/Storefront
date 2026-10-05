@@ -82,6 +82,7 @@ for (const viewport of VIEWPORTS) {
     await expect(info.locator("#variant-availability")).toHaveText("僅剩 2 件現貨");
     await info.getByRole("button", { name: "加入購物車", exact: true }).click();
     await expect(info.getByRole("status")).toHaveText("已加入購物車，目前 1 件。");
+    await expect(page.locator("#cart-count")).toHaveText("1");
 
     // 切回沒有特價的變體：劃線價消失
     await size.getByText("120 公分").click();
@@ -90,6 +91,7 @@ for (const viewport of VIEWPORTS) {
     await info.getByRole("button", { name: "加入購物車", exact: true }).click();
     // 提示的件數是這個變體在車內的數量：不同變體不合併，所以各自是 1 件
     await expect(info.getByRole("status")).toHaveText("已加入購物車，目前 1 件。");
+    await expect(page.locator("#cart-count")).toHaveText("2");
 
     // 加入購物車的提示有淡入動畫：等動畫結束再掃描對比，避免掃到半透明的中間狀態
     await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)));
