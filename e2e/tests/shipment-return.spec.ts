@@ -5,6 +5,7 @@ import { BASE_URL } from "../harness/constants";
 import { createCustomer } from "../harness/customer-fixture";
 import { memberSessionCookie } from "../harness/session-cookie";
 import { analyzeWhenSettled } from "../harness/axe";
+import { addVariantQuantityFromDetail } from "../harness/cart";
 
 /** 既有的訂單頁有尺寸不足的控制項（不在這張票範圍）：只檢查無水平捲動與 axe 零違規。 */
 async function assertNoOverflowAndAxe(page: Page, width: number) {
@@ -30,12 +31,7 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
     try {
       // 顧客下單 3 件、付款，管理員全部交運成一批
       await page.goto(`/products/${lampId}`);
-      const info = page.getByRole("region", { name: "商品資訊" });
-      for (let count = 0; count < 3; count += 1) {
-        await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-        await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
-        await expect(page.locator("#cart-count")).toHaveText("1");
-      }
+      await addVariantQuantityFromDetail(page, 3, 1);
       await page.goto("/checkout");
       await page.getByLabel("收件人姓名").fill("退回王");
       await page.getByLabel("收件人電話").fill("0912345678");
