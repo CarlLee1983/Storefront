@@ -349,7 +349,8 @@ describe("結帳的並行", () => {
     expect(reservedB).toBeLessThanOrEqual(stockB);
     expect(await availableOf(productA.productId)).toBe(stockA - reservedA);
     expect(await availableOf(productB.productId)).toBe(stockB - reservedB);
-  }, 15_000);
+  // 兩件商品上架約 19 次 RPC、十位顧客逐一登入，再對同一個 D1 同時送出十次結帳；CI 曾耗時約 3 秒，保留十倍餘裕給共用 D1 的排程波動。
+  }, 30_000);
 });
 
 describe("結帳的冪等", () => {
