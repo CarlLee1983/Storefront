@@ -47,7 +47,7 @@ test("分類頁：排序、只看有貨、載入更多都在網址上，重新�
 
   // 預設：新上架，第一頁 24 件
   await expect(cards(page)).toHaveCount(24);
-  await expect(page.getByText("共 30 件商品")).toBeVisible();
+  await expect(page.getByText("分類共 30 件商品")).toBeVisible();
   await expect(page.getByText("已顯示 24 / 30 件")).toBeVisible();
   await expect(firstCardName(page)).toHaveText(productName(30));
   await expect(sortLink(page, "新上架")).toHaveAttribute("aria-current", "true");
@@ -76,25 +76,26 @@ test("分類頁：排序、只看有貨、載入更多都在網址上，重新�
   await expect(page).toHaveURL(/\?sort=price-asc&instock=1$/);
   await expect(stockSwitch(page)).toBeChecked();
   await expect(cards(page)).toHaveCount(24);
-  await expect(page.getByText("已顯示 24 / 25 件")).toBeVisible();
+  await expect(page.getByText("分類共 30 件商品")).toBeVisible();
+  await expect(page.getByText("符合條件 25 件，已顯示 24 件")).toBeVisible();
   await expect(page.getByText("已售完")).toHaveCount(0);
   await expect(firstCardName(page)).toHaveText(productName(1));
   await page.getByRole("link", { name: "載入更多" }).click();
   await expect(page).toHaveURL(/\?sort=price-asc&instock=1&page=2$/);
-  await expect(page.getByText("已顯示 25 / 25 件")).toBeVisible();
+  await expect(page.getByText("符合條件 25 件，已顯示 25 件")).toBeVisible();
 
   // 重新整理：狀態全部還原
   await page.reload();
   await expect(sortLink(page, "價格低到高")).toHaveAttribute("aria-current", "true");
   await expect(stockSwitch(page)).toBeChecked();
-  await expect(page.getByText("已顯示 25 / 25 件")).toBeVisible();
+  await expect(page.getByText("符合條件 25 件，已顯示 25 件")).toBeVisible();
   await expect(cards(page)).toHaveCount(25);
   await audit(page, "分類頁（排序、只看有貨、第 2 頁）");
 
   // 上一頁回到第 1 頁；關掉只看有貨回到 30 件的列表
   await page.goBack();
   await expect(page).toHaveURL(/\?sort=price-asc&instock=1$/);
-  await expect(page.getByText("已顯示 24 / 25 件")).toBeVisible();
+  await expect(page.getByText("符合條件 25 件，已顯示 24 件")).toBeVisible();
   await stockSwitch(page).click();
   await expect(page).toHaveURL(/\?sort=price-asc$/);
   await expect(stockSwitch(page)).not.toBeChecked();
@@ -167,6 +168,8 @@ test("篩選後沒有商品：顯示空狀態與清除篩選，清除後回到�
   await stockSwitch(page).click();
   await expect(page).toHaveURL(/\?instock=1$/);
   await expect(page.getByText("目前沒有符合條件的商品。")).toBeVisible();
+  await expect(page.getByText("分類共 1 件商品")).toBeVisible();
+  await expect(page.getByText("符合條件 0 件")).toBeVisible();
   await expect(cards(page)).toHaveCount(0);
   await expect(page.getByText(/已顯示/)).toHaveCount(0);
   await audit(page, "篩選後的空狀態");

@@ -18,7 +18,7 @@ if (!category) Astro.response.status = 404;
     category ? (
       <>
         <p class="category-description">{category.description}</p>
-        <p class="category-count">共 {category.listedProductCount} 件商品</p>
+        <p class="category-count">分類共 {category.listedProductCount} 件商品</p>
         <ProductListing category={category.slug} />
       </>
     ) : <NotFoundContent />

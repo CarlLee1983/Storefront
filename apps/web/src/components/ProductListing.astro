@@ -67,6 +67,7 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false, onSale: 
     <div><p class="error" role="alert">{invalidInput ? q !== undefined ? "搜尋條件無法使用，請調整條件後再試。" : "目前無法套用這些條件，請清除篩選後再試。" : "商品暫時無法顯示，請稍後重新整理。"}</p>{invalidInput && <a href={clearHref}>清除篩選</a>}</div>
   ) : listing.items.length === 0 ? (
     <div class="listing-empty">
+      {filtered && <p>符合條件 0 件</p>}
       <p>{emptyMessage()}</p>
       {filtered && <p><a href={clearHref}>清除篩選</a></p>}
       {q !== undefined && <p><a href="/products">全部商品</a></p>}
@@ -74,7 +75,7 @@ const clearHref = listingHref(pathname, searchParams, { inStock: false, onSale: 
   ) : (
     <>
       <ProductList products={listing.items} />
-      <p class="listing-count">已顯示 {listing.items.length} / {listing.total} 件</p>
+      <p class="listing-count">{filtered ? `符合條件 ${listing.total} 件，已顯示 ${listing.items.length} 件` : `已顯示 ${listing.items.length} / ${listing.total} 件`}</p>
       {reachedDisplayLimit(state.page, listing.items.length, listing.total) ? (
         <p class="listing-limit">已達顯示上限，請用篩選或排序縮小範圍</p>
       ) : listing.hasMore && (
