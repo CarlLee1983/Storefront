@@ -129,7 +129,7 @@ const currentCategory = categorySlugFromPath(Astro.url.pathname);
       import { loadCart, storageOf } from "../cart/storage";
       import { CART_CHANGED_EVENT } from "../cart/store";
 
-      // 購物車件數：載入時、本頁改動時、其他分頁改動時（storage 事件）都重讀 localStorage
+      // 購物車筆數：載入時、本頁改動時、其他分頁改動時（storage 事件）都重讀 localStorage
       const cartCountEl = document.querySelector<HTMLElement>("#cart-count");
       const showCartCount = () => {
         if (!cartCountEl) return;

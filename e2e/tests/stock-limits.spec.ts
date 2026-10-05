@@ -65,18 +65,19 @@ test("可售 4 件：商品頁不得選超量，合併加入整次拒絕，列�
   await expect(quantity).toHaveAttribute("max", "4");
   await quantity.fill("3");
   await add.click();
-  await expect(page.locator("#cart-count")).toHaveText("3");
+  await expect(page.locator("#cart-count")).toHaveText("1");
   await quantity.fill("2");
   await add.click();
   await expect(information.getByRole("status")).toContainText("購物車已有 3 件，最多還能加入 1 件");
-  await expect(page.locator("#cart-count")).toHaveText("3");
+  await expect(page.locator("#cart-count")).toHaveText("1");
   await page.goto("/products");
   const card = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: PRODUCT, exact: true }) });
   await card.getByRole("button", { name: `加入購物車：${PRODUCT}` }).click();
-  await expect(page.locator("#cart-count")).toHaveText("4");
+  await expect(card.getByRole("status")).toHaveText("已加入購物車，目前 4 件。");
+  await expect(page.locator("#cart-count")).toHaveText("1");
   await card.getByRole("button", { name: `加入購物車：${PRODUCT}` }).click();
   await expect(card.getByRole("status")).toContainText("最多還能加入 0 件");
-  await expect(page.locator("#cart-count")).toHaveText("4");
+  await expect(page.locator("#cart-count")).toHaveText("1");
 });
 
 async function addThree(page: Page) {
@@ -84,7 +85,7 @@ async function addThree(page: Page) {
   const information = page.getByRole("region", { name: "商品資訊" });
   await information.getByLabel("數量", { exact: true }).fill("3");
   await information.getByRole("button", { name: "加入購物車", exact: true }).click();
-  await expect(page.locator("#cart-count")).toHaveText("3");
+  await expect(page.locator("#cart-count")).toHaveText("1");
 }
 
 test("購物車庫存下降時保留原數量、阻擋結帳；減量後恢復", async ({ page }) => {

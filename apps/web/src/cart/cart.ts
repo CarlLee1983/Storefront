@@ -89,9 +89,9 @@ export function cartTotal(cart: Cart): number {
   return cart.lines.reduce((sum, line) => sum + lineSubtotal(line), 0);
 }
 
-/** 件數：各筆數量加總（不是筆數）。 */
+/** 購物車筆數：每個商品變體算一筆，不依購買數量增加。 */
 export function cartCount(cart: Cart): number {
-  return cart.lines.reduce((sum, line) => sum + line.quantity, 0);
+  return cart.lines.length;
 }
 
 export function serializeCart(cart: Cart): string {

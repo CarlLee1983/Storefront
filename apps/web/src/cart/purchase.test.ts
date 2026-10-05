@@ -44,7 +44,8 @@ describe("addAvailableItem", () => {
     expect(result.message).toContain("最多還能加入");
     expect(saved()).toEqual(before);
     expect(result.cart).toEqual(before);
-    expect(cartCount(saved())).toBe(existing);
+    expect(cartCount(saved())).toBe(1);
+    expect(saved().lines[0]?.quantity).toBe(existing);
     expect(changed).not.toHaveBeenCalled();
   });
 

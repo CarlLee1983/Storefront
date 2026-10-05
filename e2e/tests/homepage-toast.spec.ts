@@ -70,7 +70,7 @@ test("首頁卡片、售完狀態、可重複 toast、件數及減少動態效�
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.keyboard.press("Enter");
   await expect(card.getByRole("status")).toHaveText("已加入購物車，目前 2 件。");
-  await expect(page.locator("#cart-count")).toHaveText("2");
+  await expect(page.locator("#cart-count")).toHaveText("1");
   expect(await card.getByRole("status").evaluate(element => getComputedStyle(element).animationName)).toBe("none");
   expect(await page.locator("#cart-count").evaluate(element => getComputedStyle(element).animationName)).toBe("none");
   await expect(card.getByRole("status")).toBeEmpty({ timeout: 7000 });

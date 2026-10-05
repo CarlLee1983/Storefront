@@ -35,11 +35,13 @@ for (const viewport of [{ name: "手機", width: 375, height: 812 }, { name: "�
 
       let expectedCount = 0;
       for (const [productId, quantity] of [[lampId, 2], [tableId, 1]] as const) {
+        expectedCount += 1;
         await page.goto(`/products/${productId}`);
         const info = page.getByRole("region", { name: "商品資訊" });
         for (let count = 0; count < quantity; count += 1) {
           await info.getByRole("button", { name: "加入購物車", exact: true }).click();
-          await expect(page.locator("#cart-count")).toHaveText(String(++expectedCount));
+          await expect(info.getByRole("status")).toHaveText(`已加入購物車，目前 ${count + 1} 件。`);
+          await expect(page.locator("#cart-count")).toHaveText(String(expectedCount));
         }
       }
       await page.goto("/checkout");

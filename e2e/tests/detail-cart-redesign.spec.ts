@@ -115,7 +115,7 @@ test("詳情頁：麵包屑、鍵盤調數量並加入購物車、同分類推�
   await expect(add).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(information.getByRole("status")).toHaveText("已加入購物車，目前 2 件。");
-  await expect(page.locator("#cart-count")).toHaveText("2");
+  await expect(page.locator("#cart-count")).toHaveText("1");
 
   await noAxeViolations(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -139,7 +139,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   const information = page.getByRole("region", { name: "商品資訊" });
   await information.getByLabel("數量", { exact: true }).fill("2");
   await information.getByRole("button", { name: "加入購物車", exact: true }).click();
-  await expect(page.locator("#cart-count")).toHaveText("2");
+  await expect(page.locator("#cart-count")).toHaveText("1");
 
   await page.goto("/cart");
   await expect(page.getByRole("heading", { level: 1, name: "購物車" })).toBeVisible();
@@ -166,7 +166,7 @@ test("購物車：320／768／1280 px 都不需橫向捲動、數量加減與移
   await expect(quantity).toHaveValue("3");
   await expect(line.getByRole("button", { name: `增加${MAIN.name}數量` })).toBeFocused();
   await expect(page.locator("#cart-total")).toHaveText("2,040");
-  await expect(page.locator("#cart-count")).toHaveText("3");
+  await expect(page.locator("#cart-count")).toHaveText("1");
   await line.getByRole("button", { name: `減少${MAIN.name}數量` }).click();
   await expect(quantity).toHaveValue("2");
   await expect(page.locator("#cart-total")).toHaveText("1,360");
